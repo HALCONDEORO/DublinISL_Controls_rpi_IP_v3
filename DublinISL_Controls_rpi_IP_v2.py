@@ -221,7 +221,7 @@ SEAT_POSITIONS = {
     # Wheelchair space
    128:(150,110),
     # Second Room — separate space at the back of the hall
-   129:(445,975),
+   129:(380,960),
 }
 
 
@@ -300,7 +300,7 @@ SEAT_POSITIONS = {
     # Wheelchair space
    128:(150,110),
    # Second Room
-   129:(445,975),
+   129:(380,960),
 }
 
 
@@ -404,53 +404,12 @@ class MainWindow(QMainWindow):
         background.lower()
 
 
-        # ── Platform preset buttons (Chairman, Left, Right) ──────────────────
-        # These three buttons always target Camera 1 (the platform-facing camera)
-        # regardless of which camera is selected in the panel on the right.
-        # They recall (or record) fixed positions: Chairman, Platform-Left, Platform-Right.
-        _platform_style = (
-            "background-color: rgba(0,0,0,0); border: none"
-        )
-        _platform_label_style = "font: bold 13px; color: black; background: transparent"
-        for label, x, handler in [
-            ('Left',     460, self.Go2),
-            ('Chairman', 623, self.Go1),
-            ('Right',    803, self.Go3),
-        ]:
-            btn = GoButton(label, self)
-            btn.resize(110, 110)
-            btn.move(x, 35)
-            btn.setStyleSheet(_platform_style)
-            btn.clicked.connect(handler)
-            # Text label displayed below the button image
-            lbl = QLabel(label, self)
-            lbl.setGeometry(x, 140, 110, 20)
-            lbl.setAlignment(QtCore.Qt.AlignCenter)
-            lbl.setStyleSheet(_platform_label_style)
 
         # ── Seat buttons (dynamic, one per entry in SEAT_POSITIONS) ──────────
         # Each button calls go_to_preset(n) with the seat's preset number.
         # We use a default-argument trick (n=seat_number) to capture the loop
         # variable correctly inside the lambda.
-        #
-        # Seat 129 ("Second Room") is a special case: it uses QToolButton instead
-        # of GoButton because it needs a multi-line label and a slightly larger
-        # hit area.  We skip the GoButton creation entirely for seat 129.
-        for seat_number, (x, y) in SEAT_POSITIONS.items():
-            if seat_number == 129:
-                # Second Room — separate space at the back of the hall
-                btn = QToolButton(self)
-                btn.move(x, y)
-                btn.resize(55, 65)
-                btn.setText('Second\nRoom')
-                btn.setStyleSheet(
-                    "QToolButton { background-color: rgba(0,0,0,10); border: 0px solid black; "
-                    "border-radius: 5px; font: 8px; font-weight: bold; color: " + ButtonColor + "; }"
-                )
-                btn.clicked.connect(lambda checked=False, n=129: self.go_to_preset(n))
-                setattr(self, 'Seat129', btn)
-                continue
-
+        
         # ── Platform preset buttons (Chairman, Left, Right) ───────────────────
         Preset1 = QPushButton('Chairman', self)
         Preset1.resize(110, 110)
