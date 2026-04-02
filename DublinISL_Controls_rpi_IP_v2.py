@@ -958,21 +958,19 @@ class MainWindow(QMainWindow):
         ip, cam_id = self._active_cam()
         self._send_cmd_async(ip, cam_id, f"010407{0x20 | self._get_zoom_speed():02X}FF")
 
-    def ZoomOut(self):
-        """
-        Zoom out (wide) at the current slider speed.
-        VISCA Zoom Wide: <id> 01 04 07 <speed_byte> FF
-        speed_byte = 0x3n where n = zoom nibble 1-7 (0x30 | nibble).
-        """
-        ip, cam_id = self._active_cam()
-        self._send_cmd_async(ip, cam_id, f"010407{0x30 | self._get_zoom_speed():02X}FF")
-
-    
     def ZoomStop(self):
-        """Stop zoom movement.  VISCA: <id> 01 04 07 00 FF"""
+        """Stop zoom movement.  Sent automatically when a zoom button is released."""
 
+        """Start zooming in (tele) at a speed proportional to the slider."""
         ip, cam_id = self._active_cam()
-        self._send_cmd(ip, cam_id, "01040700FF")
+        zspd = self._get_zoom_speed()
+        self._send_cmd(ip, cam_id, f"010407{0x20 | zspd:02X}FF")
+
+    def ZoomOut(self):
+        """Start zooming out (wide) at a speed proportional to the slider."""
+        ip, cam_id = self._active_cam()
+        zspd = self._get_zoom_speed()
+        self._send_cmd(ip, cam_id, f"010407{0x30 | zspd:02X}FF")
 
 
 
