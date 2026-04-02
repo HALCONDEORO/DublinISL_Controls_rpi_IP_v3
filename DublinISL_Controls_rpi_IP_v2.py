@@ -768,8 +768,7 @@ class MainWindow(QMainWindow):
 
     # ─────────────────────────────────────────────────────────────────────────
     #   ErrorCapture() shows a generic
-    #  warning so the operator knows something went wrong; ErrorCapture1/2
-    #  continue to show camera-specific messages with the expected IP address.
+    #  warning so the operator knows something went wrong;
     # ─────────────────────────────────────────────────────────────────────────
 
     def ErrorCapture(self):
@@ -922,13 +921,6 @@ class MainWindow(QMainWindow):
         ip, cam_id = self._active_cam()
         self._send_cmd_async(ip, cam_id, "010604FF")
 
-    # def _move(self, pan_dir: int, tilt_dir: int):
-    #     """
-    #     Send a continuous pan/tilt VISCA command using the current slider speed.
-
-    #     Move camera to its factory Home position.  VISCA: <id> 01 06 04 FF"""
-    #     ip, cam_id = self._active_cam()
-    #     self._send_cmd_async(ip, cam_id, "010604FF")
 
     def _move(self, pan_dir, tilt_dir):
         """Send a VISCA Pan-Tilt Drive command for any direction."""
@@ -958,7 +950,6 @@ class MainWindow(QMainWindow):
     # -- Zoom -----------------------------------------------------------------
 
     def ZoomIn(self):
-
         """
         Zoom in (tele) at the current slider speed.
         VISCA Zoom Tele: <id> 01 04 07 <speed_byte> FF
@@ -976,20 +967,7 @@ class MainWindow(QMainWindow):
         ip, cam_id = self._active_cam()
         self._send_cmd_async(ip, cam_id, f"010407{0x30 | self._get_zoom_speed():02X}FF")
 
-    def ZoomStop(self):
-        """Stop zoom movement.  Sent automatically when a zoom button is released."""
-
-        """Start zooming in (tele) at a speed proportional to the slider."""
-        ip, cam_id = self._active_cam()
-        zspd = self._get_zoom_speed()
-        self._send_cmd(ip, cam_id, f"010407{0x20 | zspd:02X}FF")
-
-    def ZoomOut(self):
-        """Start zooming out (wide) at a speed proportional to the slider."""
-        ip, cam_id = self._active_cam()
-        zspd = self._get_zoom_speed()
-        self._send_cmd(ip, cam_id, f"010407{0x30 | zspd:02X}FF")
-
+    
     def ZoomStop(self):
         """Stop zoom movement.  VISCA: <id> 01 04 07 00 FF"""
 
@@ -1020,7 +998,6 @@ class MainWindow(QMainWindow):
             cam_name = 'Platform'
         else:
             ip, cam_id = self._active_cam()
-            cam_name = 'Platform' if self.Cam1.isChecked() else 'Comments'
 
         if self.BtnCall.isChecked():
             # Call (recall): move camera to the stored position for this preset
