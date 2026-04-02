@@ -65,12 +65,6 @@ SPEED_DEFAULT = 8   # Slider starts here; roughly medium pace
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Shared network constant
-# ─────────────────────────────────────────────────────────────────────────────
-SOCKET_TIMEOUT = 1  # Seconds used for every TCP connect / send / recv call
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 #  Config helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -116,9 +110,7 @@ SOCKET_TIMEOUT = 1  # seconds
 #  Zoom speed is a separate nibble (0–7) derived by linear interpolation so
 #  both axes always feel proportional to each other.
 # ─────────────────────────────────────────────────────────────────────────────
-SPEED_MIN     = 1   # slowest pan/tilt (VISCA minimum)
-SPEED_MAX     = 18  # fastest safe pan/tilt (fits both pan 0x18 and tilt 0x14)
-SPEED_DEFAULT = 8   # slider initial position (~medium; old SLOW=4, old FAST=16)
+
 
 def _check_camera(ip, cam_id):
     """
@@ -140,12 +132,6 @@ Cam1Check = _check_camera(IPAddress,  Cam1ID)
 Cam2Check = _check_camera(IPAddress2, Cam2ID)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  VISCA preset number -> hex byte mapping
-#
-#  Presets 90-99 would land in the VISCA-reserved range 0x5A-0x8B, so they
-#  are remapped to 0x8C-0x95.  All others use direct two-digit hex conversion.
-# ─────────────────────────────────────────────────────────────────────────────
 # ─────────────────────────────────────────────────────────────────────────────
 #  VISCA preset number → hex byte value
 #
@@ -248,60 +234,6 @@ def _is_valid_cam_id(text):
     except (binascii.Error, ValueError):
         return False
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  Seat pixel positions (module-level constant — never changes at runtime)
-#
-#  Maps preset number -> (x, y) top-left corner of its button on screen.
-# ─────────────────────────────────────────────────────────────────────────────
-SEAT_POSITIONS = {
-    # Row 1
-     4:(70,210),  5:(131,210),  6:(192,210),  7:(253,210),
-     8:(479,210), 9:(540,210), 10:(601,210), 11:(662,210),
-    12:(722,210),13:(783,210), 14:(844,210),
-    15:(1070,210),16:(1130,210),17:(1191,210),18:(1252,210),
-    # Row 2
-    19:(70,295), 20:(131,295), 21:(192,295), 22:(253,295),
-    23:(479,295),24:(540,295), 25:(601,295), 26:(662,295),
-    27:(722,295),28:(783,295), 29:(844,295),
-    30:(1070,295),31:(1130,295),32:(1191,295),33:(1252,295),
-    # Row 3
-    34:(70,382), 35:(131,382), 36:(192,382), 37:(253,382),
-    38:(479,382),39:(540,382), 40:(601,382), 41:(662,382),
-    42:(723,382),43:(783,382), 44:(844,382),
-    45:(1070,382),46:(1130,382),47:(1191,382),48:(1252,382),
-    # Row 4
-    49:(70,465), 50:(131,465), 51:(192,465), 52:(253,465),
-    53:(479,465),54:(540,465), 55:(601,465), 56:(662,465),
-    57:(722,465),58:(783,465), 59:(844,465),
-    60:(1070,465),61:(1130,465),62:(1191,465),63:(1252,465),
-    # Row 5
-    64:(70,550), 65:(131,550), 66:(192,550), 67:(253,550),
-    68:(479,550),69:(540,550), 70:(601,550), 71:(662,550),
-    72:(722,550),73:(783,550), 74:(844,550),
-    75:(1070,550),76:(1130,550),77:(1191,550),78:(1252,550),
-    # Row 6
-    79:(70,635), 80:(131,635), 81:(192,635), 82:(253,635),
-    83:(479,635),84:(540,635), 85:(601,635), 86:(662,635),
-    87:(722,635),88:(783,635), 89:(844,635),
-    90:(1070,635),91:(1130,635),92:(1191,635),93:(1252,635),
-    # Row 7
-    94:(70,720), 95:(131,720), 96:(192,720), 97:(253,720),
-    98:(479,720),99:(540,720),100:(601,720),101:(662,720),
-   102:(722,720),103:(783,720),104:(844,720),
-   105:(1070,720),106:(1130,720),107:(1191,720),108:(1252,720),
-    # Row 8
-   109:(70,805), 110:(131,805),111:(192,805),112:(253,805),
-   113:(479,805),114:(540,805),115:(601,805),116:(662,805),
-   117:(722,805),118:(783,805),119:(844,805),
-   120:(1070,805),121:(1130,805),122:(1191,805),123:(1252,805),
-    # Row 9
-   124:(108,975),125:(201,975),126:(481,975),127:(578,975),
-    # Wheelchair space
-   128:(150,110),
-   # Second Room
-   129:(380,960),
-}
 
 
 # =============================================================================
@@ -582,17 +514,6 @@ class MainWindow(QMainWindow):
         self.SpeedSlider.valueChanged.connect(self._on_speed_changed)
 
 
-        # ── RIGHT PANEL — Section labels ──────────────────────────────────────
-        for text, geom in [
-            ('Camera Selection',  (1500,  20, 360, 30)),
-            ('PTZ Speed',         (1500, 138, 360, 30)),
-            ('Camera Presets',    (1500, 253, 360, 30)),
-            ('Camera Controls',   (1500, 367, 360, 30)),
-        ]:
-            lbl = QLabel(text, self)
-            lbl.setGeometry(*geom)
-            lbl.setAlignment(QtCore.Qt.AlignCenter)
-            lbl.setStyleSheet("font: bold 20px; color:black")
             
         # ── RIGHT PANEL — Preset mode (Call / Set) ───────────────────────────
         # "Call" = recall a stored preset position.
@@ -612,9 +533,9 @@ class MainWindow(QMainWindow):
         self.BtnSet.setToolTip('Record Preset')
         self.BtnSet.setStyleSheet(_toggle_style)
 
-        PresetModeGroup = QButtonGroup(self)
-        PresetModeGroup.addButton(self.BtnCall)
-        PresetModeGroup.addButton(self.BtnSet)
+        self.PresetModeGroup = QButtonGroup(self)
+        self.PresetModeGroup.addButton(self.BtnCall)
+        self.PresetModeGroup.addButton(self.BtnSet)
 
         # ── RIGHT PANEL — Zoom buttons ────────────────────────────────────────
         ZoomIn = QPushButton(self)
@@ -729,37 +650,6 @@ class MainWindow(QMainWindow):
         Help.setStyleSheet("background-color: lightgrey; font: 15px; color: black; border: none")
         Help.clicked.connect(self.HelpMsg)
 
-    # -------------------------------------------------------------------------
-    #  Speed helpers
-    # -------------------------------------------------------------------------
-
-    def _speed_label_text(self, value):
-        """Build the human-readable string shown below the speed slider."""
-        mid = (SPEED_MIN + SPEED_MAX) / 2
-        if value <= SPEED_MIN:
-            desc = "minimum"
-        elif value >= SPEED_MAX:
-            desc = "maximum"
-        elif value < mid - 2:
-            desc = "slow"
-        elif value > mid + 2:
-            desc = "fast"
-        else:
-            desc = "medium"
-        return f"Speed: {value}  ({desc})"
-
-    def _on_speed_changed(self, value):
-        """Slot connected to SpeedSlider.valueChanged."""
-        self.SpeedValueLabel.setText(self._speed_label_text(value))
-
-    def _get_speed(self):
-        """Return the current pan/tilt speed as an integer in [SPEED_MIN, SPEED_MAX]."""
-        return self.SpeedSlider.value()
-
-    def _get_zoom_speed(self):
-        """Map the pan/tilt slider to a zoom speed nibble (1-7) via linear interpolation."""
-        raw = round(self.SpeedSlider.value() * 7 / SPEED_MAX)
-        return max(1, min(7, raw))
 
     # -------------------------------------------------------------------------
     #  UI helpers
@@ -886,15 +776,6 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(self, 'Camera Control Error',
                             'A network error occurred. Check camera connections.')
 
-    def ErrorCapture1(self):
-        QMessageBox.warning(self, 'Platform PTZ Control',
-                            f'Check that the Platform Camera IP Address is set to '
-                            f'"{IPAddress}" and ID 1.')
-
-    def ErrorCapture2(self):
-        QMessageBox.warning(self, 'Comments PTZ Control',
-                            f'Check that the Comments Camera IP Address is set to '
-                            f'"{IPAddress2}" and ID 2.')
 
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -1037,18 +918,17 @@ class MainWindow(QMainWindow):
     # -------------------------------------------------------------------------
 
     def HomeButton(self):
-
         """Move the active camera to its factory Home position."""
         ip, cam_id = self._active_cam()
         self._send_cmd_async(ip, cam_id, "010604FF")
 
-    def _move(self, pan_dir: int, tilt_dir: int):
-        """
-        Send a continuous pan/tilt VISCA command using the current slider speed.
+    # def _move(self, pan_dir: int, tilt_dir: int):
+    #     """
+    #     Send a continuous pan/tilt VISCA command using the current slider speed.
 
-        Move camera to its factory Home position.  VISCA: <id> 01 06 04 FF"""
-        ip, cam_id = self._active_cam()
-        self._send_cmd_async(ip, cam_id, "010604FF")
+    #     Move camera to its factory Home position.  VISCA: <id> 01 06 04 FF"""
+    #     ip, cam_id = self._active_cam()
+    #     self._send_cmd_async(ip, cam_id, "010604FF")
 
     def _move(self, pan_dir, tilt_dir):
         """Send a VISCA Pan-Tilt Drive command for any direction."""
@@ -1059,27 +939,7 @@ class MainWindow(QMainWindow):
         self._send_cmd(ip, cam_id,
             f"010601{pan_spd:02X}{tilt_spd:02X}{pan_dir:02X}{tilt_dir:02X}FF")
 
-    def Up(self):        self._move(0x03, 0x01)
-    def Down(self):      self._move(0x03, 0x02)
-    def Left(self):      self._move(0x01, 0x03)
-    def Right(self):     self._move(0x02, 0x03)
-    def UpLeft(self):    self._move(0x01, 0x01)
-    def UpRight(self):   self._move(0x02, 0x01)
-    def DownLeft(self):  self._move(0x01, 0x02)
-    def DownRight(self): self._move(0x02, 0x02)
-
-    """ VISCA Pan-Tilt Drive format:
-            <id> 01 06 01 <pan_spd> <tilt_spd> <pan_dir> <tilt_dir> FF
-
-            pan_dir:  0x01=left  0x02=right  0x03=stop (no pan)
-            tilt_dir: 0x01=up    0x02=down   0x03=stop (no tilt)
-
-            When direction is "stop" (0x03) the corresponding speed byte is set to 0
-            so VISCA doesn't try to apply a speed to a stopped axis.
-            Runs asynchronously so the UI stays responsive while the button is held.
-            """
     
-
     def UpLeft(self):    self._move(0x01, 0x01)
     def Up(self):        self._move(0x03, 0x01)
     def UpRight(self):   self._move(0x02, 0x01)
@@ -1088,9 +948,6 @@ class MainWindow(QMainWindow):
     def DownLeft(self):  self._move(0x01, 0x02)
     def Down(self):      self._move(0x03, 0x02)
     def DownRight(self): self._move(0x02, 0x02)
-
-    def Stop(self):
-        """Stop all pan/tilt movement.  Sent automatically when an arrow button is released."""
 
     def Stop(self):
         """Stop all pan/tilt movement.  VISCA: <id> 01 06 01 00 00 03 03 FF"""
@@ -1139,34 +996,7 @@ class MainWindow(QMainWindow):
         ip, cam_id = self._active_cam()
         self._send_cmd(ip, cam_id, "01040700FF")
 
-    # -------------------------------------------------------------------------
-    #  PRESET HANDLER — All seat buttons (presets 1-129)
-    #
-    #  Go1/Go2/Go3 always target Camera 1 regardless of the Camera Selection
-    #  panel — these positions are only meaningful for the platform-facing camera.
-    # ─────────────────────────────────────────────────────────────────────────
 
-    def _go_platform_preset(self, preset_num, title):
-        """
-        Call or set one of the three fixed platform presets (presets 1-3).
-        These always target Camera 1 — the platform-facing camera — because the
-        Chairman, Left, and Right positions are only meaningful on that camera.
-
-        VISCA Recall: <id> 01 04 3F 02 <preset_hex> FF
-        VISCA Set:    <id> 01 04 3F 01 <preset_hex> FF
-        """
-        preset_hex = PRESET_MAP[preset_num]   # 1-3 are always in range; no check needed
-        if self.BtnCall.isChecked():
-            self._send_cmd(IPAddress, Cam1ID, f"01043f02{preset_hex}ff")
-        elif self.BtnSet.isChecked():
-            reply = QMessageBox.question(self, f'Record {title}', "Are You Sure?",
-                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if reply == QMessageBox.Yes:
-                self._send_cmd(IPAddress, Cam1ID, f"01043f01{preset_hex}ff")
-
-    def Go1(self): self._go_platform_preset(1, 'Chairman Position')
-    def Go2(self): self._go_platform_preset(2, 'Platform Left')
-    def Go3(self): self._go_platform_preset(3, 'Platform Right')
 
     # ─────────────────────────────────────────────────────────────────────────
     #  PRESET HANDLER — Seat buttons (presets 4-128, respects camera selection)
@@ -1267,66 +1097,6 @@ class MainWindow(QMainWindow):
             with open(filename, "w") as f:
                 f.write(text.strip())
             os.execv(sys.executable, [sys.executable] + sys.argv)
-
-
-        """Generic dialog to change the IP address of Camera 1 or 2.
-        Validates, saves to the appropriate config file, and restarts.
-        """
-        cam_name = 'Platform' if cam_num == 1 else 'Comments'
-        title    = f'{cam_name} PTZ Control'
-        current  = IPAddress if cam_num == 1 else IPAddress2
-        filename = 'PTZ1IP.txt' if cam_num == 1 else 'PTZ2IP.txt'
-        result = QMessageBox.warning(
-            self, title,
-            f'Do you want to change the IP address for the {cam_name} camera?',
-            QMessageBox.Ok, QMessageBox.Cancel
-        )
-        if result == QMessageBox.Ok:
-            text, ok = QInputDialog.getText(
-                self, title,
-                f'New IP address for {cam_name} Camera  (current: {current}):',
-                text=current
-            )
-            if ok and text:
-                if not _is_valid_ip(text):
-                    QMessageBox.warning(self, 'Invalid IP Address',
-                                        f'"{text}" is not a valid IPv4 address.\n'
-                                        'Enter four numbers 0-255 separated by dots.')
-                    return
-                with open(filename, 'w') as f:
-                    f.write(text.strip())
-
-                os.execv(sys.executable, [sys.executable] + sys.argv)
-
-    def _change_cam_id(self, cam_num):
-        """
-        Generic dialog to change the VISCA device ID of Camera 1 or 2.
-        Validates hex format, saves to config file, and restarts.
-        """
-        cam_name = 'Platform' if cam_num == 1 else 'Comments'
-        title    = f'{cam_name} PTZ Control'
-        current  = Cam1ID if cam_num == 1 else Cam2ID
-        filename = 'Cam1ID.txt' if cam_num == 1 else 'Cam2ID.txt'
-        result = QMessageBox.warning(
-            self, title,
-            f'Do you want to change the VISCA ID for the {cam_name} camera?',
-            QMessageBox.Ok, QMessageBox.Cancel
-        )
-        if result == QMessageBox.Ok:
-            text, ok = QInputDialog.getText(
-
-                self, title,
-                f'New VISCA ID for {cam_name} Camera  (current: {current}):',
-                text=current
-            )
-            if ok and text:
-                if not _is_valid_cam_id(text):
-                    QMessageBox.warning(self, 'Invalid Camera ID',
-                                        f'"{text}" is not valid hex (e.g. "81" or "82").')
-                    return
-                with open(filename, 'w') as f:
-                    f.write(text.strip())
-                os.execv(sys.executable, [sys.executable] + sys.argv)
 
 
     def PTZ1Address(self):  self._change_ip(1)
