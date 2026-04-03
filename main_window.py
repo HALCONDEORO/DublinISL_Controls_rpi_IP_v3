@@ -6,22 +6,28 @@
 #
 # HERENCIA MÚLTIPLE (patrón mixin):
 #   MainWindow hereda de ViscaMixin, SessionMixin y DialogsMixin.
-#   Python resuelve los métodos por MRO (izquierda a derecha), por lo
-#   que el orden de herencia importa si hay colisiones de nombres
-#   (aquí no las hay: cada mixin tiene métodos disjuntos).
+#   Python resuelve los métodos por MRO (izquierda a derecha).
 #
 #   Diagrama:
 #     ViscaMixin   → movimiento, zoom, focus, presets
 #     SessionMixin → encendido, home, apagado
 #     DialogsMixin → cambio IP/ID, help, quit
 #     QMainWindow  → base Qt
+#
+# SISTEMA DE NOMBRES:
+#   Los métodos de gestión de nombres (_toggle_names_panel,
+#   _on_seat_name_assigned, _on_names_list_changed, _restore_seat_names)
+#   viven aquí y NO en un mixin porque interactúan directamente con
+#   los widgets del layout (GoButton, NamesPanel).
 
-from __future__ import annotations  # Permite type hints modernos en Python <3.10
+from __future__ import annotations
+
+import os
 
 from PyQt5 import QtGui, QtCore
 from PyQt5.QtWidgets import (
     QMainWindow, QPushButton, QToolButton,
-    QLabel, QButtonGroup, QSlider
+    QLabel, QButtonGroup, QSlider,
 )
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
@@ -30,15 +36,14 @@ from config import (
     IPAddress, IPAddress2, Cam1ID, Cam2ID,
     Cam1Check, Cam2Check,
     SPEED_MIN, SPEED_MAX, SPEED_DEFAULT,
-    SEAT_POSITIONS, BUTTON_COLOR
+    SEAT_POSITIONS, BUTTON_COLOR,
+    load_names_data, save_names_data,   # ← NUEVO: persistencia de nombres
 )
 from camera_worker import CameraWorker
-from widgets import GoButton, make_arrow_btn
+from widgets import GoButton, NamesPanel, make_arrow_btn   # ← NamesPanel añadido
 from visca_mixin import ViscaMixin
 from session_mixin import SessionMixin
 from dialogs_mixin import DialogsMixin
-
-import os
 
 
 class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
@@ -50,8 +55,6 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
     """
 
     # Estilo compartido para botones toggle (Camera selector y Preset mode).
-    # Definido como constante de clase para evitar duplicación — se usaba
-    # la misma cadena en _build_camera_selector() Y en _build_preset_mode().
     _TOGGLE_STYLE = (
         "QPushButton{background-color: white; border: 3px solid green; "
         "font: bold 20px; color: black}"
@@ -65,10 +68,9 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.setGeometry(0, 0, 1920, 1080)
 
         # Estado del backlight por cámara (False = OFF).
-        # Dict con clave 1 (Platform) y 2 (Comments).
         self.backlight_on = {1: False, 2: False}
 
-        # Estado de sesión: False = apagada, True = activa
+        # Estado de sesión
         self.session_active = False
 
         # Workers de red: uno por cámara, indexados por IP
@@ -76,6 +78,13 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             IPAddress:  CameraWorker(IPAddress),
             IPAddress2: CameraWorker(IPAddress2),
         }
+
+        # ── NUEVO: cargar nombres y asignaciones guardados ────────────────────
+        # Se hace antes de _build_ui para que _restore_seat_names (llamado al
+        # final de _build_ui) ya tenga los datos disponibles.
+        _data            = load_names_data()
+        self._names_list = _data["names"]   # lista editable de consejeros
+        self._seat_names = _data["seats"]   # {str(seat_num): nombre_asignado}
 
         self._build_ui()
 
@@ -90,6 +99,8 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self._build_seat_buttons()
         self._build_session_controls()
         self._build_right_panel()
+        self._build_names_panel()       # ← NUEVO: panel flotante de nombres
+        self._restore_seat_names()      # ← NUEVO: aplica nombres guardados a botones
 
     def _build_background(self):
         """Carga y escala la imagen de fondo del plano de asientos."""
@@ -97,29 +108,23 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         if not os.path.exists(bg_path):
             print(f"[WARNING] {bg_path} no encontrado — fondo vacío")
             return
-
-        pixmap = QPixmap(bg_path)
-        scaled = pixmap.scaled(1920, 1080, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        pixmap = QPixmap(bg_path).scaled(
+            1920, 1080, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
         background = QLabel(self)
-        background.setPixmap(scaled)
+        background.setPixmap(pixmap)
         background.setGeometry(0, -30, 1920, 1080)
-        background.lower()  # Enviar al fondo para que los botones queden encima
+        background.lower()
 
     def _build_platform_presets(self):
         """
         Crea los 3 botones de preset de plataforma (Chairman, Left, Right).
-        Usan QPushButton plano con fondo transparente para superponerse
-        sobre los iconos de la imagen de fondo.
-
-        IMPORTANTE: no usar GoButton aquí — GoButton sobreescribiría el
-        stylesheet con el de asiento.  El padding-top:70px empuja el texto
-        al tercio inferior del botón, debajo del icono de la imagen.
+        Son QPushButton planos — NO GoButton — para preservar el estilo
+        transparente con padding-top que muestra el texto bajo el icono del fondo.
         """
         _platform_style = (
             "background-color: rgba(0,0,0,0); font: 14px; font-weight: bold; "
             "color: black; padding-top: 70px"
         )
-
         for label, x, preset_num in [
             ('Left',     460, 2),
             ('Chairman', 623, 1),
@@ -134,17 +139,15 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
     def _build_seat_buttons(self):
         """
         Crea un GoButton por cada asiento definido en SEAT_POSITIONS.
-        El asiento 129 (Second Room) recibe tratamiento especial:
-        usa QToolButton con icono second_room.png en lugar de seat.svg.
+        GoButton ahora acepta drags y emite name_assigned — se conecta aquí.
+        El asiento 129 (Second Room) usa QToolButton con icono especial.
         """
-        for seat_number in range(4, 130):
-            if seat_number not in SEAT_POSITIONS:
-                continue
-
-            x, y = SEAT_POSITIONS[seat_number]
+        for seat_number, (x, y) in SEAT_POSITIONS.items():
+            if seat_number < 4:
+                continue  # los presets 1-3 son de plataforma, no de asiento
 
             if seat_number == 129:
-                # Segunda sala: QToolButton con icono específico
+                # Segunda sala: QToolButton con imagen específica
                 button = QToolButton(self)
                 button.move(x, y)
                 button.resize(55, 65)
@@ -154,28 +157,29 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
                     "QToolButton { background-color: rgba(0,0,0,10); border: 0px solid black; "
                     "border-radius: 5px; font: 8px; font-weight: bold; color: " + BUTTON_COLOR + "; }"
                 )
-                # Cargar icono con degradación si falta el asset
                 if os.path.exists("second_room.png"):
                     pix = QPixmap("second_room.png").scaled(
-                        40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                    )
+                        40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                     button.setIcon(QtGui.QIcon(pix))
                     button.setIconSize(QtCore.QSize(40, 40))
                 else:
                     print("[WARNING] second_room.png no encontrado")
             else:
-                button = GoButton(str(seat_number), self)
+                button = GoButton(seat_number, self)
                 button.move(x, y)
+                # ── NUEVO: conectar señal de nombre asignado ──────────────────
+                # Cada GoButton notifica a MainWindow cuando se le asigna o
+                # se le borra un nombre, para persistir en seat_names.json.
+                button.name_assigned.connect(self._on_seat_name_assigned)
 
             button.clicked.connect(
                 lambda checked=False, n=seat_number: self.go_to_preset(n)
             )
-            # Guardar referencia para poder acceder al botón por número si hace falta
             setattr(self, f"Seat{seat_number}", button)
 
     def _build_session_controls(self):
-        """Botón de encendido ⏻ y etiqueta de estado (OFF/Starting.../ON)."""
-        self.BtnSession = QPushButton('\u23fb', self)  # ⏻
+        """Botón de encendido ⏻, etiqueta OFF/Starting.../ON y botón de nombres."""
+        self.BtnSession = QPushButton('\u23fb', self)   # ⏻
         self.BtnSession.setGeometry(10, 10, 50, 50)
         self.BtnSession.setToolTip('Start Session: Power ON both cameras and go Home')
         self.BtnSession.setStyleSheet(
@@ -189,12 +193,22 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.SessionStatus.setGeometry(68, 22, 60, 20)
         self.SessionStatus.setStyleSheet("font: bold 12px; color: #8b1a1a")
 
+        # ── NUEVO: botón toggle para el panel de nombres ──────────────────────
+        # Posición: barra superior junto al botón de sesión.
+        # NO se coloca en el panel derecho para no solapar con la sección
+        # "PTZ Speed" (y=138) ni "Camera Presets" (y=253).
+        self.BtnNames = QPushButton('👥  Consejeros', self)
+        self.BtnNames.setGeometry(140, 15, 170, 35)
+        self.BtnNames.setCheckable(True)
+        self.BtnNames.setStyleSheet(
+            "QPushButton { background: white; border: 2px solid #1976D2; "
+            "font: bold 13px; color: #1976D2; border-radius: 6px; }"
+            "QPushButton:Checked { background: #1976D2; color: white; }"
+            "QPushButton:pressed  { background: #1565C0; color: white; }"
+        )
+        self.BtnNames.clicked.connect(self._toggle_names_panel)
+
     def _build_right_panel(self):
-        """
-        Construye el panel derecho (x≥1500):
-        selector de cámara, slider de velocidad, botones Call/Set,
-        zoom, flechas, home, focus/exposición, configuración.
-        """
         self._build_section_labels()
         self._build_camera_selector()
         self._build_speed_slider()
@@ -205,7 +219,6 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self._build_config_buttons()
 
     def _build_section_labels(self):
-        """Etiquetas de sección del panel derecho (solo texto, sin lógica)."""
         for text, geom in [
             ('Camera Selection', (1500,  20, 360, 30)),
             ('PTZ Speed',        (1500, 138, 360, 30)),
@@ -218,23 +231,16 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             lbl.setStyleSheet("font: bold 20px; color: black")
 
     def _build_camera_selector(self):
-        """
-        Botones toggle Platform / Comments para seleccionar la cámara activa.
-        Son mutuamente exclusivos mediante QButtonGroup + setAutoExclusive.
-        Al cambiar de cámara se actualiza el estado del botón Backlight.
-        """
         self.Cam1 = QPushButton('Platform', self)
         self.Cam1.setGeometry(1500, 60, 180, 70)
-        self.Cam1.setCheckable(True)
-        self.Cam1.setAutoExclusive(True)
+        self.Cam1.setCheckable(True); self.Cam1.setAutoExclusive(True)
         self.Cam1.setChecked(True)
         self.Cam1.setToolTip('Select Platform Camera')
         self.Cam1.setStyleSheet(self._TOGGLE_STYLE)
 
         self.Cam2 = QPushButton('Comments', self)
         self.Cam2.setGeometry(1680, 60, 180, 70)
-        self.Cam2.setCheckable(True)
-        self.Cam2.setAutoExclusive(True)
+        self.Cam2.setCheckable(True); self.Cam2.setAutoExclusive(True)
         self.Cam2.setToolTip('Select Comments Camera')
         self.Cam2.setStyleSheet(self._TOGGLE_STYLE)
 
@@ -242,15 +248,10 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.Camgroup.addButton(self.Cam1)
         self.Camgroup.addButton(self.Cam2)
 
-        # Al cambiar de cámara, sincronizar el estado del botón Backlight
         self.Cam1.clicked.connect(self._update_backlight_ui)
         self.Cam2.clicked.connect(self._update_backlight_ui)
 
     def _build_speed_slider(self):
-        """
-        Slider horizontal de velocidad (1-18).
-        SpeedValueLabel muestra una descripción textual debajo del slider.
-        """
         SlowLabel = QLabel('SLOW', self)
         SlowLabel.setGeometry(1500, 190, 55, 20)
         SlowLabel.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
@@ -289,21 +290,15 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.SpeedSlider.valueChanged.connect(self._on_speed_changed)
 
     def _build_preset_mode(self):
-        """
-        Botones Call / Set para el modo de preset.
-        Call = recordar preset, Set = guardar preset (con confirmación).
-        """
         self.BtnCall = QPushButton('Call', self)
         self.BtnCall.setGeometry(1500, 290, 180, 70)
-        self.BtnCall.setCheckable(True)
-        self.BtnCall.setAutoExclusive(True)
+        self.BtnCall.setCheckable(True); self.BtnCall.setAutoExclusive(True)
         self.BtnCall.setChecked(True)
         self.BtnCall.setStyleSheet(self._TOGGLE_STYLE)
 
         self.BtnSet = QPushButton('Set', self)
         self.BtnSet.setGeometry(1680, 290, 180, 70)
-        self.BtnSet.setCheckable(True)
-        self.BtnSet.setAutoExclusive(True)
+        self.BtnSet.setCheckable(True); self.BtnSet.setAutoExclusive(True)
         self.BtnSet.setStyleSheet(self._TOGGLE_STYLE)
 
         self.PresetModeGroup = QButtonGroup(self)
@@ -311,7 +306,6 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.PresetModeGroup.addButton(self.BtnSet)
 
     def _build_zoom_buttons(self):
-        """Botones de Zoom In / Zoom Out con imagen PNG."""
         ZoomIn = QPushButton(self)
         ZoomIn.setGeometry(1680, 403, 100, 100)
         ZoomIn.pressed.connect(self.ZoomIn)
@@ -327,42 +321,29 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
     def _build_arrow_buttons(self):
         """
         8 botones de dirección + botón Home central.
-        Usa make_arrow_btn() de widgets.py para crear cada botón con
-        angle.png rotado al ángulo correcto.
-
-        TABLA DE ROTACIONES (baseline: angle.png apunta hacia abajo = 0°):
-            UpLeft=135°  Up=180°  UpRight=225°
-            Left=90°              Right=270°
-            DownLeft=45° Down=0°  DownRight=315°
+        angle.png apunta hacia abajo (0°) — rotaciones calculadas desde esa base.
         """
         arrow_config = [
-            # (x,    y,   grados, handler_pressed)
-            (1500, 510,  135, self.UpLeft),
-            (1605, 510,  180, self.Up),
-            (1710, 510,  225, self.UpRight),
-            (1500, 617,   90, self.Left),
-            (1710, 617,  270, self.Right),
-            (1500, 724,   45, self.DownLeft),
-            (1605, 724,    0, self.Down),
-            (1710, 724,  315, self.DownRight),
+            (1500, 510, 135, self.UpLeft),
+            (1605, 510, 180, self.Up),
+            (1710, 510, 225, self.UpRight),
+            (1500, 617,  90, self.Left),
+            (1710, 617, 270, self.Right),
+            (1500, 724,  45, self.DownLeft),
+            (1605, 724,   0, self.Down),
+            (1710, 724, 315, self.DownRight),
         ]
-
         for x, y, deg, handler in arrow_config:
             btn = make_arrow_btn(self, x, y, deg)
             btn.pressed.connect(handler)
-            btn.released.connect(self.Stop)  # Siempre parar al soltar
+            btn.released.connect(self.Stop)
 
-        # Botón Home en el centro del grid de flechas
         Home = QPushButton('', self)
         Home.setGeometry(1605, 617, 100, 100)
         Home.clicked.connect(self.HomeButton)
         Home.setStyleSheet("background-image: url(home.png); border: none")
 
     def _build_focus_exposure(self):
-        """
-        Sección Focus & Exposure: Auto/OnePush/Manual focus +
-        Brighter/Darker exposure + toggle Backlight.
-        """
         FocusExposureLabel = QLabel('Focus & Exposure', self)
         FocusExposureLabel.setGeometry(1500, 835, 360, 25)
         FocusExposureLabel.setAlignment(QtCore.Qt.AlignCenter)
@@ -373,7 +354,6 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             "font: bold 13px; color: black; border-radius: 4px}"
             "QPushButton:pressed{background-color: #ccc}"
         )
-
         for label, geom, tooltip, handler in [
             ('Auto\nFocus',   (1500, 863, 110, 50), 'Auto Focus ON',                   self.AutoFocus),
             ('One Push\nAF',  (1625, 863, 110, 50), 'One-shot autofocus, then manual', self.OnePushAF),
@@ -387,7 +367,6 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             btn.setStyleSheet(_btn_style)
             btn.clicked.connect(handler)
 
-        # Botón Backlight: cambia color según estado ON/OFF
         self.BtnBacklight = QPushButton('Backlight\nOFF', self)
         self.BtnBacklight.setGeometry(1625, 920, 110, 45)
         self.BtnBacklight.setToolTip('Toggle backlight compensation (contraluz)')
@@ -403,10 +382,6 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.BtnBacklight.clicked.connect(self.BacklightToggle)
 
     def _build_config_buttons(self):
-        """
-        Botones de configuración en la parte inferior del panel derecho:
-        IP y VISCA ID de cada cámara, versión, cerrar, ayuda.
-        """
         Cam1Address = QPushButton(
             'Platform [Platform]  -  ' + IPAddress, self)
         Cam1Address.setGeometry(1500, 975, 310, 22)
@@ -429,7 +404,6 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self._ptz2_id_btn.setStyleSheet("font: bold 15px; color:" + Cam2Check)
         self._ptz2_id_btn.clicked.connect(self.PTZ2IDchange)
 
-        # Etiqueta de versión
         VersionLabel = QLabel('v3 — IP RPI — March 2026', self)
         VersionLabel.setGeometry(1500, 1022, 360, 20)
         VersionLabel.setAlignment(QtCore.Qt.AlignCenter)
@@ -446,6 +420,89 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         Help.setStyleSheet(
             "background-color: lightgrey; font: 15px; color: black; border: none")
         Help.clicked.connect(self.HelpMsg)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    #  NUEVO: Panel de nombres — construcción y gestión
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _build_names_panel(self):
+        """
+        Instancia NamesPanel como widget hijo (queda dentro de la ventana).
+        Se pasa la referencia a self._names_list para que NamesPanel la
+        modifique directamente — no hay copia, hay referencia compartida.
+        Se pasa _on_names_list_changed como callback para persistir cambios.
+        El panel se crea oculto y se muestra con BtnNames.
+        """
+        self._names_panel = NamesPanel(
+            self._names_list,
+            self._on_names_list_changed,
+            parent=self,
+        )
+        self._names_panel.hide()
+
+    def _restore_seat_names(self):
+        """
+        Aplica los nombres guardados en self._seat_names a los GoButtons
+        justo después de construir la UI.
+
+        emit_signal=False: evita llamar a _on_seat_name_assigned durante
+        la carga inicial, lo que dispararía save_names_data innecesariamente
+        (los datos ya están en el archivo y no han cambiado).
+        """
+        for seat_str, name in self._seat_names.items():
+            btn = getattr(self, f"Seat{seat_str}", None)
+            if isinstance(btn, GoButton) and name:
+                btn.set_name(name, emit_signal=False)
+
+    def _toggle_names_panel(self, checked: bool):
+        """
+        Muestra u oculta el NamesPanel al pulsar BtnNames.
+        raise_() trae el panel al frente si quedó detrás de otros widgets.
+        """
+        if checked:
+            self._names_panel.raise_()
+            self._names_panel.show()
+        else:
+            self._names_panel.hide()
+
+    def _on_seat_name_assigned(self, seat_number: int, name: str):
+        """
+        Slot conectado a GoButton.name_assigned.
+        Se llama cada vez que el usuario arrastra un nombre a un asiento
+        o borra la asignación con doble-tap.
+
+        Actualiza self._seat_names en memoria y persiste en seat_names.json.
+        Usar str(seat_number) como clave para consistencia con el JSON
+        (JSON solo admite strings como claves de objeto).
+        """
+        key = str(seat_number)
+        if name:
+            self._seat_names[key] = name
+        else:
+            self._seat_names.pop(key, None)  # pop silencioso si no existía
+        save_names_data(self._names_list, self._seat_names)
+
+    def _on_names_list_changed(self, old_name: str = None, new_name: str = None):
+        """
+        Callback de NamesPanel tras añadir / editar / borrar un nombre de la lista.
+
+        Si es un renombrado (old_name y new_name no son None):
+          - Actualiza self._seat_names con el nombre nuevo.
+          - Llama a GoButton.set_name() con emit_signal=False en los asientos
+            afectados para no disparar un guardado extra (ya guardamos aquí).
+
+        Si no hay renombrado (solo añadir/borrar):
+          - Solo persiste la lista actualizada.
+        """
+        if old_name and new_name:
+            for key, v in self._seat_names.items():
+                if v == old_name:
+                    self._seat_names[key] = new_name
+                    # Actualizar visualmente el botón sin emitir señal (evita doble guardado)
+                    btn = getattr(self, f"Seat{key}", None)
+                    if isinstance(btn, GoButton):
+                        btn.set_name(new_name, emit_signal=False)
+        save_names_data(self._names_list, self._seat_names)
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Helper de UI (no es VISCA, no es diálogo — vive aquí)

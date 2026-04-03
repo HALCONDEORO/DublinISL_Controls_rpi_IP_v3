@@ -2,20 +2,19 @@
 # config.py — Configuración central de la aplicación
 #
 # Responsabilidad única: leer archivos de configuración (.txt), definir
-# constantes globales, validar IPs/IDs y hacer el chequeo de conectividad
-# inicial con cada cámara.
+# constantes globales, validar IPs/IDs, persistencia de nombres de consejeros,
+# y hacer el chequeo de conectividad inicial con cada cámara.
 #
 # MOTIVO DE SEPARACIÓN: estos valores se importan en varios módulos.
 # Tenerlos aquí evita dependencias circulares y hace que cualquier cambio
 # de configuración solo afecte a este archivo.
 
-from __future__ import annotations  # Permite type hints modernos en Python 3.7/3.8/3.9
-                                    # Sin esto, dict[int,str] y tuple[int,int] fallan
-                                    # en Python <3.9 (que puede estar en RPi OS Buster).
+from __future__ import annotations
+import json
 import re
 import socket
 import binascii
-import threading  # Movido aquí desde el final del archivo (era violación PEP 8)
+import threading
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Constantes de velocidad del slider
@@ -25,16 +24,18 @@ SPEED_MAX     = 18
 SPEED_DEFAULT = 8
 
 # Timeout de socket en segundos.
-# 1 s es suficiente en LAN local; evita bloquear la UI demasiado tiempo
-# si una cámara no responde.
 SOCKET_TIMEOUT = 1
 
-# Puerto VISCA-over-IP estándar usado por estas cámaras.
-# Se centraliza aquí para poder cambiarlo en un solo sitio si fuera necesario.
+# Puerto VISCA-over-IP estándar.
 VISCA_PORT = 5678
 
-# Color por defecto del texto de los botones de asiento
+# Color por defecto del texto de los botones de asiento.
 BUTTON_COLOR = "black"
+
+# Archivo JSON para persistencia de nombres de consejeros y asignaciones.
+# MOTIVO: centralizar el nombre del archivo para que widgets.py y main_window.py
+# no lo dupliquen como string literal.
+NAMES_FILE = 'seat_names.json'
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -51,31 +52,26 @@ def _read_config(filename: str, default: str) -> str:
         with open(filename, 'r') as f:
             return f.read().strip()
     except (FileNotFoundError, IOError) as exc:
-        print(f"[WARNING] No se pudo leer '{filename}': {exc}  → usando '{default}'")
+        print(f"[CONFIG] No se pudo leer '{filename}': {exc}  → usando '{default}'")
         return default
 
 
 # Cargar configuración al importar el módulo.
-# Cada valor tiene un default razonable para el entorno de producción.
-IPAddress  = _read_config('PTZ1IP.txt',  '172.16.1.11')   # IP cámara Platform
-IPAddress2 = _read_config('PTZ2IP.txt',  '172.16.1.12')   # IP cámara Comments
-Cam1ID     = _read_config('Cam1ID.txt',  '81')            # VISCA ID hex cámara 1
-Cam2ID     = _read_config('Cam2ID.txt',  '82')            # VISCA ID hex cámara 2
+IPAddress  = _read_config('PTZ1IP.txt',  '172.16.1.11')
+IPAddress2 = _read_config('PTZ2IP.txt',  '172.16.1.12')
+Cam1ID     = _read_config('Cam1ID.txt',  '81')
+Cam2ID     = _read_config('Cam2ID.txt',  '82')
 Contact    = _read_config('Contact.txt', 'No contact information available.')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Mapa de presets VISCA (número lógico → byte hex)
 # ─────────────────────────────────────────────────────────────────────────────
-# Las cámaras VISCA no usan el número de preset directamente como byte:
-#   - Presets 1-89  → 0x01-0x59  (directo)
-#   - Presets 90-99 → 0x8C-0x95  (desplazamiento especial del fabricante)
-#   - Presets 100+  → 0x64+       (hex directo)
-# Este mapa se calcula una sola vez al arrancar.
 PRESET_MAP: dict[int, str] = {}
 for _i in range(1, 90):
     PRESET_MAP[_i] = f"{_i:02X}"
 for _i in range(90, 100):
+    # Presets 90-99 → 0x8C-0x95 según spec VISCA extendida del fabricante
     PRESET_MAP[_i] = f"{0x8C + (_i - 90):02X}"
 for _i in range(100, 130):
     PRESET_MAP[_i] = f"{_i:02X}"
@@ -84,9 +80,6 @@ for _i in range(100, 130):
 # ─────────────────────────────────────────────────────────────────────────────
 #  Posiciones de asientos en píxeles sobre la imagen de fondo
 # ─────────────────────────────────────────────────────────────────────────────
-# Formato: { número_asiento: (x, y) }
-# x, y corresponden a la esquina superior-izquierda del botón sobre la imagen
-# de 1920×1080 px.  NO modificar sin verificar visualmente en la pantalla real.
 SEAT_POSITIONS: dict[int, tuple[int, int]] = {
     # Fila 1
      4:(70,210),  5:(131,210),  6:(192,210),  7:(253,210),
@@ -142,11 +135,7 @@ SEAT_POSITIONS: dict[int, tuple[int, int]] = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 def is_valid_ip(text: str) -> bool:
-    """
-    Valida que el texto sea una IPv4 con cuatro octetos 0-255.
-    Se usa antes de guardar una IP nueva para evitar valores inválidos
-    que rompan el socket al reconectar.
-    """
+    """Valida que el texto sea una IPv4 con cuatro octetos 0-255."""
     match = re.match(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$', text.strip())
     if not match:
         return False
@@ -154,10 +143,7 @@ def is_valid_ip(text: str) -> bool:
 
 
 def is_valid_cam_id(text: str) -> bool:
-    """
-    Valida que el texto sea un valor hexadecimal válido (ej. "81", "82").
-    binascii.unhexlify lanzará excepción si contiene caracteres no-hex.
-    """
+    """Valida que el texto sea un valor hexadecimal decodificable (ej. '81', '82')."""
     text = text.strip()
     if not text:
         return False
@@ -169,6 +155,53 @@ def is_valid_cam_id(text: str) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Persistencia de nombres de consejeros  ← NUEVO
+# ─────────────────────────────────────────────────────────────────────────────
+# Formato de seat_names.json:
+#   {
+#     "names": ["Ana López", "Pedro Ruiz", ...],
+#     "seats": {"7": "Ana López", "12": "Pedro Ruiz", ...}
+#   }
+#
+# MOTIVO de ubicación aquí: config.py ya gestiona toda la E/S de archivos
+# de la app.  Centralizar aquí evita que widgets.py y main_window.py
+# dependan de 'json' y de la ruta del archivo directamente.
+
+def load_names_data() -> dict:
+    """
+    Carga lista de nombres y asignaciones desde NAMES_FILE.
+    Primera ejecución o archivo corrupto: devuelve estructura vacía sin error.
+    Garantiza que las claves 'names' y 'seats' siempre existen en el resultado.
+    """
+    try:
+        with open(NAMES_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return {
+            "names": data.get("names", []),
+            "seats": data.get("seats", {}),
+        }
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        print(f"[NAMES] {NAMES_FILE}: {exc} — iniciando con datos vacíos.")
+        return {"names": [], "seats": {}}
+
+
+def save_names_data(names_list: list, seat_assignments: dict) -> None:
+    """
+    Guarda lista y asignaciones en NAMES_FILE.
+    Se llama en cada cambio para no perder datos entre sesiones.
+    Falla silenciosamente con un warning si no hay permisos de escritura.
+    """
+    try:
+        with open(NAMES_FILE, 'w', encoding='utf-8') as f:
+            json.dump(
+                {"names": names_list, "seats": seat_assignments},
+                f, ensure_ascii=False, indent=2,
+            )
+    except IOError as exc:
+        print(f"[NAMES] Error guardando {NAMES_FILE}: {exc}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Chequeo de conectividad al inicio
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -176,11 +209,7 @@ def check_camera(ip: str, cam_id: str) -> str:
     """
     Intenta conectar a la cámara y enviar un query de estado.
     Devuelve "Green" si responde correctamente, "Red" si falla.
-    Se llama UNA sola vez al arrancar (en paralelo para ambas cámaras)
-    y el resultado colorea los botones de estado en la UI.
-
-    MOTIVO: dar feedback visual inmediato al operador sobre qué cámaras
-    están disponibles antes de empezar la sesión.
+    Se llama UNA sola vez al arrancar (en paralelo para ambas cámaras).
     """
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -194,24 +223,16 @@ def check_camera(ip: str, cam_id: str) -> str:
 
 
 # Ejecutar chequeos en paralelo para no bloquear el arranque.
-# Se usan threads simples porque solo necesitamos el resultado final,
-# no comunicación continua.
-
-_cam1_result = ["Red"]  # lista mutable para que el thread pueda escribir el resultado
+_cam1_result = ["Red"]
 _cam2_result = ["Red"]
 
-def _check1():
-    _cam1_result[0] = check_camera(IPAddress, Cam1ID)
-
-def _check2():
-    _cam2_result[0] = check_camera(IPAddress2, Cam2ID)
+def _check1(): _cam1_result[0] = check_camera(IPAddress, Cam1ID)
+def _check2(): _cam2_result[0] = check_camera(IPAddress2, Cam2ID)
 
 _t1 = threading.Thread(target=_check1, daemon=True)
 _t2 = threading.Thread(target=_check2, daemon=True)
-_t1.start()
-_t2.start()
-_t1.join()  # Esperar ambos antes de que el resto del módulo use los resultados
-_t2.join()
+_t1.start(); _t2.start()
+_t1.join();  _t2.join()
 
 Cam1Check = _cam1_result[0]
 Cam2Check = _cam2_result[0]
