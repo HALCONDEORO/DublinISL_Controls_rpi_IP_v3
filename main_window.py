@@ -178,7 +178,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             setattr(self, f"Seat{seat_number}", button)
 
     def _build_session_controls(self):
-        """Botón de encendido ⏻, etiqueta OFF/Starting.../ON y botón de nombres."""
+        """Botón de encendido ⏻ y etiqueta OFF/Starting.../ON."""
         self.BtnSession = QPushButton('\u23fb', self)   # ⏻
         self.BtnSession.setGeometry(10, 10, 50, 50)
         self.BtnSession.setToolTip('Start Session: Power ON both cameras and go Home')
@@ -193,10 +193,9 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.SessionStatus.setGeometry(68, 22, 60, 20)
         self.SessionStatus.setStyleSheet("font: bold 12px; color: #8b1a1a")
 
-        # ── NUEVO: botón toggle para el panel de nombres ──────────────────────
-        # Posición: barra superior junto al botón de sesión.
-        # NO se coloca en el panel derecho para no solapar con la sección
-        # "PTZ Speed" (y=138) ni "Camera Presets" (y=253).
+        # BtnNames: siempre visible e independiente del modo Call/Set.
+        # El modo solo controla si se puede editar la lista dentro del panel;
+        # el botón de apertura siempre está disponible.
         self.BtnNames = QPushButton('👥  Consejeros', self)
         self.BtnNames.setGeometry(140, 15, 170, 35)
         self.BtnNames.setCheckable(True)
@@ -432,6 +431,13 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         modifique directamente — no hay copia, hay referencia compartida.
         Se pasa _on_names_list_changed como callback para persistir cambios.
         El panel se crea oculto y se muestra con BtnNames.
+
+        MODO EDICIÓN:
+          La edición de la lista (CRUD + reordenamiento) solo está disponible
+          en modo Set. Se conecta BtnCall y BtnSet para que actualicen el
+          estado del panel automáticamente al cambiar de modo.
+          El estado inicial es Call (edición bloqueada), que coincide con
+          BtnCall.isChecked() = True por defecto en _build_preset_mode().
         """
         self._names_panel = NamesPanel(
             self._names_list,
@@ -439,6 +445,12 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             parent=self,
         )
         self._names_panel.hide()
+
+        # Edición bloqueada en Call (modo por defecto) y habilitada en Set.
+        # BtnNames siempre visible: el operador puede abrir el panel en cualquier
+        # modo para ver los nombres asignados, aunque no pueda modificar la lista.
+        self.BtnCall.clicked.connect(lambda: self._names_panel.set_edit_mode(False))
+        self.BtnSet.clicked.connect(lambda:  self._names_panel.set_edit_mode(True))
 
     def _restore_seat_names(self):
         """
@@ -457,11 +469,13 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
     def _toggle_names_panel(self, checked: bool):
         """
         Muestra u oculta el NamesPanel al pulsar BtnNames.
-        raise_() trae el panel al frente si quedó detrás de otros widgets.
+        raise_() trae el panel al frente; luego BtnNames.raise_() lo mantiene
+        encima del panel para que el botón siempre sea visible y pulsable.
         """
         if checked:
             self._names_panel.raise_()
             self._names_panel.show()
+            self.BtnNames.raise_()  # botón siempre encima del panel
         else:
             self._names_panel.hide()
 
