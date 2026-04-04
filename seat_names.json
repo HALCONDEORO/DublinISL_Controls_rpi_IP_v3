@@ -7,20 +7,18 @@
     "Ángel",
     "Tim",
     "Beatriz",
-    "Eddie"
+    "Eddie",
+    "Christian"
   ],
   "seats": {
-    "43": "Carol",
-    "44": "Marco Tevar",
-    "14": "Carol",
-    "31": "Eddie",
-    "48": "Tim",
-    "47": "Laura",
-    "113": "Beatriz",
+    "126": "Eddie",
+    "28": "Carol",
+    "114": "Beatriz",
+    "113": "Ángel",
+    "105": "Laura",
+    "106": "Tim",
     "24": "Cathy",
-    "114": "Ángel",
-    "11": "Carol",
-    "12": "Carol",
-    "40": "Cathy"
+    "44": "Marco Tevar",
+    "118": "Christian"
   }
 }

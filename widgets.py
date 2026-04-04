@@ -382,6 +382,11 @@ class NamesPanel(QWidget):
             layout.addWidget(b)
             self._edit_buttons.append(b)
 
+        # Conjunto de nombres actualmente asignados a asientos.
+        # Mantenido por MainWindow vía set_assigned(). _rebuild() lo usa para
+        # filtrar la lista visible: un nombre asignado no aparece en el panel.
+        self._assigned: set = set()
+
         # Estado inicial: se sincroniza con BtnCall/BtnSet desde MainWindow
         # tras la construcción. Call es el modo por defecto → edición bloqueada.
         self._rebuild()
@@ -411,21 +416,45 @@ class NamesPanel(QWidget):
 
     # ── Sincronización de la lista ────────────────────────────────────────────
 
+    def set_assigned(self, assigned: set):
+        """
+        Actualiza el conjunto de nombres asignados a asientos y refresca la lista.
+        MainWindow llama a este método cada vez que cambia una asignación de asiento
+        (drag a GoButton o borrado con doble-tap).
+
+        Un nombre en `assigned` desaparece del panel — ya está "usado" en un asiento.
+        Cuando se libera el asiento (assigned pierde ese nombre), vuelve a aparecer.
+        """
+        self._assigned = assigned
+        self._rebuild()
+
     def _rebuild(self):
         """
-        Recarga NamesListWidget desde self.names.
-        Llamar tras add/edit/delete. NO llamar tras reorden interno
-        (lo gestiona _on_order_changed directamente).
+        Recarga NamesListWidget mostrando solo los nombres NO asignados.
+        Los nombres asignados a asientos no aparecen aquí: visualmente están
+        "en el asiento", no en la lista de disponibles.
+        Llamar tras add/edit/delete y tras cualquier cambio de asignaciones.
+        NO llamar tras reorden interno (_on_order_changed lo gestiona).
         """
-        self._list.populate(self.names)
+        visible = [n for n in self.names if n not in self._assigned]
+        self._list.populate(visible)
 
     def _on_order_changed(self, new_order: list):
         """
         Slot de NamesListWidget.order_changed.
-        Actualiza self.names con el nuevo orden y persiste.
-        No llama a _rebuild() porque la lista ya refleja el orden correcto.
+        new_order contiene solo los nombres VISIBLES (no asignados) en su nuevo orden.
+        Reconstruye self.names in-place intercalando los asignados en su posición
+        original para no perder ningún nombre de la lista maestra.
+
+        Algoritmo: recorre self.names; los nombres asignados se mantienen en su
+        posición; los no asignados se reemplazan por el nuevo orden visible.
         """
-        self.names[:] = new_order   # in-place: mantiene la referencia compartida con MainWindow
+        visible_iter = iter(new_order)
+        reconstructed = [
+            name if name in self._assigned else next(visible_iter)
+            for name in self.names
+        ]
+        self.names[:] = reconstructed   # in-place: mantiene referencia compartida con MainWindow
         self._on_changed()
 
     # ── CRUD de la lista ──────────────────────────────────────────────────────

@@ -37,10 +37,10 @@ from config import (
     Cam1Check, Cam2Check,
     SPEED_MIN, SPEED_MAX, SPEED_DEFAULT,
     SEAT_POSITIONS, BUTTON_COLOR,
-    load_names_data, save_names_data,
+    load_names_data, save_names_data,   # ← NUEVO: persistencia de nombres
 )
 from camera_worker import CameraWorker
-from widgets import GoButton, NamesPanel, make_arrow_btn
+from widgets import GoButton, NamesPanel, make_arrow_btn   # ← NamesPanel añadido
 from visca_mixin import ViscaMixin
 from session_mixin import SessionMixin
 from dialogs_mixin import DialogsMixin
@@ -79,11 +79,12 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             IPAddress2: CameraWorker(IPAddress2),
         }
 
-        # Cargar nombres y asignaciones guardados antes de construir la UI,
-        # para que _restore_seat_names ya tenga los datos disponibles.
+        # ── NUEVO: cargar nombres y asignaciones guardados ────────────────────
+        # Se hace antes de _build_ui para que _restore_seat_names (llamado al
+        # final de _build_ui) ya tenga los datos disponibles.
         _data            = load_names_data()
-        self._names_list = _data["names"]
-        self._seat_names = _data["seats"]
+        self._names_list = _data["names"]   # lista editable de consejeros
+        self._seat_names = _data["seats"]   # {str(seat_num): nombre_asignado}
 
         self._build_ui()
 
@@ -98,21 +99,12 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self._build_seat_buttons()
         self._build_session_controls()
         self._build_right_panel()
-        self._build_names_panel()
-        self._restore_seat_names()
+        self._build_names_panel()       # ← NUEVO: panel flotante de nombres
+        self._restore_seat_names()      # ← NUEVO: aplica nombres guardados a botones
 
     def _build_background(self):
-        """
-        Carga y escala la imagen de fondo del plano de asientos.
-
-        CAMBIO v2→v3: se usa Background_ISL_v3.jpg, que incluye:
-          - Plataforma superior con gradiente de iluminación central sutil
-          - Sombra proyectada bajo el borde del desnivel
-          - Tres zonas de gris diferenciadas: plataforma, auditorio, panel PTZ
-        """
-        # ANTES: bg_path = "Background_ISL_v2.jpg"
-        # AHORA: nueva imagen con desnivel y efectos de iluminación/sombra
-        bg_path = "Background_ISL_v3.jpg"
+        """Carga y escala la imagen de fondo del plano de asientos."""
+        bg_path = "Background_ISL_v2.jpg"
         if not os.path.exists(bg_path):
             print(f"[WARNING] {bg_path} no encontrado — fondo vacío")
             return
@@ -147,7 +139,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
     def _build_seat_buttons(self):
         """
         Crea un GoButton por cada asiento definido en SEAT_POSITIONS.
-        GoButton acepta drags y emite name_assigned — se conecta aquí.
+        GoButton ahora acepta drags y emite name_assigned — se conecta aquí.
         El asiento 129 (Second Room) usa QToolButton con icono especial.
         """
         for seat_number, (x, y) in SEAT_POSITIONS.items():
@@ -175,6 +167,9 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             else:
                 button = GoButton(seat_number, self)
                 button.move(x, y)
+                # ── NUEVO: conectar señal de nombre asignado ──────────────────
+                # Cada GoButton notifica a MainWindow cuando se le asigna o
+                # se le borra un nombre, para persistir en seat_names.json.
                 button.name_assigned.connect(self._on_seat_name_assigned)
 
             button.clicked.connect(
@@ -183,7 +178,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             setattr(self, f"Seat{seat_number}", button)
 
     def _build_session_controls(self):
-        """Botón de encendido ⏻, etiqueta OFF/Starting.../ON y botón de nombres."""
+        """Botón de encendido ⏻ y etiqueta OFF/Starting.../ON."""
         self.BtnSession = QPushButton('\u23fb', self)   # ⏻
         self.BtnSession.setGeometry(10, 10, 50, 50)
         self.BtnSession.setToolTip('Start Session: Power ON both cameras and go Home')
@@ -198,6 +193,9 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.SessionStatus.setGeometry(68, 22, 60, 20)
         self.SessionStatus.setStyleSheet("font: bold 12px; color: #8b1a1a")
 
+        # BtnNames: siempre visible e independiente del modo Call/Set.
+        # El modo solo controla si se puede editar la lista dentro del panel;
+        # el botón de apertura siempre está disponible.
         self.BtnNames = QPushButton('👥  Consejeros', self)
         self.BtnNames.setGeometry(140, 15, 170, 35)
         self.BtnNames.setCheckable(True)
@@ -423,10 +421,24 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         Help.clicked.connect(self.HelpMsg)
 
     # ─────────────────────────────────────────────────────────────────────────
-    #  Panel de nombres — construcción y gestión
+    #  NUEVO: Panel de nombres — construcción y gestión
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_names_panel(self):
+        """
+        Instancia NamesPanel como widget hijo (queda dentro de la ventana).
+        Se pasa la referencia a self._names_list para que NamesPanel la
+        modifique directamente — no hay copia, hay referencia compartida.
+        Se pasa _on_names_list_changed como callback para persistir cambios.
+        El panel se crea oculto y se muestra con BtnNames.
+
+        MODO EDICIÓN:
+          La edición de la lista (CRUD + reordenamiento) solo está disponible
+          en modo Set. Se conecta BtnCall y BtnSet para que actualicen el
+          estado del panel automáticamente al cambiar de modo.
+          El estado inicial es Call (edición bloqueada), que coincide con
+          BtnCall.isChecked() = True por defecto en _build_preset_mode().
+        """
         self._names_panel = NamesPanel(
             self._names_list,
             self._on_names_list_changed,
@@ -434,47 +446,117 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         )
         self._names_panel.hide()
 
+        # Sincronizar asignaciones iniciales: _restore_seat_names() ya aplicó
+        # los nombres guardados a los GoButtons; aquí actualizamos el panel
+        # para que oculte esos nombres de la lista desde el primer arranque.
+        self._sync_panel_assigned()
+
+        # Edición bloqueada en Call (modo por defecto) y habilitada en Set.
+        # BtnNames siempre visible: el operador puede abrir el panel en cualquier
+        # modo para ver los nombres disponibles, aunque no pueda modificar la lista.
+        self.BtnCall.clicked.connect(lambda: self._names_panel.set_edit_mode(False))
+        self.BtnSet.clicked.connect(lambda:  self._names_panel.set_edit_mode(True))
+
     def _restore_seat_names(self):
         """
-        Aplica los nombres guardados a los GoButtons al arrancar.
-        emit_signal=False evita guardados innecesarios durante la carga.
+        Aplica los nombres guardados en self._seat_names a los GoButtons
+        justo después de construir la UI.
+
+        emit_signal=False: evita llamar a _on_seat_name_assigned durante
+        la carga inicial, lo que dispararía save_names_data innecesariamente
+        (los datos ya están en el archivo y no han cambiado).
         """
         for seat_str, name in self._seat_names.items():
             btn = getattr(self, f"Seat{seat_str}", None)
             if isinstance(btn, GoButton) and name:
                 btn.set_name(name, emit_signal=False)
 
+    def _assigned_names(self) -> set:
+        """
+        Devuelve el conjunto de nombres actualmente asignados a algún asiento.
+        Fuente única de verdad: evita calcular set(self._seat_names.values())
+        en varios sitios con riesgo de inconsistencia.
+        """
+        return set(self._seat_names.values())
+
+    def _sync_panel_assigned(self):
+        """
+        Notifica a NamesPanel el conjunto actual de nombres asignados.
+        Llamar tras cualquier cambio en self._seat_names para mantener
+        la vista del panel sincronizada (quitar/añadir nombres de la lista).
+        """
+        self._names_panel.set_assigned(self._assigned_names())
+
     def _toggle_names_panel(self, checked: bool):
+        """
+        Muestra u oculta el NamesPanel al pulsar BtnNames.
+        raise_() trae el panel al frente; luego BtnNames.raise_() lo mantiene
+        encima del panel para que el botón siempre sea visible y pulsable.
+        """
         if checked:
             self._names_panel.raise_()
             self._names_panel.show()
+            self.BtnNames.raise_()  # botón siempre encima del panel
         else:
             self._names_panel.hide()
 
     def _on_seat_name_assigned(self, seat_number: int, name: str):
+        """
+        Slot conectado a GoButton.name_assigned.
+        Se llama cada vez que el usuario arrastra un nombre a un asiento
+        o borra la asignación con doble-tap.
+
+        Actualiza self._seat_names en memoria y persiste en seat_names.json.
+        Usar str(seat_number) como clave para consistencia con el JSON
+        (JSON solo admite strings como claves de objeto).
+        """
         key = str(seat_number)
+
+        # Si el asiento ya tenía un nombre asignado y se está sobreescribiendo,
+        # el nombre anterior vuelve a estar disponible en la lista del panel.
+        # _sync_panel_assigned() lo refleja automáticamente al recalcular el set.
         if name:
             self._seat_names[key] = name
         else:
-            self._seat_names.pop(key, None)
+            self._seat_names.pop(key, None)  # pop silencioso si no existía
+
         save_names_data(self._names_list, self._seat_names)
+        self._sync_panel_assigned()  # actualizar panel: quitar o devolver nombre
 
     def _on_names_list_changed(self, old_name: str = None, new_name: str = None):
+        """
+        Callback de NamesPanel tras añadir / editar / borrar un nombre de la lista.
+
+        Si es un renombrado (old_name y new_name no son None):
+          - Actualiza self._seat_names con el nombre nuevo.
+          - Llama a GoButton.set_name() con emit_signal=False en los asientos
+            afectados para no disparar un guardado extra (ya guardamos aquí).
+
+        Si no hay renombrado (solo añadir/borrar):
+          - Solo persiste la lista actualizada.
+        """
         if old_name and new_name:
             for key, v in self._seat_names.items():
                 if v == old_name:
                     self._seat_names[key] = new_name
+                    # Actualizar visualmente el botón sin emitir señal (evita doble guardado)
                     btn = getattr(self, f"Seat{key}", None)
                     if isinstance(btn, GoButton):
                         btn.set_name(new_name, emit_signal=False)
         save_names_data(self._names_list, self._seat_names)
+        # Resincronizar panel: un renombrado cambia qué nombre aparece como asignado.
+        self._sync_panel_assigned()
 
     # ─────────────────────────────────────────────────────────────────────────
-    #  Helper de UI
+    #  Helper de UI (no es VISCA, no es diálogo — vive aquí)
     # ─────────────────────────────────────────────────────────────────────────
 
     def _update_backlight_ui(self):
-        """Sincroniza el botón Backlight con el estado de la cámara activa."""
+        """
+        Sincroniza el botón Backlight con el estado real de la cámara activa.
+        Se llama al cambiar de cámara para que el botón refleje el estado
+        correcto (cada cámara tiene su propio estado de backlight).
+        """
         cam_key = 1 if self.Cam1.isChecked() else 2
         if self.backlight_on[cam_key]:
             self.BtnBacklight.setText('Backlight\nON')
