@@ -128,3 +128,57 @@ l81 243 189 0 189 0 0 -250z"/>
 </g>
 </svg>
 """
+
+SVG_WHEELCHAIR = """
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 275" width="280" height="275">
+  <g fill="none" stroke="#1a1a1a" stroke-linecap="round" stroke-linejoin="round">
+
+    <!-- puntal delantero: se dibuja primero, queda detrás de la rueda -->
+    <line x1="164" y1="131" x2="228" y2="190" stroke-width="6"/>
+
+    <!-- rueda trasera grande -->
+    <circle cx="147" cy="192" r="78" stroke-width="8"/>
+    <circle cx="147" cy="192" r="59" stroke-width="4"/>
+    <circle cx="147" cy="192" r="9"  stroke-width="5"/>
+    <circle cx="147" cy="192" r="4"  stroke-width="3"/>
+    <line x1="147" y1="183" x2="147" y2="133" stroke-width="3.5"/>
+    <line x1="147" y1="201" x2="147" y2="251" stroke-width="3.5"/>
+    <line x1="138" y1="192" x2="88"  y2="192" stroke-width="3.5"/>
+    <line x1="156" y1="192" x2="206" y2="192" stroke-width="3.5"/>
+    <line x1="153" y1="186" x2="189" y2="150" stroke-width="3.5"/>
+    <line x1="141" y1="198" x2="105" y2="234" stroke-width="3.5"/>
+    <line x1="153" y1="198" x2="189" y2="234" stroke-width="3.5"/>
+    <line x1="141" y1="186" x2="105" y2="150" stroke-width="3.5"/>
+
+    <!-- rueda delantera pequeña -->
+    <circle cx="240" cy="222" r="29" stroke-width="7"/>
+    <circle cx="240" cy="222" r="12" stroke-width="4"/>
+    <circle cx="240" cy="222" r="5"  stroke-width="3"/>
+    <line x1="240" y1="193" x2="240" y2="177" stroke-width="6"/>
+    <line x1="228" y1="190" x2="252" y2="190" stroke-width="6"/>
+    <circle cx="240" cy="169" r="6" stroke-width="4.5"/>
+
+    <!-- reposacabezas / barra superior horizontal -->
+    <rect x="48" y="14" width="78" height="18" rx="4" stroke-width="6"/>
+
+    <!-- respaldo: tubo vertical -->
+    <rect x="60" y="30" width="18" height="90" rx="3" stroke-width="6"/>
+
+    <!-- batería: pegada a la izquierda del tubo vertical -->
+    <rect x="14" y="52" width="46" height="78" rx="5" stroke-width="7"/>
+    <rect x="24" y="43" width="14" height="11" rx="2" stroke-width="5"/>
+    <polyline points="44,65 30,88 45,88 31,124" stroke-width="4.5"/>
+
+    <!-- apoyabrazos horizontal -->
+    <rect x="78" y="77" width="82" height="13" rx="5" stroke-width="6"/>
+
+    <!-- joystick: poste + bola -->
+    <line x1="154" y1="77" x2="154" y2="57" stroke-width="6"/>
+    <circle cx="154" cy="46" r="12" stroke-width="5"/>
+
+    <!-- asiento -->
+    <rect x="78" y="115" width="88" height="17" rx="4" stroke-width="6"/>
+
+  </g>
+</svg>
+"""

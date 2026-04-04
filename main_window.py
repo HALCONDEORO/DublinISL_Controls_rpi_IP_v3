@@ -208,7 +208,34 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         for seat_number, (x, y) in SEAT_POSITIONS.items():
             if seat_number < 4:
                 continue
-            if seat_number == 129:
+            if seat_number == 128:
+                from PyQt5.QtSvg import QSvgRenderer
+                from PyQt5.QtGui import QPixmap, QPainter, QIcon
+                from PyQt5.QtCore import QByteArray, QRectF
+                from platform_icons import SVG_WHEELCHAIR
+
+                renderer = QSvgRenderer(QByteArray(SVG_WHEELCHAIR.encode('utf-8')))
+                if not renderer.isValid():
+                    print("[WARNING] SVG_WHEELCHAIR inválido — asiento 128 sin icono")
+                pix = QPixmap(40, 40)
+                pix.fill(Qt.transparent)
+                painter = QPainter(pix)
+                renderer.render(painter, QRectF(0, 0, 40, 40))
+                painter.end()
+
+                button = QToolButton(self)
+                button.move(x, y)
+                button.resize(55, 65)
+                button.setText('Wheelchair')
+                button.setIcon(QIcon(pix))
+                button.setIconSize(QtCore.QSize(40, 40))
+                button.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+                button.setStyleSheet(
+                    "QToolButton { background-color: rgba(0,0,0,10); border: 0px solid black; "
+                    "border-radius: 5px; font: 8px; font-weight: bold; color: " + BUTTON_COLOR + "; }"
+                )
+
+            elif seat_number == 129:   # ← cambia "if" por "elif" aquí
                 button = QToolButton(self)
                 button.move(x, y)
                 button.resize(55, 65)
