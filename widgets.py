@@ -58,7 +58,7 @@ class GoButton(QPushButton):
 
     name_assigned = pyqtSignal(int, str)
 
-    WIDTH  = 70
+    WIDTH  = 71
     HEIGHT = 82
 
     def __init__(self, seat_number: int, parent=None):
