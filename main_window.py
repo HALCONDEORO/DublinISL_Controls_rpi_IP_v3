@@ -84,6 +84,19 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self._build_table_seats()      # mesa rectangular bajo asientos 124-125
         # Iconos AL FINAL: z-order — el último widget creado queda al frente.
         self._build_platform_icons()   # botones unificados icono+label
+        # FIX z-order: BtnNames se crea antes que _build_right_panel(), por lo que
+        # el label "Camera Selection" (x=1500, y=20, w=360, h=30) queda encima y
+        # bloquea los clicks. raise_() lo sube al frente después de todo el layout.
+        self.BtnNames.raise_()
+        # Estado inicial: Call es el modo por defecto → BtnNames oculto.
+        # Se mostrará cuando el operador pulse Set.
+        self.BtnNames.hide()
+        # NUEVO: conectar BtnCall/BtnSet al modo edición del panel.
+        # No se puede hacer en _build_preset_mode() porque _names_panel no existe aún.
+        # MOTIVO: el panel arranca con set_edit_mode(False) — sin estas conexiones
+        # los botones Add/Edit/Delete quedan siempre deshabilitados.
+        self.BtnCall.clicked.connect(lambda: self._names_panel.set_edit_mode(False))
+        self.BtnSet.clicked.connect(lambda:  self._names_panel.set_edit_mode(True))
 
     def _build_background(self):
         """
@@ -276,14 +289,21 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.SessionStatus.setGeometry(68, 22, 60, 20)
         self.SessionStatus.setStyleSheet("font: bold 12px; color: #8b1a1a")
 
-        self.BtnNames = QPushButton('\U0001f465  Consejeros', self)
-        self.BtnNames.setGeometry(140, 15, 170, 35)
+        # CAMBIO: movido de x=140 a x=1500 (panel derecho de controles).
+        # Texto "Consejeros" eliminado — solo queda el emoji 👥 como icono.
+        # Tamaño reducido a 40×40px (cuadrado) al no necesitar espacio para texto.
+        # setToolTip garantiza identificación accesible en pantalla táctil.
+        # MOTIVO: el botón salía del área de asientos (x≤1450) y el texto era
+        # redundante con el icono. En x=1500 convive con los controles de cámara.
+        self.BtnNames = QPushButton('\U0001f465', self)          # solo emoji, sin texto
+        self.BtnNames.setGeometry(1500, 15, 40, 40)             # x=1500, cuadrado 40×40px
         self.BtnNames.setCheckable(True)
+        self.BtnNames.setToolTip('Councillors panel')           # accesibilidad en inglés
         self.BtnNames.setStyleSheet(
             "QPushButton { background: white; border: 2px solid #1976D2; "
-            "font: bold 13px; color: #1976D2; border-radius: 6px; }"
-            "QPushButton:Checked { background: #1976D2; color: white; }"
-            "QPushButton:pressed  { background: #1565C0; color: white; }"
+            "font: 22px; border-radius: 6px; }"                 # fuente grande: emoji legible
+            "QPushButton:checked { background: #1976D2; color: white; }"
+            "QPushButton:pressed  { background: #e3f2fd; }"
         )
         self.BtnNames.clicked.connect(self._toggle_names_panel)
 
@@ -381,6 +401,12 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.PresetModeGroup = QButtonGroup(self)
         self.PresetModeGroup.addButton(self.BtnCall)
         self.PresetModeGroup.addButton(self.BtnSet)
+
+        # NUEVO: al cambiar entre Call/Set se muestra u oculta BtnNames.
+        # MOTIVO: el panel de consejeros solo tiene sentido en modo Set
+        # (edición/asignación). En modo Call no debe ser accesible.
+        self.BtnCall.clicked.connect(self._on_preset_mode_changed)
+        self.BtnSet.clicked.connect(self._on_preset_mode_changed)
 
     def _build_zoom_buttons(self):
         ZoomIn = QPushButton(self)
@@ -499,8 +525,12 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_names_panel(self):
+        # CAMBIO: se pasa _clear_all_seats como tercer callback para el botón "Clear All".
+        # MOTIVO: NamesPanel no tiene acceso a los GoButtons — MainWindow gestiona
+        # el borrado masivo y notifica al panel vía set_assigned().
         self._names_panel = NamesPanel(
-            self._names_list, self._on_names_list_changed, parent=self)
+            self._names_list, self._on_names_list_changed,
+            self._clear_all_seats, parent=self)
         self._names_panel.hide()
 
     def _restore_seat_names(self):
@@ -508,6 +538,9 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             btn = getattr(self, f"Seat{seat_str}", None)
             if isinstance(btn, GoButton) and name:
                 btn.set_name(name, emit_signal=False)
+        # NUEVO: sincronizar el set de asignados en el panel tras restaurar desde disco.
+        # Sin esto el panel no sabe qué nombres están ocupados al arrancar.
+        self._sync_assigned_to_panel()
 
     def _toggle_names_panel(self, checked: bool):
         if checked:
@@ -516,13 +549,49 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         else:
             self._names_panel.hide()
 
+    def _on_preset_mode_changed(self):
+        """
+        Muestra u oculta BtnNames según el modo activo (Call/Set).
+
+        Modo Call → BtnNames invisible.
+          Si el panel estaba abierto: se cierra y BtnNames queda sin marcar.
+          MOTIVO: en Call no se editan asignaciones; ocultar el botón
+          evita accesos accidentales al panel durante la sesión.
+
+        Modo Set → BtnNames visible.
+          El panel no se abre automáticamente; el operador decide cuándo.
+        """
+        if self.BtnCall.isChecked():
+            # Cerrar panel si estaba abierto antes de ocultar el botón
+            if self.BtnNames.isChecked():
+                self.BtnNames.setChecked(False)
+                self._names_panel.hide()
+            self.BtnNames.hide()
+        else:
+            # Modo Set: mostrar el botón (panel sigue cerrado hasta que el operador lo abra)
+            self.BtnNames.show()
+            self.BtnNames.raise_()   # mantener z-order sobre el label "Camera Selection"
+
     def _on_seat_name_assigned(self, seat_number: int, name: str):
         key = str(seat_number)
         if name:
+            # NUEVO: exclusividad — un nombre solo puede estar en un asiento a la vez.
+            # Si el nombre ya estaba en otro asiento, lo libera antes de asignarlo aquí.
+            # MOTIVO: evitar que el mismo consejero aparezca en dos asientos simultáneamente.
+            for other_key, other_name in list(self._seat_names.items()):
+                if other_name == name and other_key != key:
+                    other_btn = getattr(self, f"Seat{other_key}", None)
+                    if isinstance(other_btn, GoButton):
+                        other_btn.set_name("", emit_signal=False)   # libera el asiento anterior
+                    del self._seat_names[other_key]
+                    break
             self._seat_names[key] = name
         else:
             self._seat_names.pop(key, None)
         save_names_data(self._names_list, self._seat_names)
+        # Actualizar el panel: nombres asignados desaparecen de la lista,
+        # nombres liberados vuelven a aparecer.
+        self._sync_assigned_to_panel()
 
     def _on_names_list_changed(self, old_name: str = None, new_name: str = None):
         if old_name and new_name:
@@ -533,6 +602,32 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
                     if isinstance(btn, GoButton):
                         btn.set_name(new_name, emit_signal=False)
         save_names_data(self._names_list, self._seat_names)
+
+    def _sync_assigned_to_panel(self):
+        """
+        Pasa al NamesPanel el set actualizado de nombres asignados a asientos.
+        El panel usa este set para ocultar de la lista los nombres ya ocupados
+        y mostrar los que se han liberado.
+        LLAMAR siempre que cambie _seat_names (asignación, borrado, clear all).
+        """
+        assigned = set(self._seat_names.values())
+        self._names_panel.set_assigned(assigned)
+
+    def _clear_all_seats(self):
+        """
+        Borra todos los nombres asignados a asientos de una vez.
+        Recorre _seat_names, llama set_name("") en cada GoButton afectado
+        (sin emitir señal para no disparar _on_seat_name_assigned en bucle),
+        luego limpia el dict, persiste y sincroniza el panel.
+        MOTIVO: operación rápida al inicio de sesión para liberar todos los asientos.
+        """
+        for key in list(self._seat_names.keys()):
+            btn = getattr(self, f"Seat{key}", None)
+            if isinstance(btn, GoButton):
+                btn.set_name("", emit_signal=False)
+        self._seat_names.clear()
+        save_names_data(self._names_list, self._seat_names)
+        self._sync_assigned_to_panel()
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Helper UI

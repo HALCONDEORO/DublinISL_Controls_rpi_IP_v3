@@ -122,9 +122,11 @@ class GoButton(QPushButton):
 
     def mouseDoubleClickEvent(self, event):
         if self.assigned_name:
+            # CAMBIO: diálogo de confirmación traducido al inglés
+            # MOTIVO: todo texto visible por el operador debe estar en inglés
             reply = QMessageBox.question(
-                self.parent(), "Borrar asignación",
-                f'¿Borrar "{self.assigned_name}" del asiento {self.seat_number}?',
+                self.parent(), "Clear Assignment",
+                f'Clear "{self.assigned_name}" from seat {self.seat_number}?',
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
             )
             if reply == QMessageBox.Yes:
@@ -323,10 +325,13 @@ class NamesPanel(QWidget):
     # Ancho 160px cabe justo en ese espacio. Altura 960px cubre toda la zona de asientos.
     PX, PY, PW, PH = 1325, 55, 160, 960
 
-    def __init__(self, names_list: list, on_changed_cb, parent=None):
+    def __init__(self, names_list: list, on_changed_cb, clear_all_cb, parent=None):
         super().__init__(parent)
-        self.names       = names_list       # referencia compartida con MainWindow
-        self._on_changed = on_changed_cb
+        self.names        = names_list       # referencia compartida con MainWindow
+        self._on_changed  = on_changed_cb
+        # NUEVO: callback para limpiar todos los asientos — ejecutado en MainWindow
+        # porque NamesPanel no tiene acceso directo a los GoButtons.
+        self._clear_all_cb = clear_all_cb
 
         self.setGeometry(self.PX, self.PY, self.PW, self.PH)
         self.setAttribute(Qt.WA_StyledBackground, True)
@@ -342,13 +347,15 @@ class NamesPanel(QWidget):
         layout.setSpacing(4)
 
         # ── Título (panel estrecho: texto corto centrado)
-        title = QLabel("👥 Consejeros")
+        # CAMBIO: "Councillors" → "Attendees" — término más genérico para la sala
+        title = QLabel("👥 Attendees")
         title.setStyleSheet("font: bold 12px; color: #333;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
         # Instrucción breve en dos líneas por el ancho reducido
-        hint = QLabel("Arrastra a asiento\nDoble-tap para borrar")
+        # CAMBIO: texto traducido al inglés
+        hint = QLabel("Drag to seat\nDouble-tap to clear")
         hint.setStyleSheet("font: 9px; color: #666;")
         hint.setWordWrap(True)
         hint.setAlignment(Qt.AlignCenter)
@@ -369,11 +376,15 @@ class NamesPanel(QWidget):
             "QPushButton:pressed { background: #ddd; }"
             "QPushButton:disabled { background: #f0f0f0; color: #aaa; border-color: #ddd; }"
         )
+        # CAMBIO: etiquetas traducidas al inglés — misma longitud corta para 150px interior
+        # Add/Edit/Delete van a _edit_buttons → se deshabilitan en modo Call.
+        # "Clear All" es una acción operacional (no de configuración) → siempre habilitado,
+        # por eso se añade fuera del bucle y no entra en _edit_buttons.
         self._edit_buttons = []
         for label, slot in [
-            ("＋ Añadir",  self._add_name),
-            ("✏ Editar",   self._edit_name),
-            ("🗑 Borrar",   self._delete_name),
+            ("＋ Add",    self._add_name),
+            ("✏ Edit",    self._edit_name),
+            ("🗑 Delete",  self._delete_name),
         ]:
             b = QPushButton(label)
             b.setFixedHeight(26)
@@ -381,6 +392,24 @@ class NamesPanel(QWidget):
             b.clicked.connect(slot)
             layout.addWidget(b)
             self._edit_buttons.append(b)
+
+        # Botón "Clear All": bloqueado en modo Call, activo solo en Set.
+        # CAMBIO respecto a versión anterior: ahora entra en _edit_buttons para
+        # que set_edit_mode() lo deshabilite igual que Add/Edit/Delete.
+        # MOTIVO: acción destructiva — requiere que el operador cambie a Set
+        # deliberadamente antes de poder limpiar todos los asientos.
+        btn_clear = QPushButton("✖ Clear All")
+        btn_clear.setFixedHeight(26)
+        btn_clear.setStyleSheet(
+            # Estilo diferenciado (rojo suave) para distinguirlo de los botones de edición
+            "QPushButton { background: white; border: 1px solid #e57373; "
+            "border-radius: 3px; font: bold 11px; color: #c62828; padding: 3px 4px; text-align: left; }"
+            "QPushButton:pressed { background: #ffebee; }"
+            "QPushButton:disabled { background: #f0f0f0; color: #aaa; border-color: #ddd; }"
+        )
+        btn_clear.clicked.connect(self._clear_all)
+        layout.addWidget(btn_clear)
+        self._edit_buttons.append(btn_clear)   # se deshabilita en modo Call
 
         # Conjunto de nombres actualmente asignados a asientos.
         # Mantenido por MainWindow vía set_assigned(). _rebuild() lo usa para
@@ -460,12 +489,13 @@ class NamesPanel(QWidget):
     # ── CRUD de la lista ──────────────────────────────────────────────────────
 
     def _add_name(self):
-        text, ok = QInputDialog.getText(self, "Añadir nombre", "Nombre completo:")
+        # CAMBIO: diálogos de alta de consejero traducidos al inglés
+        text, ok = QInputDialog.getText(self, "Add Name", "Full name:")
         if not (ok and text.strip()):
             return
         name = text.strip()
         if name in self.names:
-            QMessageBox.information(self, "Nombre duplicado", f'"{name}" ya existe.')
+            QMessageBox.information(self, "Duplicate Name", f'"{name}" already exists.')
             return
         self.names.append(name)
         self._on_changed()
@@ -474,19 +504,20 @@ class NamesPanel(QWidget):
     def _edit_name(self):
         if not self.names:
             return
+        # CAMBIO: diálogos de selección y edición traducidos al inglés
         old_name, ok = QInputDialog.getItem(
-            self, "Editar nombre", "Seleccionar consejero:", self.names, 0, False)
+            self, "Edit Name", "Select councillor:", self.names, 0, False)
         if not ok:
             return
         new_name, ok2 = QInputDialog.getText(
-            self, "Editar nombre", "Nuevo nombre:", text=old_name)
+            self, "Edit Name", "New name:", text=old_name)
         if not (ok2 and new_name.strip()):
             return
         new_name = new_name.strip()
         if new_name == old_name:
             return
         if new_name in self.names:
-            QMessageBox.information(self, "Nombre duplicado", f'"{new_name}" ya existe.')
+            QMessageBox.information(self, "Duplicate Name", f'"{new_name}" already exists.')
             return
         self.names[self.names.index(old_name)] = new_name
         self._on_changed(old_name=old_name, new_name=new_name)
@@ -495,20 +526,40 @@ class NamesPanel(QWidget):
     def _delete_name(self):
         if not self.names:
             return
+        # CAMBIO: diálogos de borrado traducidos al inglés
         name, ok = QInputDialog.getItem(
-            self, "Borrar nombre", "Seleccionar:", self.names, 0, False)
+            self, "Delete Name", "Select:", self.names, 0, False)
         if not ok:
             return
         reply = QMessageBox.question(
-            self, "Confirmar borrado",
-            f'¿Borrar "{name}" de la lista?\n'
-            "(Los asientos asignados conservan el nombre hasta borrarlo con doble-tap.)",
+            self, "Confirm Delete",
+            f'Remove "{name}" from the list?\n'
+            "(Seats keep the assigned name until cleared with double-tap.)",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
             self.names.remove(name)
             self._on_changed()
             self._rebuild()
+
+    def _clear_all(self):
+        """
+        Libera todos los nombres de todos los asientos en un solo tap.
+        MOTIVO: operación habitual al inicio de sesión para resetear la sala.
+        El borrado real lo ejecuta MainWindow (_clear_all_seats) porque tiene
+        acceso a los GoButtons. Aquí solo pedimos confirmación y disparamos
+        el callback — el panel se actualiza cuando MainWindow llama set_assigned({}).
+        No requiere modo Set: es una acción de operación, no de configuración.
+        """
+        if not self._assigned:
+            return   # no hay nada asignado, nada que limpiar
+        reply = QMessageBox.question(
+            self, "Clear All Seats",
+            "Remove all councillor assignments from seats?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            self._clear_all_cb()   # MainWindow borra GoButtons y llama set_assigned({})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
