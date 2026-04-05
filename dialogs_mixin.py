@@ -4,10 +4,20 @@
 # Responsabilidad única: gestionar todos los diálogos modales de la app:
 # cambio de IP, cambio de VISCA ID, ayuda y cierre.
 #
-# MOTIVO DE SEPARACIÓN: estos métodos son largos (validación, escritura
-# a disco, reinicio) y no tienen relación con el layout ni con VISCA.
-# Separarlos hace main_window.py más corto y estos métodos más fáciles
-# de modificar y testear de forma aislada.
+# CAMBIOS RESPECTO A VERSIÓN ANTERIOR:
+#   - REDUNDANCIA ELIMINADA: _change_ip() y _change_cam_id() compartían
+#     un 80% de código idéntico (confirmación, input, validación, escritura,
+#     reinicio). Se han fusionado en _change_config(cam_num, config_type).
+#
+#     Flujo compartido:
+#       1. Determinar nombre, valor actual y archivo según cam_num + config_type.
+#       2. Pedir confirmación.
+#       3. Pedir nuevo valor (QInputDialog).
+#       4. Validar (is_valid_ip o is_valid_cam_id).
+#       5. Escribir al archivo .txt y reiniciar con os.execv.
+#
+#     Los wrappers públicos PTZ1Address(), PTZ2Address(), etc. siguen existiendo
+#     para no cambiar las conexiones de señal en main_window.py.
 
 import os
 import sys
@@ -16,113 +26,93 @@ from PyQt5.QtWidgets import QMessageBox, QInputDialog
 
 from config import (
     IPAddress, IPAddress2, Cam1ID, Cam2ID, Contact,
-    is_valid_ip, is_valid_cam_id
+    is_valid_ip, is_valid_cam_id,
 )
 
 
 class DialogsMixin:
 
-    # ─────────────────────────────────────────────────────────────────────────
-    #  Cambio de IP
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def _change_ip(self, cam_num: int):
+    def _change_config(self, cam_num: int, config_type: str):
         """
-        Muestra un diálogo para cambiar la IP de la cámara indicada (1 o 2).
-        Si el usuario confirma y la IP es válida:
-          1. Escribe la nueva IP en el archivo de configuración (.txt).
-          2. Reinicia la app con os.execv para recargar la configuración.
+        Diálogo genérico para cambiar IP o VISCA ID de una cámara.
 
-        MOTIVO del reinicio: la IP se carga al importar config.py.
-        Recargarla en caliente requeriría reimportar el módulo, lo que es
-        complejo y propenso a errores.  Un reinicio limpio es más seguro.
+        Parámetros:
+          cam_num:     1 (Platform) o 2 (Comments).
+          config_type: 'ip' o 'id'.
+
+        MOTIVO DE UNIFICACIÓN:
+        _change_ip() y _change_cam_id() eran prácticamente idénticos:
+        misma estructura de confirmación → input → validación → escritura → reinicio.
+        La única diferencia era qué constante leer, qué archivo escribir
+        y qué función de validación llamar. Con un solo método parametrizado,
+        cualquier cambio en el flujo (p.ej. el mensaje de confirmación) solo
+        se hace en un sitio.
+
+        MOTIVO DEL REINICIO (os.execv):
+        Las IPs e IDs se cargan al importar config.py (ejecución a nivel de módulo).
+        Recargarlas en caliente requeriría reimportar el módulo y redistribuir
+        las referencias, lo que es complejo y propenso a errores de estado.
+        Un reinicio limpio garantiza que todo el estado arranca desde cero.
         """
         cam_name = 'Platform' if cam_num == 1 else 'Comments'
-        current  = IPAddress  if cam_num == 1 else IPAddress2
-        filename = 'PTZ1IP.txt' if cam_num == 1 else 'PTZ2IP.txt'
-        title    = f'{cam_name} PTZ Control'
 
-        # Confirmación previa para evitar cambios accidentales
+        # Determinar qué campo cambiar según config_type
+        if config_type == 'ip':
+            current  = IPAddress  if cam_num == 1 else IPAddress2
+            filename = 'PTZ1IP.txt' if cam_num == 1 else 'PTZ2IP.txt'
+            field    = 'IP address'
+            validate = is_valid_ip
+            hint     = 'four numbers separated by dots (e.g. 172.16.1.11)'
+            label    = 'IP Address'
+        else:  # 'id'
+            current  = Cam1ID      if cam_num == 1 else Cam2ID
+            filename = 'Cam1ID.txt' if cam_num == 1 else 'Cam2ID.txt'
+            field    = 'VISCA ID'
+            validate = is_valid_cam_id
+            hint     = 'a hex value such as "81" or "82"'
+            label    = 'Camera ID'
+
+        title = f'{cam_name} PTZ Control'
+
+        # Paso 1: confirmación — evitar cambios accidentales
         if QMessageBox.warning(
             self, title,
-            f'Do you want to change the IP address used to control the {cam_name} camera?',
+            f'Do you want to change the {field} used to control the {cam_name} camera?',
             QMessageBox.Ok, QMessageBox.Cancel
         ) != QMessageBox.Ok:
             return
 
+        # Paso 2: pedir nuevo valor
         text, ok = QInputDialog.getText(
             self, title,
-            f'New IP address for {cam_name} Camera  (current: {current}):',
-            text=current
+            f'New {field} for {cam_name} Camera (current: {current}):',
+            text=current,
         )
-
-        if not (ok and text):
+        if not (ok and text.strip()):
             return  # Usuario canceló o dejó vacío
 
-        if not is_valid_ip(text):
+        text = text.strip()
+
+        # Paso 3: validar
+        if not validate(text):
             QMessageBox.warning(
-                self, 'Invalid IP Address',
-                f'"{text}" is not a valid IPv4 address.\n'
-                'Please enter four numbers separated by dots (e.g. 172.16.1.11).'
+                self, f'Invalid {label}',
+                f'"{text}" is not a valid {field}.\nPlease enter {hint}.'
             )
             return
 
-        # Guardar y reiniciar
-        with open(filename, "w") as f:
-            f.write(text.strip())
+        # Paso 4: guardar y reiniciar
+        with open(filename, 'w') as f:
+            f.write(text)
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
-    # ─────────────────────────────────────────────────────────────────────────
-    #  Cambio de VISCA ID
-    # ─────────────────────────────────────────────────────────────────────────
+    # ── Wrappers públicos ─────────────────────────────────────────────────
+    # Conectados a los botones en main_window.py — no cambian la interfaz pública.
 
-    def _change_cam_id(self, cam_num: int):
-        """
-        Muestra un diálogo para cambiar el ID VISCA hex de la cámara indicada.
-        Valida que sea un valor hexadecimal válido antes de guardar.
-        Reinicia la app igual que _change_ip.
-        """
-        cam_name = 'Platform' if cam_num == 1 else 'Comments'
-        current  = Cam1ID  if cam_num == 1 else Cam2ID
-        filename = 'Cam1ID.txt' if cam_num == 1 else 'Cam2ID.txt'
-        title    = f'{cam_name} PTZ Control'
-
-        if QMessageBox.warning(
-            self, title,
-            f'Do you want to change the VISCA ID used to control the {cam_name} camera?',
-            QMessageBox.Ok, QMessageBox.Cancel
-        ) != QMessageBox.Ok:
-            return
-
-        text, ok = QInputDialog.getText(
-            self, title,
-            f'New VISCA ID for {cam_name} Camera  (current: {current}):',
-            text=current
-        )
-
-        if not (ok and text):
-            return
-
-        if not is_valid_cam_id(text):
-            QMessageBox.warning(
-                self, 'Invalid Camera ID',
-                f'"{text}" is not a valid hexadecimal ID.\n'
-                'Please enter a hex value such as "81" or "82".'
-            )
-            return
-
-        with open(filename, "w") as f:
-            f.write(text.strip())
-        os.execv(sys.executable, [sys.executable] + sys.argv)
-
-    # ─────────────────────────────────────────────────────────────────────────
-    #  Wrappers públicos (conectados a los botones en main_window.py)
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def PTZ1Address(self):  self._change_ip(1)
-    def PTZ2Address(self):  self._change_ip(2)
-    def PTZ1IDchange(self): self._change_cam_id(1)
-    def PTZ2IDchange(self): self._change_cam_id(2)
+    def PTZ1Address(self):  self._change_config(1, 'ip')
+    def PTZ2Address(self):  self._change_config(2, 'ip')
+    def PTZ1IDchange(self): self._change_config(1, 'id')
+    def PTZ2IDchange(self): self._change_config(2, 'id')
 
     def Quit(self):
         """Cierra la aplicación limpiamente."""

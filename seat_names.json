@@ -1,15 +1,17 @@
 {
   "names": [
     "Carol",
-    "Marco Tevar",
+    "Marco",
     "Gary",
     "Laura",
     "Cathy",
     "Ángel",
+    "Christian",
     "Tim",
     "Beatriz",
-    "Eddie",
-    "Christian"
+    "Eddie"
   ],
-  "seats": {}
+  "seats": {
+    "44": "Ángel"
+  }
 }

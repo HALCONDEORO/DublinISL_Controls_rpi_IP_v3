@@ -4,9 +4,15 @@
 # Responsabilidad única: controlar el ciclo de vida de la sesión:
 # encender cámaras, esperar arranque de motores, ir a Home, apagar.
 #
-# MOTIVO DE SEPARACIÓN: la lógica de sesión es independiente del layout
-# y de los comandos VISCA individuales.  Separarla facilita cambiar
-# tiempos de espera o comportamiento de inicio sin tocar nada más.
+# CAMBIOS RESPECTO A VERSIÓN ANTERIOR:
+#   - REDUNDANCIA ELIMINADA: el CSS de BtnSession se repetía 3 veces
+#     (estado OFF, estado Starting, estado ON) con strings literales idénticos
+#     dentro de ToggleSession() y _session_home().
+#     Ahora son constantes de clase _STYLE_BTN_OFF, _STYLE_BTN_STARTING,
+#     _STYLE_BTN_ON. Un solo lugar para cambiar el estilo.
+#   - MOTIVO: si se cambia el radio del botón (actualmente 25px) o el color
+#     base, antes había que modificar 3 strings en 2 métodos distintos.
+#     Con constantes, un solo cambio lo afecta todo.
 
 from PyQt5 import QtCore
 from PyQt5.QtWidgets import QMessageBox
@@ -16,31 +22,52 @@ from config import IPAddress, IPAddress2, Cam1ID, Cam2ID
 
 class SessionMixin:
 
+    # ── Estilos del botón de sesión ────────────────────────────────────────
+    # Extraídos como constantes de clase para evitar duplicación.
+    # Antes estaban inline en ToggleSession() y _session_home() como strings
+    # repetidos — cualquier cambio de color/radio requería 3 ediciones.
+
+    _STYLE_BTN_OFF = (
+        "QPushButton{background-color: #8b1a1a; border: 2px solid #5a0d0d;"
+        " font: bold 26px; color: white; border-radius: 25px}"
+        "QPushButton:pressed{background-color: #5a0d0d}"
+    )
+
+    _STYLE_BTN_STARTING = (
+        # Gris: indica que el botón está temporalmente deshabilitado
+        # mientras las cámaras inicializan los motores (8 segundos).
+        "QPushButton{background-color: #555; border: 2px solid #333;"
+        " font: bold 26px; color: #aaa; border-radius: 25px}"
+    )
+
+    _STYLE_BTN_ON = (
+        "QPushButton{background-color: #1a7a1a; border: 2px solid #0d4d0d;"
+        " font: bold 26px; color: white; border-radius: 25px}"
+        "QPushButton:pressed{background-color: #0d4d0d}"
+    )
+
     def ToggleSession(self):
         """
         Botón ⏻: alterna entre iniciar y terminar la sesión.
 
         INICIO DE SESIÓN:
-        1. Envía Power ON a ambas cámaras (comando 01 04 00 02 FF).
-        2. Deshabilita el botón durante 8 segundos: las cámaras PTZ necesitan
-           ese tiempo para inicializar los motores antes de aceptar movimiento.
-        3. Tras 8 s, _session_home() mueve ambas a Home y reactiva el botón.
+          1. Envía Power ON a ambas cámaras (01 04 00 02 FF).
+          2. Deshabilita el botón durante 8 s: las cámaras PTZ necesitan
+             ese tiempo para inicializar los motores antes de aceptar movimiento.
+          3. Tras 8 s, _session_home() mueve ambas a Home y reactiva el botón.
 
         FIN DE SESIÓN:
-        1. Pide confirmación para evitar apagados accidentales.
-        2. Envía Standby (01 04 00 03 FF) a ambas cámaras.
-        3. Actualiza UI a estado OFF.
+          1. Pide confirmación para evitar apagados accidentales.
+          2. Envía Standby (01 04 00 03 FF) a ambas cámaras.
+          3. Actualiza UI a estado OFF.
         """
         if not self.session_active:
-            # ── Arrancar sesión ───────────────────────────────────────────────
+            # ── Arrancar sesión ───────────────────────────────────────────
             self.session_active = True
 
             # Deshabilitar botón mientras las cámaras arrancan
             self.BtnSession.setEnabled(False)
-            self.BtnSession.setStyleSheet(
-                "QPushButton{background-color: #555; border: 2px solid #333; "
-                "font: bold 26px; color: #aaa; border-radius: 25px}"
-            )
+            self.BtnSession.setStyleSheet(self._STYLE_BTN_STARTING)  # gris: en proceso
             self.SessionStatus.setText('Starting...')
             self.SessionStatus.setStyleSheet("font: bold 12px; color: #888")
 
@@ -53,7 +80,7 @@ class SessionMixin:
             QtCore.QTimer.singleShot(8000, self._session_home)
 
         else:
-            # ── Terminar sesión ───────────────────────────────────────────────
+            # ── Terminar sesión ───────────────────────────────────────────
             reply = QMessageBox.question(
                 self, 'End Session',
                 'Power off both cameras and end the session?',
@@ -65,13 +92,7 @@ class SessionMixin:
                 self._send_cmd(IPAddress2, Cam2ID, "01040003FF")
 
                 self.session_active = False
-
-                # Restaurar estilo del botón a "apagado" (rojo oscuro)
-                self.BtnSession.setStyleSheet(
-                    "QPushButton{background-color: #8b1a1a; border: 2px solid #5a0d0d; "
-                    "font: bold 26px; color: white; border-radius: 25px}"
-                    "QPushButton:pressed{background-color: #5a0d0d}"
-                )
+                self.BtnSession.setStyleSheet(self._STYLE_BTN_OFF)  # rojo: apagado
                 self.BtnSession.setToolTip('Start Session: Power ON both cameras and go Home')
                 self.SessionStatus.setText('OFF')
                 self.SessionStatus.setStyleSheet("font: bold 12px; color: #8b1a1a")
@@ -85,12 +106,7 @@ class SessionMixin:
         self._send_cmd(IPAddress,  Cam1ID, "010604FF")
         self._send_cmd(IPAddress2, Cam2ID, "010604FF")
 
-        # Estilo del botón a "activo" (verde)
-        self.BtnSession.setStyleSheet(
-            "QPushButton{background-color: #1a7a1a; border: 2px solid #0d4d0d; "
-            "font: bold 26px; color: white; border-radius: 25px}"
-            "QPushButton:pressed{background-color: #0d4d0d}"
-        )
+        self.BtnSession.setStyleSheet(self._STYLE_BTN_ON)  # verde: sesión activa
         self.BtnSession.setToolTip('End Session: Power OFF (standby) both cameras')
         self.BtnSession.setEnabled(True)
         self.SessionStatus.setText('ON')

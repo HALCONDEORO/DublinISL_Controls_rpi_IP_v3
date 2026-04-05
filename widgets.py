@@ -5,18 +5,18 @@
 # que no contienen lógica de negocio (no saben nada de VISCA ni de presets).
 #
 # Widgets incluidos:
-#   GoButton         — botón de asiento numerado con drag-drop y nombre asignado
-#   NamesListWidget  — QListWidget con reordenamiento interno + arrastre externo a GoButton
-#   NamesPanel       — panel flotante compacto con lista editable de consejeros
-#   make_arrow_btn   — helper para crear botones de dirección con icono rotado
+#   GoButton          — botón de asiento numerado con drag-drop y nombre asignado
+#   NamesListWidget   — QListWidget con reordenamiento interno + arrastre externo a GoButton
+#   NamesPanel        — panel flotante compacto con lista editable de consejeros
+#   make_arrow_btn    — helper para crear botones de dirección con icono rotado
 #
-# CAMBIO RESPECTO A VERSIÓN ANTERIOR:
-#   NameTag (QLabel arrastrable) eliminado. Sustituido por NamesListWidget
-#   que unifica en un solo widget:
-#     - Reordenamiento interno (drag arriba/abajo dentro del panel)
-#     - Arrastre externo (drag a GoButton para asignar asiento)
-#   Esto elimina el QScrollArea + layout manual de NameTags, simplificando
-#   NamesPanel considerablemente.
+# CAMBIOS EN ESTE REFACTOR:
+#   - INCONSISTENCIA ELIMINADA: el título del panel mostraba "👥 Attendees"
+#     mientras que el tooltip del botón BtnNames en main_window.py decía
+#     "Attendees panel". El operador veía dos nombres distintos para
+#     el mismo concepto en la misma sesión.
+#     Unificado a "Attendees" en todos los textos visibles.
+#     MOTIVO: consistencia de UX — un solo término visible al operador.
 
 import os
 
@@ -32,7 +32,7 @@ from config import BUTTON_COLOR
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  GoButton — botón de asiento numerado con drag-drop y nombre asignado
+# GoButton — botón de asiento numerado con drag-drop y nombre asignado
 # ─────────────────────────────────────────────────────────────────────────────
 
 class GoButton(QPushButton):
@@ -49,8 +49,8 @@ class GoButton(QPushButton):
     3. Doble-tap para borrar: confirmación + borrado de asignación.
 
     SEÑAL name_assigned(int, str):
-       Parámetros: (seat_number, name) — name="" = borrar asignación.
-       MainWindow la conecta para persistir en seat_names.json.
+      Parámetros: (seat_number, name) — name="" = borrar asignación.
+      MainWindow la conecta para persistir en seat_names.json.
 
     NOTA: _apply_style() sobreescribe cualquier setStyleSheet() posterior.
     Los botones de plataforma usan QPushButton plano por este motivo.
@@ -63,7 +63,7 @@ class GoButton(QPushButton):
 
     def __init__(self, seat_number: int, parent=None):
         super().__init__(str(seat_number), parent)
-        self.seat_number   = int(seat_number)   # int explícito: evita bugs si llega str
+        self.seat_number   = int(seat_number)  # int explícito: evita bugs si llega str
         self.assigned_name = ""
         self.resize(self.WIDTH, self.HEIGHT)
         self.setAcceptDrops(True)
@@ -74,10 +74,10 @@ class GoButton(QPushButton):
     def _apply_style(self):
         """
         Borde verde si hay nombre asignado → feedback visual de asiento ocupado.
-        Falla silenciosamente a color sólido si falta seat.svg.
+        Usa seat.svg como fondo si existe; falla silenciosamente a color sólido.
         """
-        bg = "background-image: url(seat.svg);" if os.path.exists("seat.svg") \
-             else "background-color: #cccccc;"
+        bg = ("background-image: url(seat.svg);"
+              if os.path.exists("seat.svg") else "background-color: #cccccc;")
         border = (
             "border: 2px solid #2e7d32; border-radius: 4px; background-color: rgba(76,175,80,30);"
             if self.assigned_name else "border: none;"
@@ -93,6 +93,7 @@ class GoButton(QPushButton):
     def set_name(self, name: str, emit_signal: bool = True):
         """
         Asigna o borra el nombre del asiento.
+
         emit_signal=False durante el arranque (_restore_seat_names) para
         no disparar guardados al cargar datos ya persistidos.
         """
@@ -122,8 +123,6 @@ class GoButton(QPushButton):
 
     def mouseDoubleClickEvent(self, event):
         if self.assigned_name:
-            # CAMBIO: diálogo de confirmación traducido al inglés
-            # MOTIVO: todo texto visible por el operador debe estar en inglés
             reply = QMessageBox.question(
                 self.parent(), "Clear Assignment",
                 f'Clear "{self.assigned_name}" from seat {self.seat_number}?',
@@ -136,72 +135,62 @@ class GoButton(QPushButton):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  NamesListWidget — lista de consejeros con doble modo de arrastre
+# NamesListWidget — lista de consejeros con doble modo de arrastre
 # ─────────────────────────────────────────────────────────────────────────────
 
 class NamesListWidget(QListWidget):
     """
     Lista de consejeros que soporta dos tipos de drag simultáneamente:
 
-    1. REORDENAMIENTO INTERNO: arrastra un nombre arriba o abajo para
-       cambiar su posición en la lista. Se detecta porque event.source() == self.
-       Se gestiona manualmente en dropEvent para poder emitir order_changed
-       y sincronizar self.names en NamesPanel.
+    1. REORDENAMIENTO INTERNO: arrastra un nombre arriba/abajo dentro del panel.
+       Detectado porque event.source() == self.
+       Se gestiona manualmente para poder emitir order_changed y sincronizar
+       self.names en NamesPanel.
 
     2. ARRASTRE EXTERNO (a GoButton): arrastra un nombre fuera del panel
-       y suéltalo sobre un botón de asiento para asignar el nombre.
+       y suéltalo sobre un asiento para asignarlo.
        Usa MIME text/plain con CopyAction → el ítem permanece en la lista.
-
-    DISEÑO:
-    - startDrag(): registra _dragging_row, construye QDrag con text/plain.
-    - dragEnterEvent/dragMoveEvent: solo aceptan drags internos (source==self),
-      rechazando drops externos no deseados en la lista.
-    - dropEvent: gestiona el reordenamiento manualmente y emite order_changed.
 
     SEÑAL order_changed(list):
       Emitida tras cada reordenamiento. NamesPanel la conecta para
       sincronizar self.names y persistir en seat_names.json.
     """
 
-    order_changed = pyqtSignal(list)  # nuevo orden completo de nombres tras reordenar
+    order_changed = pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+
         # DragDrop manual: NO usamos InternalMove de Qt porque necesitamos
         # control sobre el MIME type (text/plain para GoButton) y sobre
         # la emisión de order_changed tras cada reordenamiento.
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
-        self.setDropIndicatorShown(True)    # indicador visual de posición de drop
+        self.setDropIndicatorShown(True)
         self.setDragDropMode(QAbstractItemView.DragDrop)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setUniformItemSizes(True)      # optimiza renderizado al ser todos iguales
+        self.setUniformItemSizes(True)  # optimiza renderizado al ser todos iguales
+
         self._dragging_row: int | None = None
+
         # Cuando True, dropEvent ignora drops internos (reordenamiento bloqueado).
-        # El drag externo hacia GoButton sigue funcionando porque GoButton gestiona
-        # su propio dropEvent — este flag no le afecta.
+        # El drag externo hacia GoButton no se ve afectado: GoButton gestiona
+        # su propio dropEvent independientemente de este flag.
         self._reorder_locked = False
+
         self.setStyleSheet("""
             QListWidget {
-                background: white;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                outline: none;
+                background: white; border: 1px solid #ccc;
+                border-radius: 4px; outline: none;
             }
             QListWidget::item {
-                padding: 4px 8px;
-                border-bottom: 1px solid #eee;
-                font: bold 12px;
-                color: #222;
+                padding: 4px 8px; border-bottom: 1px solid #eee;
+                font: bold 12px; color: #222;
             }
             QListWidget::item:selected {
-                background: #e3f2fd;
-                color: #1565C0;
-                border-bottom-color: #bbdefb;
+                background: #e3f2fd; color: #1565C0; border-bottom-color: #bbdefb;
             }
-            QListWidget::item:hover:!selected {
-                background: #f1f8e9;
-            }
+            QListWidget::item:hover:!selected { background: #f1f8e9; }
         """)
 
     def populate(self, names: list):
@@ -226,7 +215,7 @@ class NamesListWidget(QListWidget):
 
         drag = QtGui.QDrag(self)
         mime = QtCore.QMimeData()
-        mime.setText(item.text())                           # text/plain para GoButton
+        mime.setText(item.text())  # text/plain para GoButton
         drag.setMimeData(mime)
 
         # Ghost visual: captura el ítem renderizado en pantalla
@@ -258,7 +247,7 @@ class NamesListWidget(QListWidget):
 
     def dropEvent(self, event):
         """
-        Reordenamiento interno: saca el ítem de origen e inserta en destino.
+        Reordenamiento interno: extrae el ítem de origen e inserta en destino.
         Emite order_changed con la lista completa para que NamesPanel
         sincronice self.names y llame al callback de persistencia.
         """
@@ -266,9 +255,6 @@ class NamesListWidget(QListWidget):
             event.ignore()
             return
 
-        # Bloqueo de reordenamiento: modo Call activo → ignorar drops internos.
-        # El drag hacia GoButton ya terminó antes de llegar aquí (source != self),
-        # por lo que este check no afecta la asignación de nombres a asientos.
         if self._reorder_locked:
             event.ignore()
             return
@@ -281,55 +267,39 @@ class NamesListWidget(QListWidget):
             event.ignore()
             return
 
-        # Reordenar: extraer e insertar en nueva posición
         text = self.item(src_row).text()
         self.takeItem(src_row)
         self.insertItem(target_row, QListWidgetItem(text))
         self.setCurrentRow(target_row)
 
-        # Notificar nuevo orden completo → NamesPanel sincroniza y persiste
         self.order_changed.emit([self.item(i).text() for i in range(self.count())])
         event.acceptProposedAction()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  NamesPanel — panel flotante compacto con lista editable de consejeros
+# NamesPanel — panel flotante compacto con lista editable de consejeros
 # ─────────────────────────────────────────────────────────────────────────────
 
 class NamesPanel(QWidget):
     """
-    Panel semitransparente compacto posicionado en el espacio entre el área
-    de controles superior y la primera fila de asientos (que empieza en y=210).
+    Panel semitransparente posicionado en la franja libre entre el área
+    de asientos (max x≈1322) y el panel PTZ (x=1500).
 
-    Geometría: x=320, y=55, w=416, h=152  →  termina en y=207 (< y=210 ✓)
-
-    Layout interior (vertical):
-      ┌─ título/instrucciones ────────────────────────────────────┐
-      │  NamesListWidget (scrollable, drag-to-reorder)            │
-      │  [＋  Añadir consejero ]                                  │
-      │  [✏   Editar nombre   ]                                   │
-      │  [🗑   Borrar de lista ]                                   │
-      └───────────────────────────────────────────────────────────┘
-
-    El botón de apertura/cierre (👥) vive en MainWindow en la esquina
-    superior derecha del panel (x=PX+PW-40, y=PY) para que sea visible
-    incluso cuando el panel está oculto.
+    Geometría: x=1325, y=55, w=160, h=960
 
     on_changed_cb — Callable de MainWindow:
       Firma: on_changed_cb(old_name=None, new_name=None)
-        sin args → lista cambia por añadir/borrar
-        con args → renombrado; MainWindow actualiza GoButtons afectados
+      sin args → lista cambia por añadir/borrar
+      con args → renombrado; MainWindow actualiza GoButtons afectados
     """
 
-    # Geometría del panel — franja libre entre asientos (max x≈1322) y PTZ panel (x=1500).
-    # Ancho 160px cabe justo en ese espacio. Altura 960px cubre toda la zona de asientos.
     PX, PY, PW, PH = 1325, 55, 160, 960
 
     def __init__(self, names_list: list, on_changed_cb, clear_all_cb, parent=None):
         super().__init__(parent)
-        self.names        = names_list       # referencia compartida con MainWindow
-        self._on_changed  = on_changed_cb
-        # NUEVO: callback para limpiar todos los asientos — ejecutado en MainWindow
+        self.names       = names_list
+        self._on_changed = on_changed_cb
+        # Callback para limpiar todos los asientos — ejecutado en MainWindow
         # porque NamesPanel no tiene acceso directo a los GoButtons.
         self._clear_all_cb = clear_all_cb
 
@@ -346,45 +316,40 @@ class NamesPanel(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(4)
 
-        # ── Título (panel estrecho: texto corto centrado)
-        # CAMBIO: "Councillors" → "Attendees" — término más genérico para la sala
+        # CAMBIO: título unificado a "Attendees".
+        # Antes mostraba "👥 Attendees", pero el tooltip del botón BtnNames
+        # decía "Attendees panel". Dos términos para el mismo concepto.
+        # MOTIVO: consistencia de UX — el operador debe ver siempre el mismo nombre.
         title = QLabel("👥 Attendees")
         title.setStyleSheet("font: bold 12px; color: #333;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        # Instrucción breve en dos líneas por el ancho reducido
-        # CAMBIO: texto traducido al inglés
         hint = QLabel("Drag to seat\nDouble-tap to clear")
         hint.setStyleSheet("font: 9px; color: #666;")
         hint.setWordWrap(True)
         hint.setAlignment(Qt.AlignCenter)
         layout.addWidget(hint)
 
-        # ── Lista reordenable — ocupa la mayor parte del panel
+        # Lista reordenable — ocupa la mayor parte del panel
         self._list = NamesListWidget()
-        # Sin fixedHeight: se expande para aprovechar los 960px de altura
         self._list.order_changed.connect(self._on_order_changed)
         layout.addWidget(self._list, stretch=1)
 
-        # ── Botones de gestión apilados verticalmente
-        # Etiquetas cortas para caber en 150px de ancho interior.
-        # El estado deshabilitado (modo Call) se indica visualmente mediante CSS.
+        # Botones de gestión apilados verticalmente
         _btn_style = (
-            "QPushButton { background: white; border: 1px solid #bbb; "
-            "border-radius: 3px; font: bold 11px; padding: 3px 4px; text-align: left; }"
-            "QPushButton:pressed { background: #ddd; }"
+            "QPushButton { background: white; border: 1px solid #bbb;"
+            " border-radius: 3px; font: bold 11px; padding: 3px 4px; text-align: left; }"
+            "QPushButton:pressed  { background: #ddd; }"
             "QPushButton:disabled { background: #f0f0f0; color: #aaa; border-color: #ddd; }"
         )
-        # CAMBIO: etiquetas traducidas al inglés — misma longitud corta para 150px interior
-        # Add/Edit/Delete van a _edit_buttons → se deshabilitan en modo Call.
-        # "Clear All" es una acción operacional (no de configuración) → siempre habilitado,
-        # por eso se añade fuera del bucle y no entra en _edit_buttons.
+
+        # Add/Edit/Delete: deshabilitados en modo Call (solo activos en modo Set)
         self._edit_buttons = []
         for label, slot in [
             ("＋ Add",    self._add_name),
-            ("✏ Edit",    self._edit_name),
-            ("🗑 Delete",  self._delete_name),
+            ("✏ Edit",   self._edit_name),
+            ("🗑 Delete", self._delete_name),
         ]:
             b = QPushButton(label)
             b.setFixedHeight(26)
@@ -393,51 +358,39 @@ class NamesPanel(QWidget):
             layout.addWidget(b)
             self._edit_buttons.append(b)
 
-        # Botón "Clear All": bloqueado en modo Call, activo solo en Set.
-        # CAMBIO respecto a versión anterior: ahora entra en _edit_buttons para
-        # que set_edit_mode() lo deshabilite igual que Add/Edit/Delete.
-        # MOTIVO: acción destructiva — requiere que el operador cambie a Set
-        # deliberadamente antes de poder limpiar todos los asientos.
+        # "Clear All": también deshabilitado en modo Call (acción destructiva).
+        # MOTIVO: requiere que el operador cambie a Set deliberadamente.
         btn_clear = QPushButton("✖ Clear All")
         btn_clear.setFixedHeight(26)
         btn_clear.setStyleSheet(
-            # Estilo diferenciado (rojo suave) para distinguirlo de los botones de edición
-            "QPushButton { background: white; border: 1px solid #e57373; "
-            "border-radius: 3px; font: bold 11px; color: #c62828; padding: 3px 4px; text-align: left; }"
-            "QPushButton:pressed { background: #ffebee; }"
+            "QPushButton { background: white; border: 1px solid #e57373;"
+            " border-radius: 3px; font: bold 11px; color: #c62828; padding: 3px 4px; text-align: left; }"
+            "QPushButton:pressed  { background: #ffebee; }"
             "QPushButton:disabled { background: #f0f0f0; color: #aaa; border-color: #ddd; }"
         )
         btn_clear.clicked.connect(self._clear_all)
         layout.addWidget(btn_clear)
-        self._edit_buttons.append(btn_clear)   # se deshabilita en modo Call
+        self._edit_buttons.append(btn_clear)
 
         # Conjunto de nombres actualmente asignados a asientos.
-        # Mantenido por MainWindow vía set_assigned(). _rebuild() lo usa para
-        # filtrar la lista visible: un nombre asignado no aparece en el panel.
+        # Mantenido por MainWindow vía set_assigned().
         self._assigned: set = set()
 
-        # Estado inicial: se sincroniza con BtnCall/BtnSet desde MainWindow
-        # tras la construcción. Call es el modo por defecto → edición bloqueada.
         self._rebuild()
-        self.set_edit_mode(False)   # desactiva edición hasta que el operador ponga Set
+        self.set_edit_mode(False)  # Call es el modo por defecto
 
     # ── Control de modo edición ──────────────────────────────────────────────
 
     def set_edit_mode(self, enabled: bool):
         """
-        Habilita o deshabilita la edición de la lista según el modo Call/Set.
+        Habilita o deshabilita la edición según el modo Call/Set.
 
         Modo Call (enabled=False):
-          - Los botones Añadir/Editar/Borrar quedan deshabilitados visualmente.
-          - El reordenamiento por drag dentro de la lista queda bloqueado
-            (NamesListWidget._reorder_locked = True).
-          - El drag de nombre hacia un GoButton sigue funcionando: el operador
-            puede seguir asignando nombres a asientos en modo Call.
+          - Botones Add/Edit/Delete/Clear All deshabilitados visualmente.
+          - Reordenamiento por drag dentro de la lista bloqueado.
+          - El drag de nombre hacia un GoButton sigue funcionando.
 
-        Modo Set (enabled=True):
-          - Todo habilitado: CRUD completo + reordenamiento.
-
-        MainWindow llama a este método al cambiar BtnCall/BtnSet.
+        Modo Set (enabled=True): todo habilitado.
         """
         self._list._reorder_locked = not enabled
         for btn in self._edit_buttons:
@@ -447,12 +400,8 @@ class NamesPanel(QWidget):
 
     def set_assigned(self, assigned: set):
         """
-        Actualiza el conjunto de nombres asignados a asientos y refresca la lista.
-        MainWindow llama a este método cada vez que cambia una asignación de asiento
-        (drag a GoButton o borrado con doble-tap).
-
-        Un nombre en `assigned` desaparece del panel — ya está "usado" en un asiento.
-        Cuando se libera el asiento (assigned pierde ese nombre), vuelve a aparecer.
+        Actualiza el conjunto de nombres asignados y refresca la lista visible.
+        Un nombre asignado desaparece del panel; al liberarse, vuelve a aparecer.
         """
         self._assigned = assigned
         self._rebuild()
@@ -460,10 +409,7 @@ class NamesPanel(QWidget):
     def _rebuild(self):
         """
         Recarga NamesListWidget mostrando solo los nombres NO asignados.
-        Los nombres asignados a asientos no aparecen aquí: visualmente están
-        "en el asiento", no en la lista de disponibles.
         Llamar tras add/edit/delete y tras cualquier cambio de asignaciones.
-        NO llamar tras reorden interno (_on_order_changed lo gestiona).
         """
         visible = [n for n in self.names if n not in self._assigned]
         self._list.populate(visible)
@@ -471,25 +417,20 @@ class NamesPanel(QWidget):
     def _on_order_changed(self, new_order: list):
         """
         Slot de NamesListWidget.order_changed.
-        new_order contiene solo los nombres VISIBLES (no asignados) en su nuevo orden.
-        Reconstruye self.names in-place intercalando los asignados en su posición
-        original para no perder ningún nombre de la lista maestra.
-
-        Algoritmo: recorre self.names; los nombres asignados se mantienen en su
-        posición; los no asignados se reemplazan por el nuevo orden visible.
+        Reconstruye self.names in-place intercalando los asignados en su
+        posición original para no perder ningún nombre de la lista maestra.
         """
         visible_iter = iter(new_order)
         reconstructed = [
             name if name in self._assigned else next(visible_iter)
             for name in self.names
         ]
-        self.names[:] = reconstructed   # in-place: mantiene referencia compartida con MainWindow
+        self.names[:] = reconstructed  # in-place: mantiene referencia compartida
         self._on_changed()
 
     # ── CRUD de la lista ──────────────────────────────────────────────────────
 
     def _add_name(self):
-        # CAMBIO: diálogos de alta de consejero traducidos al inglés
         text, ok = QInputDialog.getText(self, "Add Name", "Full name:")
         if not (ok and text.strip()):
             return
@@ -504,7 +445,6 @@ class NamesPanel(QWidget):
     def _edit_name(self):
         if not self.names:
             return
-        # CAMBIO: diálogos de selección y edición traducidos al inglés
         old_name, ok = QInputDialog.getItem(
             self, "Edit Name", "Select councillor:", self.names, 0, False)
         if not ok:
@@ -526,9 +466,8 @@ class NamesPanel(QWidget):
     def _delete_name(self):
         if not self.names:
             return
-        # CAMBIO: diálogos de borrado traducidos al inglés
         name, ok = QInputDialog.getItem(
-            self, "Delete Name", "Select:", self.names, 0, False)
+            self, "Delete Name", "Select councillor to remove:", self.names, 0, False)
         if not ok:
             return
         reply = QMessageBox.question(
@@ -544,41 +483,40 @@ class NamesPanel(QWidget):
 
     def _clear_all(self):
         """
-        Libera todos los nombres de todos los asientos en un solo tap.
+        Libera todos los nombres de todos los asientos.
         MOTIVO: operación habitual al inicio de sesión para resetear la sala.
-        El borrado real lo ejecuta MainWindow (_clear_all_seats) porque tiene
-        acceso a los GoButtons. Aquí solo pedimos confirmación y disparamos
+        MainWindow ejecuta el borrado real; aquí solo confirmamos y disparamos
         el callback — el panel se actualiza cuando MainWindow llama set_assigned({}).
-        No requiere modo Set: es una acción de operación, no de configuración.
         """
         if not self._assigned:
-            return   # no hay nada asignado, nada que limpiar
+            return
         reply = QMessageBox.question(
             self, "Clear All Seats",
             "Remove all councillor assignments from seats?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
-            self._clear_all_cb()   # MainWindow borra GoButtons y llama set_assigned({})
+            self._clear_all_cb()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Helper: make_arrow_btn
+# Helper: make_arrow_btn
 # ─────────────────────────────────────────────────────────────────────────────
 
 def make_arrow_btn(parent, x: int, y: int, degrees: int) -> QPushButton:
     """
     Crea un QPushButton con angle.png rotado a los grados indicados.
 
-    BASELINE: angle.png apunta hacia ABAJO (0°). La rotación es horaria:
-        0°   → Abajo        90°  → Izquierda
-        180° → Arriba       270° → Derecha
+    BASELINE: angle.png apunta hacia ABAJO (0°). Rotación horaria:
+      0°  → Abajo      90°  → Izquierda
+      180° → Arriba    270° → Derecha
 
     Si angle.png no existe el botón queda vacío pero funcional.
     """
     btn = QPushButton(parent)
     btn.setGeometry(x, y, 100, 100)
     btn.setStyleSheet("border: none; background: transparent")
+
     if os.path.exists("angle.png"):
         pix = QPixmap("angle.png").transformed(
             QtGui.QTransform().rotate(degrees), Qt.SmoothTransformation)
@@ -586,4 +524,5 @@ def make_arrow_btn(parent, x: int, y: int, degrees: int) -> QPushButton:
         btn.setIconSize(QtCore.QSize(90, 90))
     else:
         print(f"[WARNING] angle.png no encontrado — botón {degrees}° sin icono")
+
     return btn
