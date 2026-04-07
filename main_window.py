@@ -51,7 +51,7 @@ from config import (
     load_names_data, save_names_data,
 )
 from camera_worker import CameraWorker
-from widgets import GoButton, NamesPanel, make_arrow_btn
+from widgets import GoButton, SpecialDragButton, NamesPanel, make_arrow_btn
 from visca_mixin import ViscaMixin
 from session_mixin import SessionMixin
 from dialogs_mixin import DialogsMixin
@@ -180,15 +180,17 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
           Chairman (atril):    centro x≈744
           Right (mesa+sillas): centro x≈938
         """
-        # (svg_data, label_en_pantalla, x_center, preset_num, icon_w, icon_h)
+        # (svg_data, label_en_pantalla, x_center, preset_num, icon_w, icon_h, drag_drop)
+        # drag_drop=True: solo Chairman acepta asignación de nombre.
+        # Left y Right son posiciones fijas sin orador asignado.
         icons = [
-            (SVG_LEFT,     'Left',     562, 2, 70, 70),
-            (SVG_CHAIRMAN, 'Chairman', 744, 1, 90, 90),  # icono más grande: el atril tiene más detalle
-            (SVG_RIGHT,    'Right',    938, 3, 70, 70),
+            (SVG_LEFT,     'Left',     562, 2, 70, 70, False),
+            (SVG_CHAIRMAN, 'Chairman', 744, 1, 90, 90, True),
+            (SVG_RIGHT,    'Right',    938, 3, 70, 70, False),
         ]
         btn_w, btn_h = 110, 115
 
-        for svg_data, label, cx, preset_num, icon_w, icon_h in icons:
+        for svg_data, label, cx, preset_num, icon_w, icon_h, drag_drop in icons:
             # Renderizar SVG a QPixmap transparente para usarlo como QIcon
             renderer = QSvgRenderer(QtCore.QByteArray(svg_data.encode('utf-8')))
             if not renderer.isValid():
@@ -200,24 +202,46 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             renderer.render(painter, QtCore.QRectF(0, 0, icon_w, icon_h))
             painter.end()
 
-            # QToolButton: único widget Qt con soporte nativo de icono arriba + texto abajo.
-            # QPushButton no tiene ToolButtonTextUnderIcon de forma nativa.
-            btn = QToolButton(self)
-            btn.setText(label)
-            btn.setIcon(QtGui.QIcon(pixmap))
-            btn.setIconSize(QtCore.QSize(icon_w, icon_h))
-            btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            btn.setGeometry(cx - btn_w // 2, 10, btn_w, btn_h)
-            btn.setStyleSheet(
-                "QToolButton {"
-                "  background-color: transparent; border: none;"
-                "  font: bold 13px; color: black;"
-                "}"
-                "QToolButton:pressed { background-color: rgba(0,0,0,40); }"
-            )
-            btn.clicked.connect(
-                lambda checked=False, n=preset_num: self.go_to_preset(n))
-            btn.raise_()
+            if drag_drop:
+                # Chairman: SpecialDragButton — acepta arrastre de nombre desde NamesPanel.
+                # seat_id=1 coincide con la clave de preset de Chairman en PRESET_MAP
+                # y se usa como clave en seat_names.json ("1": "Nombre").
+                btn = SpecialDragButton(seat_id=1, default_label=label, parent=self)
+                btn.setGeometry(cx - btn_w // 2, 10, btn_w, btn_h)
+                btn.setIcon(QtGui.QIcon(pixmap))
+                btn.setIconSize(QtCore.QSize(icon_w, icon_h))
+                btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+                btn.setStyleSheet(
+                    "QToolButton {"
+                    "  background-color: transparent; border: none;"
+                    "  font: bold 13px; color: black;"
+                    "}"
+                    "QToolButton:pressed { background-color: rgba(0,0,0,40); }"
+                )
+                btn.name_assigned.connect(self._on_seat_name_assigned)
+                btn.clicked.connect(
+                    lambda checked=False, n=preset_num: self.go_to_preset(n))
+                btn.raise_()
+                # Guardar referencia para _restore_seat_names
+                setattr(self, f"Seat{1}", btn)
+            else:
+                # Left / Right: QToolButton estándar sin drag-drop
+                btn = QToolButton(self)
+                btn.setText(label)
+                btn.setIcon(QtGui.QIcon(pixmap))
+                btn.setIconSize(QtCore.QSize(icon_w, icon_h))
+                btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+                btn.setGeometry(cx - btn_w // 2, 10, btn_w, btn_h)
+                btn.setStyleSheet(
+                    "QToolButton {"
+                    "  background-color: transparent; border: none;"
+                    "  font: bold 13px; color: black;"
+                    "}"
+                    "QToolButton:pressed { background-color: rgba(0,0,0,40); }"
+                )
+                btn.clicked.connect(
+                    lambda checked=False, n=preset_num: self.go_to_preset(n))
+                btn.raise_()
 
     def _build_seat_buttons(self):
         """
@@ -235,7 +259,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         for seat_number, (x, y) in SEAT_POSITIONS.items():
 
             if seat_number == 128:
-                # Asiento de accesibilidad (silla de ruedas): icono SVG especial
+                # Asiento de accesibilidad (silla de ruedas): SpecialDragButton con icono SVG.
                 renderer = QSvgRenderer(
                     QtCore.QByteArray(SVG_WHEELCHAIR.encode('utf-8')))
                 if not renderer.isValid():
@@ -247,10 +271,9 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
                 renderer.render(painter, QtCore.QRectF(0, 0, 40, 40))
                 painter.end()
 
-                button = QToolButton(self)
+                button = SpecialDragButton(seat_id=128, default_label='Wheelchair', parent=self)
                 button.move(x, y)
                 button.resize(55, 65)
-                button.setText('Wheelchair')
                 button.setIcon(QtGui.QIcon(pix))
                 button.setIconSize(QtCore.QSize(40, 40))
                 button.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
@@ -259,13 +282,16 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
                     " border-radius: 5px; font: 8px; font-weight: bold; color: "
                     + BUTTON_COLOR + "; }"
                 )
+                button.name_assigned.connect(self._on_seat_name_assigned)
+                button.clicked.connect(
+                    lambda checked=False, n=seat_number: self.go_to_preset(n))
+                setattr(self, f"Seat{seat_number}", button)
 
             elif seat_number == 129:
-                # Botón "Second Room": imagen PNG opcional + texto
-                button = QToolButton(self)
+                # Botón "Second Room": SpecialDragButton con imagen PNG opcional.
+                button = SpecialDragButton(seat_id=129, default_label='Second Room', parent=self)
                 button.move(x, y)
                 button.resize(55, 65)
-                button.setText('Second Room')
                 button.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
                 button.setStyleSheet(
                     "QToolButton { background-color: rgba(0,0,0,10); border: 0px solid black;"
@@ -279,6 +305,10 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
                     button.setIconSize(QtCore.QSize(40, 40))
                 else:
                     print("[WARNING] second_room.png no encontrado")
+                button.name_assigned.connect(self._on_seat_name_assigned)
+                button.clicked.connect(
+                    lambda checked=False, n=seat_number: self.go_to_preset(n))
+                setattr(self, f"Seat{seat_number}", button)
 
             else:
                 # Asiento numerado estándar: GoButton con drag-drop y nombre
@@ -542,7 +572,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
     def _restore_seat_names(self):
         for seat_str, name in self._seat_names.items():
             btn = getattr(self, f"Seat{seat_str}", None)
-            if isinstance(btn, GoButton) and name:
+            if isinstance(btn, (GoButton, SpecialDragButton)) and name:
                 btn.set_name(name, emit_signal=False)
         # Sincronizar el set de asignados en el panel tras restaurar desde disco.
         # Sin esto el panel no sabe qué nombres están ocupados al arrancar.
@@ -578,10 +608,11 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         key = str(seat_number)
         if name:
             # Exclusividad: un nombre solo puede estar en un asiento a la vez.
+            # Se aplica a GoButton Y SpecialDragButton (Chairman, Wheelchair, Second Room).
             for other_key, other_name in list(self._seat_names.items()):
                 if other_name == name and other_key != key:
                     other_btn = getattr(self, f"Seat{other_key}", None)
-                    if isinstance(other_btn, GoButton):
+                    if isinstance(other_btn, (GoButton, SpecialDragButton)):
                         other_btn.set_name("", emit_signal=False)
                     del self._seat_names[other_key]
                     break
@@ -598,7 +629,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
                 if v == old_name:
                     self._seat_names[key] = new_name
                     btn = getattr(self, f"Seat{key}", None)
-                    if isinstance(btn, GoButton):
+                    if isinstance(btn, (GoButton, SpecialDragButton)):
                         btn.set_name(new_name, emit_signal=False)
         save_names_data(self._names_list, self._seat_names)
 
@@ -612,12 +643,13 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
     def _clear_all_seats(self):
         """
         Borra todos los nombres asignados de una vez.
-        El borrado real se hace aquí (MainWindow tiene acceso a los GoButtons).
+        El borrado real se hace aquí (MainWindow tiene acceso a los GoButtons
+        y SpecialDragButtons).
         NamesPanel solo dispara este callback después de pedir confirmación.
         """
         for key in list(self._seat_names.keys()):
             btn = getattr(self, f"Seat{key}", None)
-            if isinstance(btn, GoButton):
+            if isinstance(btn, (GoButton, SpecialDragButton)):
                 btn.set_name("", emit_signal=False)
         self._seat_names.clear()
         save_names_data(self._names_list, self._seat_names)

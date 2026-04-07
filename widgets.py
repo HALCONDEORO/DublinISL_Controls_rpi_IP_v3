@@ -6,17 +6,11 @@
 #
 # Widgets incluidos:
 #   GoButton          — botón de asiento numerado con drag-drop y nombre asignado
+#   SpecialDragButton — QToolButton con drag-drop para botones especiales
+#                       (Wheelchair seat 128, Second Room seat 129, Chairman preset 1)
 #   NamesListWidget   — QListWidget con reordenamiento interno + arrastre externo a GoButton
 #   NamesPanel        — panel flotante compacto con lista editable de consejeros
 #   make_arrow_btn    — helper para crear botones de dirección con icono rotado
-#
-# CAMBIOS EN ESTE REFACTOR:
-#   - INCONSISTENCIA ELIMINADA: el título del panel mostraba "👥 Attendees"
-#     mientras que el tooltip del botón BtnNames en main_window.py decía
-#     "Attendees panel". El operador veía dos nombres distintos para
-#     el mismo concepto en la misma sesión.
-#     Unificado a "Attendees" en todos los textos visibles.
-#     MOTIVO: consistencia de UX — un solo término visible al operador.
 
 import os
 
@@ -25,7 +19,7 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
     QAbstractItemView, QInputDialog, QLabel, QListWidget, QListWidgetItem,
-    QMessageBox, QPushButton, QVBoxLayout, QWidget,
+    QMessageBox, QPushButton, QToolButton, QVBoxLayout, QWidget,
 )
 
 from config import BUTTON_COLOR
@@ -126,6 +120,115 @@ class GoButton(QPushButton):
             reply = QMessageBox.question(
                 self.parent(), "Clear Assignment",
                 f'Clear "{self.assigned_name}" from seat {self.seat_number}?',
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if reply == QMessageBox.Yes:
+                self.set_name("")
+        else:
+            super().mouseDoubleClickEvent(event)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SpecialDragButton — QToolButton con drag-drop para botones especiales
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SpecialDragButton(QToolButton):
+    """
+    QToolButton que acepta drag-drop de nombres desde NamesListWidget,
+    para los botones especiales: Wheelchair (128), Second Room (129)
+    y Chairman (preset 1).
+
+    Comportamiento:
+    - Al soltar un nombre encima: muestra el nombre, borde verde, emite name_assigned.
+    - Doble-tap con nombre asignado: confirmación + restaura el label original.
+    - Sin nombre: comportamiento de click normal (preset).
+    - Participa en la exclusividad de nombres de MainWindow igual que GoButton.
+
+    DIFERENCIA CON GoButton:
+    - Hereda de QToolButton (necesario para icono arriba + texto abajo).
+    - El texto mostrado al asignar nombre reemplaza solo el label,
+      no el número de asiento (no hay número visible en estos botones).
+    - El label original se guarda en _default_label para restaurarlo al borrar.
+
+    SEÑAL name_assigned(int, str):
+      Misma firma que GoButton: (seat_id, name). seat_id es la clave usada
+      en seat_names.json (128, 129, o la clave de Chairman).
+      name="" indica borrado de asignación.
+    """
+
+    name_assigned = pyqtSignal(int, str)
+
+    def __init__(self, seat_id: int, default_label: str, parent=None):
+        super().__init__(parent)
+        self.seat_number   = seat_id        # clave para seat_names.json
+        self._default_label = default_label  # texto a restaurar al borrar ("Wheelchair", etc.)
+        self.assigned_name  = ""
+        self.setText(default_label)          # texto inicial visible
+        self.setAcceptDrops(True)
+
+    # ── API pública ───────────────────────────────────────────────────────────
+
+    def set_name(self, name: str, emit_signal: bool = True):
+        """
+        Asigna o borra el nombre.
+        Con nombre: muestra el nombre truncado + borde verde.
+        Sin nombre: restaura _default_label + estilo original.
+        """
+        self.assigned_name = name
+        if name:
+            self.setText(name[:12])
+            self._apply_assigned_style()
+        else:
+            self.setText(self._default_label)
+            self._apply_default_style()
+        if emit_signal:
+            self.name_assigned.emit(self.seat_number, name)
+
+    def _apply_assigned_style(self):
+        """Borde verde sobre el estilo base del botón cuando hay nombre asignado."""
+        base = self.styleSheet()
+        # Inyecta borde verde y fondo tenue sin sobreescribir el resto del estilo.
+        # Se guarda el estilo original en _base_style la primera vez.
+        if not hasattr(self, '_base_style'):
+            self._base_style = base
+        self.setStyleSheet(
+            self._base_style.replace(
+                "border: 0px solid black;",
+                "border: 2px solid #2e7d32; background-color: rgba(76,175,80,30);"
+            ).replace(
+                "border: none;",
+                "border: 2px solid #2e7d32; background-color: rgba(76,175,80,30);"
+            )
+        )
+
+    def _apply_default_style(self):
+        """Restaura el estilo sin borde de asignación."""
+        if hasattr(self, '_base_style'):
+            self.setStyleSheet(self._base_style)
+
+    # ── Drag-drop ─────────────────────────────────────────────────────────────
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        name = event.mimeData().text().strip()
+        if name:
+            self.set_name(name)
+            event.acceptProposedAction()
+
+    # ── Doble-tap para borrar ─────────────────────────────────────────────────
+
+    def mouseDoubleClickEvent(self, event):
+        if self.assigned_name:
+            reply = QMessageBox.question(
+                self.parent(), "Clear Assignment",
+                f'Clear "{self.assigned_name}" from {self._default_label}?',
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
             )
             if reply == QMessageBox.Yes:
