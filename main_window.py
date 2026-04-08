@@ -11,6 +11,14 @@
 #   - `if seat_number < 4: continue` eliminado (SEAT_POSITIONS no tiene claves <4)
 #   - Cam1Address → self._cam1_addr_btn para consistencia con _cam2_addr_btn
 #
+# CAMBIOS ENGRANAJE DE CONFIGURACIÓN:
+#   - _build_config_buttons() reemplazado por un único botón ⚙ que abre
+#     ConfigDialog (modal) con IP, ID, versión y ayuda.
+#   - "Close window" permanece siempre visible en el panel (no requiere engranaje).
+#   MOTIVO: los controles técnicos los usa el administrador, no el operador.
+#   Esconderlos evita cambios accidentales durante una sesión en directo y
+#   reduce el ruido visual del panel derecho.
+#
 # CAMBIOS CHAIRMAN PRESET POR PERSONA:
 #   - Chairman usa ChairmanButton en lugar de SpecialDragButton genérico.
 #   - Al arrastrar un nombre al Chairman:
@@ -56,6 +64,8 @@ from platform_icons import (
     SVG_LEFT, SVG_CHAIRMAN, SVG_RIGHT,
     SVG_WHEELCHAIR,
 )
+
+from config_dialog import ConfigDialog
 
 from chairman_presets import (
     load_chairman_presets, save_chairman_presets,
@@ -520,44 +530,52 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.BtnBacklight.clicked.connect(self.BacklightToggle)
 
     def _build_config_buttons(self):
-        self._cam1_addr_btn = QPushButton(
-            'Platform [Platform] - ' + IPAddress, self)
-        self._cam1_addr_btn.setGeometry(1500, 975, 310, 22)
-        self._cam1_addr_btn.setStyleSheet("font: bold 15px; color:" + Cam1Check)
-        self._cam1_addr_btn.clicked.connect(self.PTZ1Address)
+        """
+        CAMBIADO: los 6 controles técnicos (4 botones IP/ID, versión, ayuda)
+        se reemplazaron por un único botón ⚙ que abre ConfigDialog (modal).
 
-        self._cam2_addr_btn = QPushButton(
-            'Comments [Audience] - ' + IPAddress2, self)
-        self._cam2_addr_btn.setGeometry(1500, 995, 310, 22)
-        self._cam2_addr_btn.setStyleSheet("font: bold 15px; color:" + Cam2Check)
-        self._cam2_addr_btn.clicked.connect(self.PTZ2Address)
+        MOTIVO: esos controles los usa el administrador al configurar el sistema,
+        no el operador durante una sesión. Esconderlos bajo el engranaje:
+          - Elimina 6 widgets siempre visibles del panel derecho
+          - Evita cambios accidentales de IP durante una transmisión en directo
+          - El color de indicación de conectividad (verde/rojo) sigue visible
+            dentro del diálogo, no se pierde información
 
-        self._ptz1_id_btn = QPushButton(' ID-' + Cam1ID, self)
-        self._ptz1_id_btn.setGeometry(1815, 975, 45, 22)
-        self._ptz1_id_btn.setStyleSheet("font: bold 15px; color:" + Cam1Check)
-        self._ptz1_id_btn.clicked.connect(self.PTZ1IDchange)
+        LO QUE PERMANECE SIEMPRE VISIBLE:
+          - Botón "Close window": acción frecuente del operador, no técnica.
+          - Botón ⚙: poco intrusivo, claro para el administrador.
 
-        self._ptz2_id_btn = QPushButton(' ID-' + Cam2ID, self)
-        self._ptz2_id_btn.setGeometry(1815, 995, 45, 22)
-        self._ptz2_id_btn.setStyleSheet("font: bold 15px; color:" + Cam2Check)
-        self._ptz2_id_btn.clicked.connect(self.PTZ2IDchange)
+        POSICIÓN DEL ENGRANAJE: y=1022 (donde antes estaba el label de versión),
+        alineado a la derecha del panel (x=1820) para no interferir con
+        "Close window" que queda a la izquierda.
+        """
+        # ── Botón engranaje ───────────────────────────────────────────────
+        # Abre ConfigDialog con IP, ID, versión y ayuda.
+        # Pequeño e icónico: no llama la atención durante la sesión.
+        btn_gear = QPushButton('⚙', self)
+        btn_gear.setGeometry(1820, 1022, 40, 40)
+        btn_gear.setToolTip('Camera configuration')
+        btn_gear.setStyleSheet(
+            "QPushButton { background: rgba(80,80,80,60); border: 1px solid #999;"
+            " border-radius: 6px; font: 18px; color: #444; }"
+            "QPushButton:pressed { background: rgba(80,80,80,140); }"
+        )
+        btn_gear.clicked.connect(self._open_config_dialog)
 
-        VersionLabel = QLabel('v3 — IP RPI — March 2026', self)
-        VersionLabel.setGeometry(1500, 1022, 360, 20)
-        VersionLabel.setAlignment(QtCore.Qt.AlignCenter)
-        VersionLabel.setStyleSheet("font: 12px; color: grey")
-
-        Version = QPushButton('Close window', self)
-        Version.setGeometry(1500, 1050, 310, 22)
-        Version.setStyleSheet(
+        # ── Close window — siempre visible ────────────────────────────────
+        # No es un control técnico: el operador lo usa al terminar la sesión.
+        # MOTIVO para no meterlo en el engranaje: requeriría abrir el diálogo
+        # solo para cerrar la app — un paso innecesario en el flujo normal.
+        btn_close = QPushButton('Close window', self)
+        btn_close.setGeometry(1500, 1050, 360, 22)
+        btn_close.setStyleSheet(
             "background-color: lightgrey; font: 15px; color: black; border: none")
-        Version.clicked.connect(self.Quit)
+        btn_close.clicked.connect(self.Quit)
 
-        Help = QPushButton('?', self)
-        Help.setGeometry(1815, 1050, 45, 22)
-        Help.setStyleSheet(
-            "background-color: lightgrey; font: 15px; color: black; border: none")
-        Help.clicked.connect(self.HelpMsg)
+    def _open_config_dialog(self):
+        """Instancia y abre el diálogo de configuración técnica."""
+        dlg = ConfigDialog(parent=self)
+        dlg.exec_()
 
     # ─────────────────────────────────────────────────────────────────────
     # Panel de consejeros

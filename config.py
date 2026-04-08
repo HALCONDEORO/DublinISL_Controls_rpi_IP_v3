@@ -1,195 +1,298 @@
 #!/usr/bin/env python3
-# config.py — Configuración central de la aplicación
-#
-# Responsabilidad única: leer archivos de configuración (.txt), definir
-# constantes globales, validar IPs/IDs, persistencia de nombres de consejeros,
-# y hacer el chequeo de conectividad inicial con cada cámara.
+# config.py — Configuración de la aplicación con validación y seguridad
 
 from __future__ import annotations
+
 import json
 import re
 import socket
 import binascii
 import threading
+from pathlib import Path
+from typing import Optional
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Constantes de velocidad del slider
-# ─────────────────────────────────────────────────────────────────────────────
-SPEED_MIN     = 1
-SPEED_MAX     = 18
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  LECTURA DE ARCHIVOS DE CONFIGURACIÓN
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _read_config(filename: str, default: str) -> str:
+    """Leer una línea de archivo de configuración."""
+    # Validar que ambos parámetros sean strings
+    if not isinstance(filename, str) or not isinstance(default, str):
+        return default
+    
+    try:
+        config_path = Path(filename)
+        # Si el archivo no existe, usar valor por defecto
+        if not config_path.exists():
+            return default
+        
+        # Leer contenido y eliminar espacios en blanco
+        content = config_path.read_text(encoding='utf-8').strip()
+        return content if content else default
+    
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        # Si hay error, registrar y usar valor por defecto
+        print(f"[CONFIG] Error reading '{filename}': {exc} → using '{default}'")
+        return default
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CONSTANTES DE VELOCIDAD Y RED
+# ═══════════════════════════════════════════════════════════════════════════════
+
+SPEED_MIN = 1
+SPEED_MAX = 18
 SPEED_DEFAULT = 8
 
+# Timeout para conexiones socket (1 s: suficiente en LAN local)
 SOCKET_TIMEOUT = 1
 VISCA_PORT = 5678
 BUTTON_COLOR = "black"
 NAMES_FILE = 'seat_names.json'
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Lectura de archivos de configuración
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+#  CARGAR CONFIGURACIÓN DESDE ARCHIVOS
+# ═══════════════════════════════════════════════════════════════════════════════
 
-def _read_config(filename: str, default: str) -> str:
-    """Lee una línea de texto de un archivo de configuración."""
-    try:
-        with open(filename, 'r') as f:
-            return f.read().strip()
-    except (FileNotFoundError, IOError) as exc:
-        print(f"[CONFIG] No se pudo leer '{filename}': {exc}  → usando '{default}'")
-        return default
+IPAddress = _read_config('PTZ1IP.txt', '172.16.1.11')
+IPAddress2 = _read_config('PTZ2IP.txt', '172.16.1.12')
+Cam1ID = _read_config('Cam1ID.txt', '81')
+Cam2ID = _read_config('Cam2ID.txt', '82')
+Contact = _read_config('Contact.txt', 'No contact information available.')
+LOGIN_PASSWORD = _read_config('password.txt', 'dublin2024')
 
 
-IPAddress  = _read_config('PTZ1IP.txt',  '172.16.1.11')
-IPAddress2 = _read_config('PTZ2IP.txt',  '172.16.1.12')
-Cam1ID     = _read_config('Cam1ID.txt',  '81')
-Cam2ID     = _read_config('Cam2ID.txt',  '82')
-Contact    = _read_config('Contact.txt', 'No contact information available.')
+# ═══════════════════════════════════════════════════════════════════════════════
+#  MAPA DE PRESETS VISCA
+# ═══════════════════════════════════════════════════════════════════════════════
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  Mapa de presets VISCA
-# ─────────────────────────────────────────────────────────────────────────────
 PRESET_MAP: dict[int, str] = {}
-for _i in range(1, 90):
-    PRESET_MAP[_i] = f"{_i:02X}"
-for _i in range(90, 100):
-    PRESET_MAP[_i] = f"{0x8C + (_i - 90):02X}"
-for _i in range(100, 130):
-    PRESET_MAP[_i] = f"{_i:02X}"
+# Presets 1-89
+for i in range(1, 90):
+    PRESET_MAP[i] = f"{i:02X}"
+# Presets 90-99
+for i in range(90, 100):
+    PRESET_MAP[i] = f"{0x8C + (i - 90):02X}"
+# Presets 100-129
+for i in range(100, 130):
+    PRESET_MAP[i] = f"{i:02X}"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Posiciones de asientos en píxeles
-#  CAMBIO v3: offset +29px en x para centrar simétricamente en 0..1450px.
-#  MOTIVO: la distribución original tenía 70px de margen izquierdo y 128px
-#  de margen derecho. Con +29px ambos márgenes quedan en 99px.
-#  Asientos 128 (silla ruedas) y 129 (segunda sala) no se desplazan —
-#  tienen posiciones especiales independientes del bloque principal.
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+#  POSICIONES DE ASIENTOS (COORDENADAS EN PÍXELES)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 SEAT_POSITIONS: dict[int, tuple[int, int]] = {
     # Fila 1
-    4:(96,211),5:(159,211),6:(222,211),7:(285,211),
-    8:(500,211),9:(563,211),10:(626,211),11:(689,211),12:(752,211),13:(815,211),14:(878,211),
-    15:(1094,211),16:(1157,211),17:(1220,211),18:(1283,211),
+    4: (96, 211), 5: (159, 211), 6: (222, 211), 7: (285, 211),
+    8: (500, 211), 9: (563, 211), 10: (626, 211), 11: (689, 211),
+    12: (752, 211), 13: (815, 211), 14: (878, 211),
+    15: (1094, 211), 16: (1157, 211), 17: (1220, 211), 18: (1283, 211),
     # Fila 2
-    19:(96,296),20:(159,296),21:(222,296),22:(285,296),
-    23:(500,296),24:(563,296),25:(626,296),26:(689,296),27:(752,296),28:(815,296),29:(878,296),
-    30:(1094,296),31:(1157,296),32:(1220,296),33:(1283,296),
+    19: (96, 296), 20: (159, 296), 21: (222, 296), 22: (285, 296),
+    23: (500, 296), 24: (563, 296), 25: (626, 296), 26: (689, 296),
+    27: (752, 296), 28: (815, 296), 29: (878, 296),
+    30: (1094, 296), 31: (1157, 296), 32: (1220, 296), 33: (1283, 296),
     # Fila 3
-    34:(96,383),35:(159,383),36:(222,383),37:(285,383),
-    38:(500,383),39:(563,383),40:(626,383),41:(689,383),42:(752,383),43:(815,383),44:(878,383),
-    45:(1094,383),46:(1157,383),47:(1220,383),48:(1283,383),
+    34: (96, 383), 35: (159, 383), 36: (222, 383), 37: (285, 383),
+    38: (500, 383), 39: (563, 383), 40: (626, 383), 41: (689, 383),
+    42: (752, 383), 43: (815, 383), 44: (878, 383),
+    45: (1094, 383), 46: (1157, 383), 47: (1220, 383), 48: (1283, 383),
     # Fila 4
-    49:(96,466),50:(159,466),51:(222,466),52:(285,466),
-    53:(500,466),54:(563,466),55:(626,466),56:(689,466),57:(752,466),58:(815,466),59:(878,466),
-    60:(1094,466),61:(1157,466),62:(1220,466),63:(1283,466),
+    49: (96, 466), 50: (159, 466), 51: (222, 466), 52: (285, 466),
+    53: (500, 466), 54: (563, 466), 55: (626, 466), 56: (689, 466),
+    57: (752, 466), 58: (815, 466), 59: (878, 466),
+    60: (1094, 466), 61: (1157, 466), 62: (1220, 466), 63: (1283, 466),
     # Fila 5
-    64:(96,551),65:(159,551),66:(222,551),67:(285,551),
-    68:(500,551),69:(563,551),70:(626,551),71:(689,551),72:(752,551),73:(815,551),74:(878,551),
-    75:(1094,551),76:(1157,551),77:(1220,551),78:(1283,551),
+    64: (96, 551), 65: (159, 551), 66: (222, 551), 67: (285, 551),
+    68: (500, 551), 69: (563, 551), 70: (626, 551), 71: (689, 551),
+    72: (752, 551), 73: (815, 551), 74: (878, 551),
+    75: (1094, 551), 76: (1157, 551), 77: (1220, 551), 78: (1283, 551),
     # Fila 6
-    79:(96,636),80:(159,636),81:(222,636),82:(285,636),
-    83:(500,636),84:(563,636),85:(626,636),86:(689,636),87:(752,636),88:(815,636),89:(878,636),
-    90:(1094,636),91:(1157,636),92:(1220,636),93:(1283,636),
+    79: (96, 636), 80: (159, 636), 81: (222, 636), 82: (285, 636),
+    83: (500, 636), 84: (563, 636), 85: (626, 636), 86: (689, 636),
+    87: (752, 636), 88: (815, 636), 89: (878, 636),
+    90: (1094, 636), 91: (1157, 636), 92: (1220, 636), 93: (1283, 636),
     # Fila 7
-    94:(96,721),95:(159,721),96:(222,721),97:(285,721),
-    98:(500,721),99:(563,721),100:(626,721),101:(689,721),102:(752,721),103:(815,721),104:(878,721),
-    105:(1094,721),106:(1157,721),107:(1220,721),108:(1283,721),
+    94: (96, 721), 95: (159, 721), 96: (222, 721), 97: (285, 721),
+    98: (500, 721), 99: (563, 721), 100: (626, 721), 101: (689, 721),
+    102: (752, 721), 103: (815, 721), 104: (878, 721),
+    105: (1094, 721), 106: (1157, 721), 107: (1220, 721), 108: (1283, 721),
     # Fila 8
-    109:(96,806),110:(159,806),111:(222,806),112:(285,806),
-    113:(500,806),114:(563,806),115:(626,806),116:(689,806),117:(752,806),118:(815,806),119:(878,806),
-    120:(1094,806),121:(1157,806),122:(1220,806),123:(1283,806),
+    109: (96, 806), 110: (159, 806), 111: (222, 806), 112: (285, 806),
+    113: (500, 806), 114: (563, 806), 115: (626, 806), 116: (689, 806),
+    117: (752, 806), 118: (815, 806), 119: (878, 806),
+    120: (1094, 806), 121: (1157, 806), 122: (1220, 806), 123: (1283, 806),
     # Fila 9
-    124:(140,960),125:(230,960),126:(530,960),127:(620,960),
-    # Espacio silla de ruedas
-    128:(150,111),
-        # Segunda sala
-    129:(380,961),
+    124: (140, 960), 125: (230, 960), 126: (530, 960), 127: (620, 960),
+    # Silla de ruedas
+    128: (150, 111),
+    # Segunda sala
+    129: (380, 961),
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Validadores
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+#  VALIDADORES
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def is_valid_ip(text: str) -> bool:
-    """Valida que el texto sea una IPv4 con cuatro octetos 0-255."""
-    match = re.match(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$', text.strip())
+    """Validar dirección IPv4 (4 octetos 0-255)."""
+    # Validar tipo de dato
+    if not isinstance(text, str):
+        return False
+    
+    text = text.strip()
+    # Usar regex para validar formato XXX.XXX.XXX.XXX
+    match = re.match(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$', text)
+    
     if not match:
         return False
-    return all(0 <= int(g) <= 255 for g in match.groups())
+    
+    try:
+        # Validar que cada octeto esté entre 0-255
+        return all(0 <= int(octet) <= 255 for octet in match.groups())
+    except (ValueError, TypeError):
+        return False
 
 
 def is_valid_cam_id(text: str) -> bool:
-    """Valida que el texto sea un valor hexadecimal decodificable."""
-    text = text.strip()
-    if not text:
+    """Validar ID de cámara VISCA (formato hexadecimal, longitud par)."""
+    # Validar tipo de dato
+    if not isinstance(text, str):
         return False
+    
+    text = text.strip()
+    
+    # El hexadecimal debe tener longitud par (2 caracteres por byte)
+    if not text or len(text) % 2 != 0:
+        return False
+    
     try:
+        # Intentar convertir de hexadecimal
         binascii.unhexlify(text)
         return True
-    except (binascii.Error, ValueError):
+    except (binascii.Error, ValueError, TypeError):
         return False
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Persistencia de nombres de consejeros
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+#  PERSISTENCIA DE NOMBRES DE CONCEJALES
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def load_names_data() -> dict:
-    """Carga lista de nombres y asignaciones desde NAMES_FILE."""
+    """Cargar nombres de concejales y asignaciones de asientos desde JSON."""
     try:
-        with open(NAMES_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        return {
-            "names": data.get("names", []),
-            "seats": data.get("seats", {}),
-        }
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        print(f"[NAMES] {NAMES_FILE}: {exc} — iniciando con datos vacíos.")
+        names_path = Path(NAMES_FILE)
+        # Si el archivo no existe, retornar estructura vacía
+        if not names_path.exists():
+            return {"names": [], "seats": {}}
+        
+        # Parsear JSON
+        data = json.loads(names_path.read_text(encoding='utf-8'))
+        
+        # Validar estructura del JSON
+        if not isinstance(data, dict):
+            raise ValueError("Root must be dict")
+        
+        names = data.get("names", [])
+        seats = data.get("seats", {})
+        
+        # Validar tipos
+        if not isinstance(names, list):
+            names = []
+        if not isinstance(seats, dict):
+            seats = {}
+        
+        return {"names": names, "seats": seats}
+    
+    except (json.JSONDecodeError, OSError, ValueError, UnicodeDecodeError) as exc:
+        # Si hay error, retornar estructura vacía y registrar
+        print(f"[NAMES] Error loading {NAMES_FILE}: {exc}")
         return {"names": [], "seats": {}}
 
 
-def save_names_data(names_list: list, seat_assignments: dict) -> None:
-    """Guarda lista y asignaciones en NAMES_FILE."""
+def save_names_data(names_list: list, seat_assignments: dict) -> bool:
+    """Guardar nombres de concejales y asignaciones en JSON."""
+    # Validar tipos de parámetros
+    if not isinstance(names_list, list) or not isinstance(seat_assignments, dict):
+        print("[NAMES] Invalid types: names must be list, seats dict")
+        return False
+    
     try:
-        with open(NAMES_FILE, 'w', encoding='utf-8') as f:
-            json.dump(
-                {"names": names_list, "seats": seat_assignments},
-                f, ensure_ascii=False, indent=2,
-            )
-    except IOError as exc:
-        print(f"[NAMES] Error guardando {NAMES_FILE}: {exc}")
+        data = {"names": names_list, "seats": seat_assignments}
+        names_path = Path(NAMES_FILE)
+        # Guardar JSON con formato legible
+        names_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding='utf-8'
+        )
+        return True
+    
+    except (OSError, TypeError, ValueError) as exc:
+        # Registrar error si hay problema guardando
+        print(f"[NAMES] Error saving {NAMES_FILE}: {exc}")
+        return False
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Chequeo de conectividad al inicio
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+#  VERIFICACIÓN DE CONECTIVIDAD DE CÁMARAS (PARALELA)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-def check_camera(ip: str, cam_id: str) -> str:
-    """Intenta conectar a la cámara. Devuelve 'Green' si responde, 'Red' si falla."""
+def check_camera(ip: str, cam_id: str, timeout: int = SOCKET_TIMEOUT) -> bool:
+    """Verificar disponibilidad de cámara mediante conexión TCP."""
+    # Validar parámetros de entrada
+    if not is_valid_ip(ip) or not is_valid_cam_id(cam_id):
+        print(f"[CHECK] Invalid IP or cam_id: {ip}, {cam_id}")
+        return False
+    
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(SOCKET_TIMEOUT)
-            s.connect((ip, VISCA_PORT))
-            s.send(binascii.unhexlify(cam_id + "090400FF"))
-            s.recv(1024)
-        return "Green"
-    except (socket.timeout, socket.error, OSError):
-        return "Red"
+        # Crear socket y conectar a cámara
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(timeout)
+            # Comando VISCA: Power Status 8x 09 04 00 FF
+            sock.connect((ip, VISCA_PORT))
+            sock.send(binascii.unhexlify(cam_id + "090400FF"))
+            sock.recv(1024)
+        return True
+    
+    except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
+        # Si hay error de conexión, retornar False
+        print(f"[CHECK] Camera {ip}: {exc}")
+        return False
 
 
-_cam1_result = ["Red"]
-_cam2_result = ["Red"]
+# Ejecutar chequeos de cámaras en paralelo en startup
+_cam1_result = [False]
+_cam2_result = [False]
 
-def _check1(): _cam1_result[0] = check_camera(IPAddress, Cam1ID)
-def _check2(): _cam2_result[0] = check_camera(IPAddress2, Cam2ID)
 
-_t1 = threading.Thread(target=_check1, daemon=True)
-_t2 = threading.Thread(target=_check2, daemon=True)
-_t1.start(); _t2.start()
-_t1.join();  _t2.join()
+def _check_cam1():
+    """Verificar Cámara 1 en thread separado."""
+    _cam1_result[0] = check_camera(IPAddress, Cam1ID)
 
-Cam1Check = _cam1_result[0]
-Cam2Check = _cam2_result[0]
+
+def _check_cam2():
+    """Verificar Cámara 2 en thread separado."""
+    _cam2_result[0] = check_camera(IPAddress2, Cam2ID)
+
+
+try:
+    # Iniciar dos threads simultáneamente para chequear cámaras
+    t1 = threading.Thread(target=_check_cam1, daemon=True)
+    t2 = threading.Thread(target=_check_cam2, daemon=True)
+    t1.start()
+    t2.start()
+    # Esperar máximo 3 segundos para que terminen
+    t1.join(timeout=3)
+    t2.join(timeout=3)
+except Exception as exc:
+    # Si hay error en threads, registrar
+    print(f"[CONFIG] Error in check threads: {exc}")
+
+# Traducir resultado a "Green" o "Red" para compatibilidad
+Cam1Check = "Green" if _cam1_result[0] else "Red"
+Cam2Check = "Green" if _cam2_result[0] else "Red"

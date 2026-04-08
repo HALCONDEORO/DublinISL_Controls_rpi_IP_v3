@@ -1,0 +1,51 @@
+[
+  {
+    "timestamp": "2026-04-08T17:46:07.715644",
+    "success": false,
+    "attempts": 1,
+    "lockout_seconds": 0,
+    "event_type": "login_failure"
+  },
+  {
+    "timestamp": "2026-04-08T17:47:11.636133",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-08T17:49:37.475967",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-08T17:58:33.657422",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-08T18:01:45.661164",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-08T18:03:09.861386",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-08T18:05:31.439685",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
+  }
+]
