@@ -78,8 +78,8 @@ for i in range(1, 90):
 # Presets 90-99
 for i in range(90, 100):
     PRESET_MAP[i] = f"{0x8C + (i - 90):02X}"
-# Presets 100-129
-for i in range(100, 130):
+# Presets 100-131
+for i in range(100, 132):
     PRESET_MAP[i] = f"{i:02X}"
 
 
@@ -134,6 +134,10 @@ SEAT_POSITIONS: dict[int, tuple[int, int]] = {
     128: (150, 111),
     # Segunda sala
     129: (380, 961),
+    # Silla de ruedas espejo (auditorio, lado derecho)
+    130: (1220, 111),
+    # Library (espejo de Second Room)
+    131: (1157, 961),
 }
 
 

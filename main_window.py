@@ -313,13 +313,63 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
                     " border-radius: 5px; font: 8px; font-weight: bold; color: "
                     + BUTTON_COLOR + "; }"
                 )
-                if os.path.exists("second_room.png"):
-                    pix = QPixmap("second_room.png").scaled(
-                        40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                renderer_sr = QSvgRenderer("second_room.svg")
+                if renderer_sr.isValid():
+                    pix = QPixmap(40, 40); pix.fill(Qt.transparent)
+                    painter = QtGui.QPainter(pix)
+                    renderer_sr.render(painter, QtCore.QRectF(0, 0, 40, 40))
+                    painter.end()
                     button.setIcon(QtGui.QIcon(pix))
                     button.setIconSize(QtCore.QSize(40, 40))
                 else:
-                    print("[WARNING] second_room.png no encontrado")
+                    print("[WARNING] second_room.svg no encontrado o inválido")
+                button.name_assigned.connect(self._on_seat_name_assigned)
+                button.clicked.connect(
+                    lambda checked=False, n=seat_number: self.go_to_preset(n))
+                setattr(self, f"Seat{seat_number}", button)
+
+            elif seat_number == 130:
+                renderer = QSvgRenderer(
+                    QtCore.QByteArray(SVG_WHEELCHAIR.encode('utf-8')))
+                if not renderer.isValid():
+                    print("[WARNING] SVG_WHEELCHAIR inválido — asiento 130 sin icono")
+                pix = QPixmap(40, 40); pix.fill(Qt.transparent)
+                painter = QtGui.QPainter(pix)
+                renderer.render(painter, QtCore.QRectF(0, 0, 40, 40))
+                painter.end()
+                button = SpecialDragButton(seat_id=130, default_label='Wheelchair', parent=self)
+                button.move(x, y); button.resize(55, 65)
+                button.setIcon(QtGui.QIcon(pix)); button.setIconSize(QtCore.QSize(40, 40))
+                button.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+                button.setStyleSheet(
+                    "QToolButton { background-color: rgba(0,0,0,10); border: 0px solid black;"
+                    " border-radius: 5px; font: 8px; font-weight: bold; color: "
+                    + BUTTON_COLOR + "; }"
+                )
+                button.name_assigned.connect(self._on_seat_name_assigned)
+                button.clicked.connect(
+                    lambda checked=False, n=seat_number: self.go_to_preset(n))
+                setattr(self, f"Seat{seat_number}", button)
+
+            elif seat_number == 131:
+                button = SpecialDragButton(seat_id=131, default_label='Library', parent=self)
+                button.move(x, y); button.resize(55, 65)
+                button.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+                button.setStyleSheet(
+                    "QToolButton { background-color: rgba(0,0,0,10); border: 0px solid black;"
+                    " border-radius: 5px; font: 8px; font-weight: bold; color: "
+                    + BUTTON_COLOR + "; }"
+                )
+                renderer_lib = QSvgRenderer("library.svg")
+                if renderer_lib.isValid():
+                    pix = QPixmap(40, 40); pix.fill(Qt.transparent)
+                    painter = QtGui.QPainter(pix)
+                    renderer_lib.render(painter, QtCore.QRectF(0, 0, 40, 40))
+                    painter.end()
+                    button.setIcon(QtGui.QIcon(pix))
+                    button.setIconSize(QtCore.QSize(40, 40))
+                else:
+                    print("[WARNING] library.svg no encontrado o inválido")
                 button.name_assigned.connect(self._on_seat_name_assigned)
                 button.clicked.connect(
                     lambda checked=False, n=seat_number: self.go_to_preset(n))
@@ -553,7 +603,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         # Abre ConfigDialog con IP, ID, versión y ayuda.
         # Pequeño e icónico: no llama la atención durante la sesión.
         btn_gear = QPushButton('⚙', self)
-        btn_gear.setGeometry(1820, 1022, 40, 40)
+        btn_gear.setGeometry(1820, 900, 40, 40)
         btn_gear.setToolTip('Camera configuration')
         btn_gear.setStyleSheet(
             "QPushButton { background: rgba(80,80,80,60); border: 1px solid #999;"
