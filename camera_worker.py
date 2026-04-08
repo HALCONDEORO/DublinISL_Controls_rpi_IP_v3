@@ -22,11 +22,14 @@
 
 from __future__ import annotations  # type hints modernos sin romper Python 3.9 en runtime
 
+import logging
 import queue
 import socket
 import binascii
 import threading
-from typing import Optional  # AÑADIDO: reemplaza `socket.socket | None` (sintaxis 3.10+)
+from typing import Optional  # reemplaza `socket.socket | None` (sintaxis 3.10+)
+
+logger = logging.getLogger(__name__)
 
 from config import SOCKET_TIMEOUT, VISCA_PORT
 
@@ -78,7 +81,7 @@ class CameraWorker:
             self._queue.put_nowait(hex_cmd)
             return True
         except queue.Full:
-            print(f"[WARNING] CameraWorker {self.ip}: cola llena, comando descartado: {hex_cmd}")
+            logger.warning("CameraWorker %s: cola llena, descartado: %s", self.ip, hex_cmd)
             return False
 
     def _connect(self) -> Optional[socket.socket]:
@@ -97,12 +100,12 @@ class CameraWorker:
         try:
             s.settimeout(SOCKET_TIMEOUT)
             s.connect((self.ip, self.port))
-            print(f"[INFO] CameraWorker: conectado a {self.ip}:{self.port}")
+            logger.info("CameraWorker: conectado a %s:%s", self.ip, self.port)
             return s
         except (socket.timeout, socket.error, OSError) as exc:
             # [WARN] y no [ERROR]: fallo de conexión en arranque es esperado
             # si las cámaras aún no están encendidas o alcanzables en desarrollo.
-            print(f"[WARN] CameraWorker: no se pudo conectar a {self.ip}: {exc}")
+            logger.warning("CameraWorker: no se pudo conectar a %s: %s", self.ip, exc)
             s.close()  # Cierre explícito: evita leak de file descriptors
             return None
 
@@ -160,7 +163,7 @@ class CameraWorker:
                     break  # Éxito: salir del bucle de reintentos
 
                 except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
-                    print(f"[WARN] CameraWorker {self.ip} intento {attempt + 1}: {exc}")
+                    logger.warning("CameraWorker %s intento %d: %s", self.ip, attempt + 1, exc)
                     self._close_socket()
                     # Si era el primer intento → el bucle reconecta y reintenta.
                     # Si era el segundo → el comando se descarta silenciosamente.

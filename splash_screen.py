@@ -17,8 +17,7 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont
 
-from config import IPAddress, IPAddress2, Cam1ID, Cam2ID, SOCKET_TIMEOUT, VISCA_PORT
-from camera_worker import CameraWorker
+from config import IPAddress, IPAddress2, Cam1ID, Cam2ID, SOCKET_TIMEOUT, VISCA_PORT, SEAT_POSITIONS
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -125,7 +124,6 @@ class SplashScreen(QWidget):
     """
 
     startup_complete = pyqtSignal()
-    startup_failed   = pyqtSignal(str)
 
     # Señales internas para actualizar UI de forma thread-safe.
     # Qt enruta señales emitidas desde hilos de fondo al hilo principal
@@ -140,7 +138,6 @@ class SplashScreen(QWidget):
         self.setGeometry(0, 0, 1920, 1080)
         self.setStyleSheet("background-color: #1a1a1a;")
 
-        self.camera_workers: dict = {}
         self.tests_passed    = 0
         self.tests_total     = 0
         self.test_results: dict = {}
@@ -385,37 +382,29 @@ class SplashScreen(QWidget):
         return True
 
     def _test_camera1(self) -> bool:
-        """Prueba conexión TCP con Cámara 1 y la enciende si responde."""
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(SOCKET_TIMEOUT)
-            connected = sock.connect_ex((IPAddress, VISCA_PORT)) == 0
-            sock.close()
-        except OSError:
-            return False
-
-        if connected:
-            self._power_on_camera(IPAddress, Cam1ID)
-            self._start_camera_worker(1, IPAddress)
-        return connected
+        return self._test_camera(IPAddress, Cam1ID)
 
     def _test_camera2(self) -> bool:
-        """Prueba conexión TCP con Cámara 2 y la enciende si responde."""
+        return self._test_camera(IPAddress2, Cam2ID)
+
+    def _test_camera(self, ip: str, cam_id: str) -> bool:
+        """
+        Prueba conexión TCP con una cámara y la enciende si responde.
+        Usa context manager para garantizar que el socket se cierra aunque
+        connect_ex lance OSError (evita leak de file descriptors).
+        """
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(SOCKET_TIMEOUT)
-            connected = sock.connect_ex((IPAddress2, VISCA_PORT)) == 0
-            sock.close()
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(SOCKET_TIMEOUT)
+                connected = sock.connect_ex((ip, VISCA_PORT)) == 0
         except OSError:
             return False
 
         if connected:
-            self._power_on_camera(IPAddress2, Cam2ID)
-            self._start_camera_worker(2, IPAddress2)
+            self._power_on_camera(ip, cam_id)
         return connected
 
     def _test_config(self) -> bool:
-        from config import IPAddress, IPAddress2, Cam1ID, Cam2ID, SEAT_POSITIONS
         return all([IPAddress, IPAddress2, Cam1ID, Cam2ID, SEAT_POSITIONS])
 
     def _test_statistics(self) -> bool:
@@ -429,7 +418,7 @@ class SplashScreen(QWidget):
     def _power_on_camera(self, ip: str, cam_id: str):
         """Envía comando VISCA Power On. Falla silenciosamente."""
         try:
-            cmd = (cam_id + "010400 01FF").replace(" ", "")
+            cmd = cam_id + "01040002FF"
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.settimeout(SOCKET_TIMEOUT)
                 sock.connect((ip, VISCA_PORT))
@@ -438,20 +427,3 @@ class SplashScreen(QWidget):
         except Exception:
             pass
 
-    def _start_camera_worker(self, cam_num: int, ip: str):
-        """
-        Crea un CameraWorker para la cámara detectada.
-
-        CameraWorker gestiona su propio hilo daemon internamente;
-        no necesita QThread ni moveToThread.
-        El worker se guarda para que main.py pueda recuperarlo si lo necesita.
-        """
-        try:
-            worker = CameraWorker(ip)
-            self.camera_workers[cam_num] = worker
-        except Exception:
-            pass
-
-    def get_camera_workers(self) -> dict:
-        """Retorna los workers de cámara inicializados (puede ser vacío)."""
-        return self.camera_workers

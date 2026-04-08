@@ -15,6 +15,7 @@
 
 from __future__ import annotations  # Permite type hints modernos en Python <3.10
 
+import logging
 import socket
 import binascii
 import threading
@@ -27,6 +28,8 @@ from config import (
     # SPEED_MIN se importa aquí (nivel de módulo) y NO dentro de _speed_label_text()
     # — importar dentro de una función es válido pero va contra PEP 8 y confunde.
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ViscaMixin:
@@ -55,7 +58,7 @@ class ViscaMixin:
                 s.recv(64)
             return True
         except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
-            print(f"[ERROR] _send_cmd {ip}: {exc}")
+            logger.error("_send_cmd %s: %s", ip, exc)
             return False
 
     def _send_cmd_async(self, ip: str, cam_id_hex: str, cmd_suffix: str):
@@ -151,7 +154,7 @@ class ViscaMixin:
         spd = self._get_speed()
         pan_spd  = 0 if pan_dir  == 0x03 else spd
         tilt_spd = 0 if tilt_dir == 0x03 else spd
-        self._send_cmd(ip, cam_id,
+        self._send_cmd_async(ip, cam_id,
             f"010601{pan_spd:02X}{tilt_spd:02X}{pan_dir:02X}{tilt_dir:02X}FF")
 
     # 8 direcciones: combinación de pan (01/02/03) y tilt (01/02/03)
@@ -247,12 +250,12 @@ class ViscaMixin:
 
         if self.backlight_on[cam_key]:
             # Desactivar backlight compensation
-            self._send_cmd(ip, cam_id, "01043303FF")
-            self.backlight_on[cam_key] = False
+            if self._send_cmd(ip, cam_id, "01043303FF"):
+                self.backlight_on[cam_key] = False
         else:
             # Activar backlight compensation
-            self._send_cmd(ip, cam_id, "01043302FF")
-            self.backlight_on[cam_key] = True
+            if self._send_cmd(ip, cam_id, "01043302FF"):
+                self.backlight_on[cam_key] = True
 
         self._update_backlight_ui()
 
@@ -277,7 +280,7 @@ class ViscaMixin:
         """
         preset_hex = PRESET_MAP.get(preset_number)
         if not preset_hex:
-            print(f"[WARNING] go_to_preset: preset {preset_number} no está en PRESET_MAP")
+            logger.warning("go_to_preset: preset %d no está en PRESET_MAP", preset_number)
             return
 
         # Determinar qué cámara controlar

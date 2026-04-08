@@ -89,7 +89,7 @@ class ConfigDialog(QDialog):
         row1 = QHBoxLayout()
         # Botón IP: muestra la IP actual, color según conectividad
         btn_ip1 = QPushButton('Platform  ' + IPAddress)
-        btn_ip1.setStyleSheet(self._ip_btn_style(Cam1Check))
+        btn_ip1.setStyleSheet(self._cam_btn_style(Cam1Check, align_left=True))
         btn_ip1.setToolTip('Change Platform camera IP address')
         btn_ip1.clicked.connect(lambda: (mw.PTZ1Address(), self._try_close()))
         row1.addWidget(btn_ip1)
@@ -97,7 +97,7 @@ class ConfigDialog(QDialog):
         # Botón ID: más pequeño, a la derecha
         btn_id1 = QPushButton('ID  ' + Cam1ID)
         btn_id1.setFixedWidth(80)
-        btn_id1.setStyleSheet(self._id_btn_style(Cam1Check))
+        btn_id1.setStyleSheet(self._cam_btn_style(Cam1Check))
         btn_id1.setToolTip('Change Platform camera VISCA ID')
         btn_id1.clicked.connect(lambda: (mw.PTZ1IDchange(), self._try_close()))
         row1.addWidget(btn_id1)
@@ -108,14 +108,14 @@ class ConfigDialog(QDialog):
 
         row2 = QHBoxLayout()
         btn_ip2 = QPushButton('Comments  ' + IPAddress2)
-        btn_ip2.setStyleSheet(self._ip_btn_style(Cam2Check))
+        btn_ip2.setStyleSheet(self._cam_btn_style(Cam2Check, align_left=True))
         btn_ip2.setToolTip('Change Comments camera IP address')
         btn_ip2.clicked.connect(lambda: (mw.PTZ2Address(), self._try_close()))
         row2.addWidget(btn_ip2)
 
         btn_id2 = QPushButton('ID  ' + Cam2ID)
         btn_id2.setFixedWidth(80)
-        btn_id2.setStyleSheet(self._id_btn_style(Cam2Check))
+        btn_id2.setStyleSheet(self._cam_btn_style(Cam2Check))
         btn_id2.setToolTip('Change Comments camera VISCA ID')
         btn_id2.clicked.connect(lambda: (mw.PTZ2IDchange(), self._try_close()))
         row2.addWidget(btn_id2)
@@ -178,26 +178,17 @@ class ConfigDialog(QDialog):
         lbl.setStyleSheet("font: bold 12px; color: #555; padding-top: 4px;")
         return lbl
 
-    def _ip_btn_style(self, check_color: str) -> str:
+    def _cam_btn_style(self, check_color: str, *, align_left: bool = False) -> str:
         """
-        Estilo del botón IP: color del texto según conectividad.
-        check_color es 'Green' si la cámara respondió al arrancar, 'Red' si no.
-        MOTIVO: misma convención visual que los botones que reemplaza.
+        Estilo unificado para botones IP e ID.
+        check_color: 'Green' → texto verde, otro valor → texto rojo.
+        align_left=True añade text-align: left; padding-left: 8px (botones IP).
         """
         text_color = '#2e7d32' if check_color == 'Green' else '#c62828'
+        align = " text-align: left; padding-left: 8px;" if align_left else ""
         return (
             f"QPushButton {{ background: #fafafa; border: 1px solid #ccc;"
-            f" border-radius: 4px; font: bold 12px; color: {text_color};"
-            f" text-align: left; padding-left: 8px; }}"
-            f"QPushButton:pressed {{ background: #eeeeee; }}"
-        )
-
-    def _id_btn_style(self, check_color: str) -> str:
-        """Estilo del botón ID: mismo color que el de IP."""
-        text_color = '#2e7d32' if check_color == 'Green' else '#c62828'
-        return (
-            f"QPushButton {{ background: #fafafa; border: 1px solid #ccc;"
-            f" border-radius: 4px; font: bold 12px; color: {text_color}; }}"
+            f" border-radius: 4px; font: bold 12px; color: {text_color};{align} }}"
             f"QPushButton:pressed {{ background: #eeeeee; }}"
         )
 

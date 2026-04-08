@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # chairman_presets.py — Persistencia de presets de cámara por persona para Chairman
+from __future__ import annotations
 #
 # Responsabilidad única: cargar y guardar el archivo chairman_presets.json,
 # que mapea nombre de consejero → número de preset VISCA en Cam1 (Platform).
@@ -26,7 +27,9 @@
 #   según algunas cámaras; 89 = 0x59 es el último seguro del rango directo).
 
 import json
-from typing import Dict, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 CHAIRMAN_PRESETS_FILE  = 'chairman_presets.json'
 CHAIRMAN_PRESET_START  = 10   # primer número de preset disponible para personas
@@ -34,7 +37,7 @@ CHAIRMAN_PRESET_MAX    = 89   # último número de preset seguro (0x59 hex)
 CHAIRMAN_GENERIC_PRESET = 1   # preset genérico si la persona no tiene uno asignado
 
 
-def load_chairman_presets() -> Dict[str, int]:
+def load_chairman_presets() -> dict[str, int]:
     """
     Carga el mapa nombre→número_de_preset desde chairman_presets.json.
     Devuelve dict vacío si el archivo no existe o está corrupto.
@@ -49,20 +52,20 @@ def load_chairman_presets() -> Dict[str, int]:
             if isinstance(preset, int) and CHAIRMAN_PRESET_START <= preset <= CHAIRMAN_PRESET_MAX
         }
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
-        print(f"[CHAIRMAN] {CHAIRMAN_PRESETS_FILE}: {exc} — iniciando sin presets personales")
+        logger.warning("%s: %s — iniciando sin presets personales", CHAIRMAN_PRESETS_FILE, exc)
         return {}
 
 
-def save_chairman_presets(presets: Dict[str, int]) -> None:
+def save_chairman_presets(presets: dict[str, int]) -> None:
     """Persiste el mapa nombre→preset en chairman_presets.json."""
     try:
         with open(CHAIRMAN_PRESETS_FILE, 'w', encoding='utf-8') as f:
             json.dump(presets, f, ensure_ascii=False, indent=2)
     except IOError as exc:
-        print(f"[CHAIRMAN] Error guardando {CHAIRMAN_PRESETS_FILE}: {exc}")
+        logger.error("Error guardando %s: %s", CHAIRMAN_PRESETS_FILE, exc)
 
 
-def next_available_preset(presets: Dict[str, int]) -> Optional[int]:
+def next_available_preset(presets: dict[str, int]) -> int | None:
     """
     Devuelve el siguiente número de preset libre en el rango reservado.
     Devuelve None si el rango está agotado (más de 79 personas con preset).
@@ -76,7 +79,7 @@ def next_available_preset(presets: Dict[str, int]) -> Optional[int]:
     return None  # rango agotado — situación muy improbable (79 personas)
 
 
-def get_preset_for_name(presets: Dict[str, int], name: str) -> int:
+def get_preset_for_name(presets: dict[str, int], name: str) -> int:
     """
     Devuelve el número de preset asociado a name, o el genérico si no existe.
     Centraliza la lógica de fallback para no repetirla en MainWindow y en

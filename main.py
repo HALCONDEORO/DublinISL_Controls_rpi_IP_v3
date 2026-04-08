@@ -82,12 +82,9 @@ def _on_login_successful(app: QApplication, login: LoginScreen):
         splash = SplashScreen()
         splash.show()
         
-        # Conectar señales de splash
+        # Conectar señal de finalización
         splash.startup_complete.connect(
             lambda: _on_startup_complete(app, splash)
-        )
-        splash.startup_failed.connect(
-            lambda err: _on_startup_failed(app, splash, err)
         )
     
     except Exception as exc:
@@ -105,8 +102,6 @@ def _on_login_successful(app: QApplication, login: LoginScreen):
 def _on_startup_complete(app: QApplication, splash: SplashScreen):
     """
     Callback: Inicialización completa → mostrar ventana principal.
-    
-    Propósito: Transferir workers pre-inicializados a ventana principal.
     """
     # Registrar finalización
     logger.info("Initialization complete - opening main window")
@@ -135,27 +130,6 @@ def _on_startup_complete(app: QApplication, splash: SplashScreen):
             f"Failed to open main window:\n{str(exc)}"
         )
         app.quit()
-
-
-def _on_startup_failed(app: QApplication, splash: SplashScreen, error: str):
-    """
-    Callback: Inicialización fallida → mostrar error y salir.
-    
-    Propósito: Reporte claro de errores y cierre limpio.
-    """
-    # Registrar error
-    logger.error(f"Initialization failed: {error}")
-    # Ocultar splash screen
-    splash.hide()
-    
-    # Mostrar diálogo de error
-    QMessageBox.critical(
-        None,
-        "Initialization Failed",
-        f"System initialization failed:\n{error}"
-    )
-    # Cerrar aplicación
-    app.quit()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

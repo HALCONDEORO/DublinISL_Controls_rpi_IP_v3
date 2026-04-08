@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import socket
 import binascii
 import threading
 from pathlib import Path
-from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -34,7 +36,7 @@ def _read_config(filename: str, default: str) -> str:
     
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         # Si hay error, registrar y usar valor por defecto
-        print(f"[CONFIG] Error reading '{filename}': {exc} → using '{default}'")
+        logger.warning("Error reading '%s': %s → using '%s'", filename, exc, default)
         return default
 
 
@@ -211,7 +213,7 @@ def load_names_data() -> dict:
     
     except (json.JSONDecodeError, OSError, ValueError, UnicodeDecodeError) as exc:
         # Si hay error, retornar estructura vacía y registrar
-        print(f"[NAMES] Error loading {NAMES_FILE}: {exc}")
+        logger.warning("Error loading %s: %s", NAMES_FILE, exc)
         return {"names": [], "seats": {}}
 
 
@@ -219,7 +221,7 @@ def save_names_data(names_list: list, seat_assignments: dict) -> bool:
     """Guardar nombres de concejales y asignaciones en JSON."""
     # Validar tipos de parámetros
     if not isinstance(names_list, list) or not isinstance(seat_assignments, dict):
-        print("[NAMES] Invalid types: names must be list, seats dict")
+        logger.warning("save_names_data: names must be list, seats must be dict")
         return False
     
     try:
@@ -234,7 +236,7 @@ def save_names_data(names_list: list, seat_assignments: dict) -> bool:
     
     except (OSError, TypeError, ValueError) as exc:
         # Registrar error si hay problema guardando
-        print(f"[NAMES] Error saving {NAMES_FILE}: {exc}")
+        logger.error("Error saving %s: %s", NAMES_FILE, exc)
         return False
 
 
@@ -246,7 +248,7 @@ def check_camera(ip: str, cam_id: str, timeout: int = SOCKET_TIMEOUT) -> bool:
     """Verificar disponibilidad de cámara mediante conexión TCP."""
     # Validar parámetros de entrada
     if not is_valid_ip(ip) or not is_valid_cam_id(cam_id):
-        print(f"[CHECK] Invalid IP or cam_id: {ip}, {cam_id}")
+        logger.warning("check_camera: parámetros inválidos ip=%s cam_id=%s", ip, cam_id)
         return False
     
     try:
@@ -261,7 +263,7 @@ def check_camera(ip: str, cam_id: str, timeout: int = SOCKET_TIMEOUT) -> bool:
     
     except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
         # Si hay error de conexión, retornar False
-        print(f"[CHECK] Camera {ip}: {exc}")
+        logger.warning("check_camera %s: %s", ip, exc)
         return False
 
 
@@ -270,28 +272,19 @@ _cam1_result = [False]
 _cam2_result = [False]
 
 
-def _check_cam1():
-    """Verificar Cámara 1 en thread separado."""
-    _cam1_result[0] = check_camera(IPAddress, Cam1ID)
-
-
-def _check_cam2():
-    """Verificar Cámara 2 en thread separado."""
-    _cam2_result[0] = check_camera(IPAddress2, Cam2ID)
-
-
 try:
     # Iniciar dos threads simultáneamente para chequear cámaras
-    t1 = threading.Thread(target=_check_cam1, daemon=True)
-    t2 = threading.Thread(target=_check_cam2, daemon=True)
+    def _run_cam1(): _cam1_result[0] = check_camera(IPAddress, Cam1ID)
+    def _run_cam2(): _cam2_result[0] = check_camera(IPAddress2, Cam2ID)
+    t1 = threading.Thread(target=_run_cam1, daemon=True)
+    t2 = threading.Thread(target=_run_cam2, daemon=True)
     t1.start()
     t2.start()
     # Esperar máximo 3 segundos para que terminen
     t1.join(timeout=3)
     t2.join(timeout=3)
 except Exception as exc:
-    # Si hay error en threads, registrar
-    print(f"[CONFIG] Error in check threads: {exc}")
+    logger.error("Error en threads de verificación de cámaras: %s", exc)
 
 # Traducir resultado a "Green" o "Red" para compatibilidad
 Cam1Check = "Green" if _cam1_result[0] else "Red"
