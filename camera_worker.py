@@ -12,15 +12,21 @@
 #     y se hace send/recv sin tenerlo. Si el socket se cierra entre medias
 #     (por _close_socket desde otro hilo), la excepción se captura normalmente.
 #
+#   - FIX PYTHON 3.9: `socket.socket | None` es sintaxis 3.10+.
+#     Aunque `from __future__ import annotations` la acepta como string en
+#     anotaciones, usar Optional[socket.socket] es explícito y compatible
+#     con cualquier herramienta de análisis estático sobre Python 3.9.
+#
 #   - CLARIDAD: se separa la adquisición del socket de su uso en _run(),
 #     haciendo el flujo más fácil de leer y de auditar.
 
-from __future__ import annotations  # type hints modernos en Python <3.10
+from __future__ import annotations  # type hints modernos sin romper Python 3.9 en runtime
 
 import queue
 import socket
 import binascii
 import threading
+from typing import Optional  # AÑADIDO: reemplaza `socket.socket | None` (sintaxis 3.10+)
 
 from config import SOCKET_TIMEOUT, VISCA_PORT
 
@@ -46,9 +52,12 @@ class CameraWorker:
         self.port = port
 
         # Cola con límite: put_nowait() lanza queue.Full si está llena
-        self._queue = queue.Queue(maxsize=self._QUEUE_MAXSIZE)
-        self._sock  = None
-        self._lock  = threading.Lock()  # Protege acceso a self._sock entre hilos
+        self._queue: queue.Queue = queue.Queue(maxsize=self._QUEUE_MAXSIZE)
+
+        # CAMBIADO: anotación de tipo usa Optional en lugar de `socket.socket | None`
+        # MOTIVO: `|` para tipos es sintaxis Python 3.10+; Optional es compatible con 3.9
+        self._sock: Optional[socket.socket] = None
+        self._lock = threading.Lock()  # Protege acceso a self._sock entre hilos
 
         # Thread daemon: muere cuando el proceso principal termina.
         # No hace falta llamar a stop() explícitamente al cerrar la app.
@@ -72,10 +81,14 @@ class CameraWorker:
             print(f"[WARNING] CameraWorker {self.ip}: cola llena, comando descartado: {hex_cmd}")
             return False
 
-    def _connect(self) -> socket.socket | None:
+    def _connect(self) -> Optional[socket.socket]:
         """
         Intenta abrir una conexión TCP nueva con la cámara.
         Devuelve el socket si tiene éxito, None si falla.
+
+        CAMBIADO: anotación de retorno usa Optional[socket.socket]
+        MOTIVO: `socket.socket | None` requiere Python 3.10+; esta forma
+        es equivalente y compatible con Python 3.9 en producción (RPi).
 
         IMPORTANTE: si connect() lanza excepción, el socket se cierra
         explícitamente para evitar file descriptor leak.
@@ -87,7 +100,9 @@ class CameraWorker:
             print(f"[INFO] CameraWorker: conectado a {self.ip}:{self.port}")
             return s
         except (socket.timeout, socket.error, OSError) as exc:
-            print(f"[WARNING] CameraWorker: no se pudo conectar a {self.ip}: {exc}")
+            # [WARN] y no [ERROR]: fallo de conexión en arranque es esperado
+            # si las cámaras aún no están encendidas o alcanzables en desarrollo.
+            print(f"[WARN] CameraWorker: no se pudo conectar a {self.ip}: {exc}")
             s.close()  # Cierre explícito: evita leak de file descriptors
             return None
 
@@ -145,7 +160,7 @@ class CameraWorker:
                     break  # Éxito: salir del bucle de reintentos
 
                 except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
-                    print(f"[WARNING] CameraWorker {self.ip} intento {attempt + 1}: {exc}")
+                    print(f"[WARN] CameraWorker {self.ip} intento {attempt + 1}: {exc}")
                     self._close_socket()
                     # Si era el primer intento → el bucle reconecta y reintenta.
                     # Si era el segundo → el comando se descarta silenciosamente.

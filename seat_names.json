@@ -11,9 +11,5 @@
     "Beatriz",
     "Eddie"
   ],
-  "seats": {
-    "1": "Marco",
-    "45": "Tim",
-    "128": "Carol"
-  }
+  "seats": {}
 }

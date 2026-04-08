@@ -3,32 +3,27 @@
 #
 # CAMBIOS v2→v3:
 #   - bg_path: Background_ISL_v2.jpg → Background_ISL_v3.jpg
-#   - Iconos Left/Chairman/Right: SVG embebido en código como
-#     QSvgWidget sobre el fondo. El JPG queda limpio sin iconos.
-#   MOTIVO: separar assets estáticos (fondo) de iconos editables
-#   sin regenerar la imagen de fondo cada vez.
+#   - Iconos Left/Chairman/Right: SVG embebido como QToolButton sobre el fondo.
 #
-# CAMBIOS EN ESTE REFACTOR:
-#   1. IMPORTS MOVIDOS AL NIVEL DE MÓDULO:
-#      - QSvgRenderer, QToolButton, SVG_WHEELCHAIR estaban dentro de
-#        _build_platform_icons() y _build_seat_buttons(), en algunos casos
-#        dentro de un loop. Un import dentro de un loop se re-evalúa
-#        (aunque Python cachea el módulo) y confunde al lector.
-#        MOTIVO: PEP 8 — todos los imports al inicio del archivo.
+# CAMBIOS EN REFACTORS ANTERIORES:
+#   - Imports movidos al nivel de módulo (PEP 8)
+#   - _build_platform_presets() eliminado (método vacío, código muerto)
+#   - `if seat_number < 4: continue` eliminado (SEAT_POSITIONS no tiene claves <4)
+#   - Cam1Address → self._cam1_addr_btn para consistencia con _cam2_addr_btn
 #
-#   2. _build_platform_presets() ELIMINADO:
-#      El método existía solo con `pass` (código fusionado en _build_platform_icons),
-#      pero seguía siendo llamado desde _build_ui(). Código muerto eliminado.
-#      MOTIVO: llamar a un método vacío es ruido sin ningún beneficio.
-#
-#   3. `if seat_number < 4: continue` ELIMINADO:
-#      SEAT_POSITIONS solo tiene claves ≥ 4, por lo que este check
-#      nunca era verdadero. Código muerto que confunde.
-#
-#   4. COMENTARIO DE _build_table_seats() LIMPIADO:
-#      El bloque de comentario describía una geometría antigua (90, 957, 195, 18)
-#      que no coincidía con la geometría real (96, 900, 245, 50).
-#      Se reescribió para reflejar la geometría actual.
+# CAMBIOS CHAIRMAN PRESET POR PERSONA:
+#   - Chairman usa ChairmanButton en lugar de SpecialDragButton genérico.
+#   - Al arrastrar un nombre al Chairman:
+#       · Si la persona tiene preset guardado → recall a esa posición
+#       · Si no tiene → recall al preset genérico 1
+#       · Si ya tiene preset → botón "Edit" visible (Save oculto)
+#       · Si no tiene preset → botón "Save position" visible directamente
+#   - _save_chairman_preset(name): asigna número de preset libre, envía
+#     Save Preset VISCA a Cam1, persiste en chairman_presets.json.
+#   - _on_names_list_changed: al renombrar un consejero, migra su entrada
+#     en chairman_presets para no perder el preset guardado.
+#   MOTIVO: distintos oradores tienen estaturas y distancias distintas;
+#   guardar la posición por persona evita reajustar la cámara manualmente.
 
 from __future__ import annotations
 
@@ -37,9 +32,9 @@ import os
 from PyQt5 import QtGui, QtCore
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
-from PyQt5.QtSvg import QSvgRenderer          # MOVIDO: antes estaba dentro de _build_platform_icons() y _build_seat_buttons()
+from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import (
-    QMainWindow, QPushButton, QToolButton,     # QToolButton: MOVIDO desde el interior del loop de _build_platform_icons()
+    QMainWindow, QPushButton, QToolButton,
     QLabel, QButtonGroup, QSlider,
 )
 
@@ -49,6 +44,7 @@ from config import (
     SPEED_MIN, SPEED_MAX, SPEED_DEFAULT,
     SEAT_POSITIONS, BUTTON_COLOR,
     load_names_data, save_names_data,
+    PRESET_MAP,
 )
 from camera_worker import CameraWorker
 from widgets import GoButton, SpecialDragButton, NamesPanel, make_arrow_btn
@@ -58,8 +54,14 @@ from dialogs_mixin import DialogsMixin
 
 from platform_icons import (
     SVG_LEFT, SVG_CHAIRMAN, SVG_RIGHT,
-    SVG_WHEELCHAIR,   # MOVIDO: antes se importaba dentro del loop de _build_seat_buttons()
+    SVG_WHEELCHAIR,
 )
+
+from chairman_presets import (
+    load_chairman_presets, save_chairman_presets,
+    next_available_preset, CHAIRMAN_GENERIC_PRESET,
+)
+from chairman_button import ChairmanButton
 
 
 class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
@@ -86,8 +88,13 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         }
 
         _data = load_names_data()
-        self._names_list  = _data["names"]
-        self._seat_names  = _data["seats"]
+        self._names_list = _data["names"]
+        self._seat_names = _data["seats"]
+
+        # Cargar presets personales del Chairman al arrancar.
+        # Se pasa como referencia viva a ChairmanButton para que ambos
+        # vean siempre el mismo dict sin necesidad de sincronizar copias.
+        self._chairman_presets = load_chairman_presets()
 
         self._build_ui()
 
@@ -97,37 +104,22 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
 
     def _build_ui(self):
         self._build_background()
-        # ELIMINADO: _build_platform_presets() — método vacío (pass), código muerto.
-        # Los botones de plataforma se crean en _build_platform_icons().
         self._build_seat_buttons()
         self._build_session_controls()
         self._build_right_panel()
         self._build_names_panel()
         self._restore_seat_names()
         self._build_table_seats()
+        self._build_platform_icons()   # AL FINAL: z-order
 
-        # Iconos AL FINAL: z-order — el último widget creado queda al frente.
-        self._build_platform_icons()
-
-        # FIX z-order: BtnNames se crea antes que _build_right_panel(), por lo que
-        # el label "Camera Selection" (x=1500, y=20, w=360, h=30) queda encima y
-        # bloquea los clicks. raise_() lo sube al frente después de todo el layout.
         self.BtnNames.raise_()
-
-        # Estado inicial: Call es el modo por defecto → BtnNames oculto.
         self.BtnNames.hide()
 
-        # Conectar BtnCall/BtnSet al modo edición del panel.
-        # No se puede hacer en _build_preset_mode() porque _names_panel no existe aún.
         self.BtnCall.clicked.connect(lambda: self._names_panel.set_edit_mode(False))
         self.BtnSet.clicked.connect(lambda:  self._names_panel.set_edit_mode(True))
 
     def _build_background(self):
-        """
-        Carga y escala la imagen de fondo.
-        Si el archivo no existe, la ventana arranca con fondo vacío
-        en lugar de lanzar un error fatal — robustez en RPi sin assets.
-        """
+        """Carga fondo. Falla silenciosamente si el archivo no existe."""
         bg_path = "Background_ISL_v3.jpg"
         if not os.path.exists(bg_path):
             print(f"[WARNING] {bg_path} no encontrado — fondo vacío")
@@ -140,142 +132,157 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         background.lower()
 
     def _build_table_seats(self):
-        """
-        Dibuja un rectángulo que simula la mesa compartida por los asientos 124 y 125.
-
-        Geometría actual: x=96, y=900, w=245, h=50
-          - x=96:  18px antes del seat 124 (x=114)
-          - y=900: encima de los asientos (y=960), con margen de 60px
-          - w=245: abarca seat 124 (71px) + hueco + seat 125 con margen
-          - h=50:  altura visible del borde de la mesa
-
-        MOTIVO: los asientos 124 y 125 están pegados a la pared inferior
-        de la sala. Un rectángulo semitransparente debajo de ambos los
-        identifica como asientos de mesa, diferenciándolos del resto.
-        """
         mesa = QLabel(self)
         mesa.setGeometry(96, 900, 245, 50)
         mesa.setStyleSheet(
-            "background-color: rgba(100, 80, 60, 120);"  # marrón semitransparente
-            "border: 2px solid rgba(70, 50, 30, 200);"   # borde oscuro
+            "background-color: rgba(100, 80, 60, 120);"
+            "border: 2px solid rgba(70, 50, 30, 200);"
             "border-radius: 4px;"
         )
 
     def _build_platform_icons(self):
         """
-        Crea los 3 botones de plataforma (Left/Chairman/Right) como QToolButton
-        con icono SVG + label de texto en un único widget.
+        Crea los 3 botones de plataforma.
 
-        MOTIVO DE UNIFICACIÓN icono+botón:
-        Antes eran dos widgets separados (QLabel para el SVG + QPushButton para el texto),
-        lo que causaba problemas de z-order y de área de click.
-        Un solo QToolButton = un solo click area = sin solapamientos.
+        Left y Right: QToolButton estándar, sin cambios respecto a versiones anteriores.
 
-        IMPORTS: QSvgRenderer y QToolButton están ahora al inicio del módulo,
-        no dentro de este método (y menos dentro del loop).
-        MOTIVO: PEP 8 — los imports van al principio del archivo.
-
-        Posiciones centradas sobre la zona de plataforma (x 0-1450):
-          Left (dos personas): centro x≈562
-          Chairman (atril):    centro x≈744
-          Right (mesa+sillas): centro x≈938
+        Chairman: ChairmanButton (hereda SpecialDragButton) con preset por persona.
+          - Al soltar un nombre encima → recall automático al preset de esa persona
+          - Botón "Save position" visible si la persona no tiene preset aún
+          - Botón "Edit" visible si ya tiene preset (Save oculto por defecto)
+          Los botones auxiliares (Save/Edit) se crean como hijos de self (MainWindow),
+          posicionados justo debajo del icono Chairman (y=130).
         """
-        # (svg_data, label_en_pantalla, x_center, preset_num, icon_w, icon_h, drag_drop)
-        # drag_drop=True: solo Chairman acepta asignación de nombre.
-        # Left y Right son posiciones fijas sin orador asignado.
-        icons = [
-            (SVG_LEFT,     'Left',     562, 2, 70, 70, False),
-            (SVG_CHAIRMAN, 'Chairman', 744, 1, 90, 90, True),
-            (SVG_RIGHT,    'Right',    938, 3, 70, 70, False),
-        ]
         btn_w, btn_h = 110, 115
 
-        for svg_data, label, cx, preset_num, icon_w, icon_h, drag_drop in icons:
-            # Renderizar SVG a QPixmap transparente para usarlo como QIcon
-            renderer = QSvgRenderer(QtCore.QByteArray(svg_data.encode('utf-8')))
-            if not renderer.isValid():
-                print(f"[WARNING] SVG inválido para '{label}' — icono no mostrado")
+        # ── Left (preset 2) ───────────────────────────────────────────────
+        cx = 562
+        renderer = QSvgRenderer(QtCore.QByteArray(SVG_LEFT.encode('utf-8')))
+        pix = QPixmap(70, 70); pix.fill(Qt.transparent)
+        p = QtGui.QPainter(pix); renderer.render(p, QtCore.QRectF(0, 0, 70, 70)); p.end()
+        btn = QToolButton(self)
+        btn.setText('Left')
+        btn.setIcon(QtGui.QIcon(pix)); btn.setIconSize(QtCore.QSize(70, 70))
+        btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+        btn.setGeometry(cx - btn_w // 2, 10, btn_w, btn_h)
+        btn.setStyleSheet(
+            "QToolButton { background-color: transparent; border: none;"
+            " font: bold 13px; color: black; }"
+            "QToolButton:pressed { background-color: rgba(0,0,0,40); }"
+        )
+        btn.clicked.connect(lambda checked=False: self.go_to_preset(2))
+        btn.raise_()
 
-            pixmap = QPixmap(icon_w, icon_h)
-            pixmap.fill(Qt.transparent)
-            painter = QtGui.QPainter(pixmap)
-            renderer.render(painter, QtCore.QRectF(0, 0, icon_w, icon_h))
-            painter.end()
+        # ── Chairman (preset 1) — ChairmanButton ──────────────────────────
+        cx = 744
+        self._chairman_btn = ChairmanButton(
+            presets_ref  = self._chairman_presets,  # referencia viva al dict
+            on_recall_cb = self._chairman_recall,
+            on_save_cb   = self._save_chairman_preset,
+            svg_data     = SVG_CHAIRMAN,
+            icon_w=90, icon_h=90,
+            parent=self,
+        )
+        self._chairman_btn.setGeometry(cx - btn_w // 2, 10, btn_w, btn_h)
+        self._chairman_btn.name_assigned.connect(self._on_seat_name_assigned)
+        # Click sin nombre asignado → preset genérico 1
+        self._chairman_btn.clicked.connect(
+            lambda checked=False: self.go_to_preset(CHAIRMAN_GENERIC_PRESET))
+        self._chairman_btn.raise_()
+        # Clave "1" en seat_names.json y en _restore_seat_names
+        setattr(self, "Seat1", self._chairman_btn)
 
-            if drag_drop:
-                # Chairman: SpecialDragButton — acepta arrastre de nombre desde NamesPanel.
-                # seat_id=1 coincide con la clave de preset de Chairman en PRESET_MAP
-                # y se usa como clave en seat_names.json ("1": "Nombre").
-                btn = SpecialDragButton(seat_id=1, default_label=label, parent=self)
-                btn.setGeometry(cx - btn_w // 2, 10, btn_w, btn_h)
-                btn.setIcon(QtGui.QIcon(pixmap))
-                btn.setIconSize(QtCore.QSize(icon_w, icon_h))
-                btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-                btn.setStyleSheet(
-                    "QToolButton {"
-                    "  background-color: transparent; border: none;"
-                    "  font: bold 13px; color: black;"
-                    "}"
-                    "QToolButton:pressed { background-color: rgba(0,0,0,40); }"
-                )
-                btn.name_assigned.connect(self._on_seat_name_assigned)
-                btn.clicked.connect(
-                    lambda checked=False, n=preset_num: self.go_to_preset(n))
-                btn.raise_()
-                # Guardar referencia para _restore_seat_names
-                setattr(self, f"Seat{1}", btn)
-            else:
-                # Left / Right: QToolButton estándar sin drag-drop
-                btn = QToolButton(self)
-                btn.setText(label)
-                btn.setIcon(QtGui.QIcon(pixmap))
-                btn.setIconSize(QtCore.QSize(icon_w, icon_h))
-                btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-                btn.setGeometry(cx - btn_w // 2, 10, btn_w, btn_h)
-                btn.setStyleSheet(
-                    "QToolButton {"
-                    "  background-color: transparent; border: none;"
-                    "  font: bold 13px; color: black;"
-                    "}"
-                    "QToolButton:pressed { background-color: rgba(0,0,0,40); }"
-                )
-                btn.clicked.connect(
-                    lambda checked=False, n=preset_num: self.go_to_preset(n))
-                btn.raise_()
+        # ── Right (preset 3) ──────────────────────────────────────────────
+        cx = 938
+        renderer = QSvgRenderer(QtCore.QByteArray(SVG_RIGHT.encode('utf-8')))
+        pix = QPixmap(70, 70); pix.fill(Qt.transparent)
+        p = QtGui.QPainter(pix); renderer.render(p, QtCore.QRectF(0, 0, 70, 70)); p.end()
+        btn = QToolButton(self)
+        btn.setText('Right')
+        btn.setIcon(QtGui.QIcon(pix)); btn.setIconSize(QtCore.QSize(70, 70))
+        btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+        btn.setGeometry(cx - btn_w // 2, 10, btn_w, btn_h)
+        btn.setStyleSheet(
+            "QToolButton { background-color: transparent; border: none;"
+            " font: bold 13px; color: black; }"
+            "QToolButton:pressed { background-color: rgba(0,0,0,40); }"
+        )
+        btn.clicked.connect(lambda checked=False: self.go_to_preset(3))
+        btn.raise_()
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Callbacks Chairman preset
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _chairman_recall(self, preset_num: int):
+        """
+        Recall del preset dado siempre en Cam1 (Platform).
+        MOTIVO: el Chairman controla siempre Cam1 independientemente de
+        qué cámara esté seleccionada en el panel PTZ.
+        Llamado por ChairmanButton al asignar un nombre.
+        """
+        preset_hex = PRESET_MAP.get(preset_num)
+        if not preset_hex:
+            print(f"[CHAIRMAN] Preset {preset_num} no está en PRESET_MAP")
+            return
+        if not self._send_cmd(IPAddress, Cam1ID, f"01043f02{preset_hex}ff"):
+            self.ErrorCapture()
+
+    def _save_chairman_preset(self, name: str):
+        """
+        Asigna un número de preset libre a 'name', envía Save Preset a Cam1,
+        y persiste en chairman_presets.json.
+
+        Si la persona ya tenía preset: lo reutiliza y sobreescribe la posición
+        guardada sin consumir un número nuevo.
+        Si no tenía: asigna el siguiente número libre en el rango 10-89.
+
+        Solo persiste si el comando VISCA tiene éxito.
+        Llamado por ChairmanButton._on_save_clicked().
+        """
+        if name in self._chairman_presets:
+            preset_num = self._chairman_presets[name]
+        else:
+            preset_num = next_available_preset(self._chairman_presets)
+            if preset_num is None:
+                print(f"[CHAIRMAN] Rango de presets agotado — no se puede guardar para '{name}'")
+                return
+            self._chairman_presets[name] = preset_num
+
+        preset_hex = PRESET_MAP.get(preset_num)
+        if not preset_hex:
+            print(f"[CHAIRMAN] Preset {preset_num} no está en PRESET_MAP")
+            return
+
+        if not self._send_cmd(IPAddress, Cam1ID, f"01043f01{preset_hex}ff"):
+            self.ErrorCapture()
+            return
+
+        save_chairman_presets(self._chairman_presets)
+        print(f"[CHAIRMAN] Preset {preset_num} guardado para '{name}'")
+        # ChairmanButton ya actualiza sus botones en _on_save_clicked,
+        # pero refresh garantiza consistencia si el dict cambió externamente.
+        self._chairman_btn.refresh_preset_state()
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Seat buttons
+    # ─────────────────────────────────────────────────────────────────────
 
     def _build_seat_buttons(self):
-        """
-        Crea un botón por cada asiento definido en SEAT_POSITIONS.
-
-        CAMBIOS EN ESTE REFACTOR:
-          - ELIMINADO: `if seat_number < 4: continue`
-            SEAT_POSITIONS no tiene claves < 4, así que nunca se cumplía.
-            Era código muerto que confundía la lectura.
-
-          - IMPORTS MOVIDOS: QSvgRenderer y SVG_WHEELCHAIR estaban dentro
-            del cuerpo del `if seat_number == 128:`, es decir, dentro del
-            loop. Ahora están al inicio del módulo.
-        """
         for seat_number, (x, y) in SEAT_POSITIONS.items():
 
             if seat_number == 128:
-                # Asiento de accesibilidad (silla de ruedas): SpecialDragButton con icono SVG.
                 renderer = QSvgRenderer(
                     QtCore.QByteArray(SVG_WHEELCHAIR.encode('utf-8')))
                 if not renderer.isValid():
                     print("[WARNING] SVG_WHEELCHAIR inválido — asiento 128 sin icono")
-
-                pix = QPixmap(40, 40)
-                pix.fill(Qt.transparent)
+                pix = QPixmap(40, 40); pix.fill(Qt.transparent)
                 painter = QtGui.QPainter(pix)
                 renderer.render(painter, QtCore.QRectF(0, 0, 40, 40))
                 painter.end()
-
                 button = SpecialDragButton(seat_id=128, default_label='Wheelchair', parent=self)
-                button.move(x, y)
-                button.resize(55, 65)
-                button.setIcon(QtGui.QIcon(pix))
-                button.setIconSize(QtCore.QSize(40, 40))
+                button.move(x, y); button.resize(55, 65)
+                button.setIcon(QtGui.QIcon(pix)); button.setIconSize(QtCore.QSize(40, 40))
                 button.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
                 button.setStyleSheet(
                     "QToolButton { background-color: rgba(0,0,0,10); border: 0px solid black;"
@@ -288,10 +295,8 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
                 setattr(self, f"Seat{seat_number}", button)
 
             elif seat_number == 129:
-                # Botón "Second Room": SpecialDragButton con imagen PNG opcional.
                 button = SpecialDragButton(seat_id=129, default_label='Second Room', parent=self)
-                button.move(x, y)
-                button.resize(55, 65)
+                button.move(x, y); button.resize(55, 65)
                 button.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
                 button.setStyleSheet(
                     "QToolButton { background-color: rgba(0,0,0,10); border: 0px solid black;"
@@ -311,7 +316,6 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
                 setattr(self, f"Seat{seat_number}", button)
 
             else:
-                # Asiento numerado estándar: GoButton con drag-drop y nombre
                 button = GoButton(seat_number, self)
                 button.move(x, y)
                 button.name_assigned.connect(self._on_seat_name_assigned)
@@ -323,15 +327,13 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.BtnSession = QPushButton('\u23fb', self)
         self.BtnSession.setGeometry(10, 10, 50, 50)
         self.BtnSession.setToolTip('Start Session: Power ON both cameras and go Home')
-        self.BtnSession.setStyleSheet(self._STYLE_BTN_OFF)  # usa constante de SessionMixin
+        self.BtnSession.setStyleSheet(self._STYLE_BTN_OFF)
         self.BtnSession.clicked.connect(self.ToggleSession)
 
         self.SessionStatus = QLabel('OFF', self)
         self.SessionStatus.setGeometry(68, 22, 60, 20)
         self.SessionStatus.setStyleSheet("font: bold 12px; color: #8b1a1a")
 
-        # Botón de panel de consejeros — solo visible en modo Set.
-        # x=1500: panel derecho de controles. Solo emoji (40×40px).
         self.BtnNames = QPushButton('\U0001f465', self)
         self.BtnNames.setGeometry(1500, 15, 40, 40)
         self.BtnNames.setCheckable(True)
@@ -441,8 +443,6 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.PresetModeGroup.addButton(self.BtnCall)
         self.PresetModeGroup.addButton(self.BtnSet)
 
-        # Al cambiar entre Call/Set se muestra u oculta BtnNames.
-        # El panel de consejeros solo es accesible en modo Set.
         self.BtnCall.clicked.connect(self._on_preset_mode_changed)
         self.BtnSet.clicked.connect(self._on_preset_mode_changed)
 
@@ -493,11 +493,11 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         )
 
         for label, geom, tooltip, handler in [
-            ('Auto\nFocus',    (1500, 863, 110, 50), 'Auto Focus ON',                      self.AutoFocus),
-            ('One Push\nAF',   (1625, 863, 110, 50), 'One-shot autofocus, then manual',    self.OnePushAF),
-            ('Manual\nFocus',  (1750, 863, 110, 50), 'Manual Focus mode',                  self.ManualFocus),
-            ('▼ Darker',       (1500, 920, 110, 45), 'Decrease exposure one step',         self.BrightnessDown),
-            ('▲ Brighter',     (1750, 920, 110, 45), 'Increase exposure one step',         self.BrightnessUp),
+            ('Auto\nFocus',    (1500, 863, 110, 50), 'Auto Focus ON',                   self.AutoFocus),
+            ('One Push\nAF',   (1625, 863, 110, 50), 'One-shot autofocus, then manual', self.OnePushAF),
+            ('Manual\nFocus',  (1750, 863, 110, 50), 'Manual Focus mode',               self.ManualFocus),
+            ('▼ Darker',       (1500, 920, 110, 45), 'Decrease exposure one step',      self.BrightnessDown),
+            ('▲ Brighter',     (1750, 920, 110, 45), 'Increase exposure one step',      self.BrightnessUp),
         ]:
             btn = QPushButton(label, self)
             btn.setGeometry(*geom)
@@ -520,11 +520,11 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.BtnBacklight.clicked.connect(self.BacklightToggle)
 
     def _build_config_buttons(self):
-        Cam1Address = QPushButton(
+        self._cam1_addr_btn = QPushButton(
             'Platform [Platform] - ' + IPAddress, self)
-        Cam1Address.setGeometry(1500, 975, 310, 22)
-        Cam1Address.setStyleSheet("font: bold 15px; color:" + Cam1Check)
-        Cam1Address.clicked.connect(self.PTZ1Address)
+        self._cam1_addr_btn.setGeometry(1500, 975, 310, 22)
+        self._cam1_addr_btn.setStyleSheet("font: bold 15px; color:" + Cam1Check)
+        self._cam1_addr_btn.clicked.connect(self.PTZ1Address)
 
         self._cam2_addr_btn = QPushButton(
             'Comments [Audience] - ' + IPAddress2, self)
@@ -573,9 +573,8 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         for seat_str, name in self._seat_names.items():
             btn = getattr(self, f"Seat{seat_str}", None)
             if isinstance(btn, (GoButton, SpecialDragButton)) and name:
+                # emit_signal=False: no mueve cámara ni persiste al arrancar
                 btn.set_name(name, emit_signal=False)
-        # Sincronizar el set de asignados en el panel tras restaurar desde disco.
-        # Sin esto el panel no sabe qué nombres están ocupados al arrancar.
         self._sync_assigned_to_panel()
 
     def _toggle_names_panel(self, checked: bool):
@@ -586,15 +585,6 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             self._names_panel.hide()
 
     def _on_preset_mode_changed(self):
-        """
-        Muestra u oculta BtnNames según el modo activo (Call/Set).
-
-        Modo Call → BtnNames invisible.
-          Si el panel estaba abierto: se cierra y BtnNames queda sin marcar.
-          MOTIVO: en Call no se editan asignaciones.
-
-        Modo Set → BtnNames visible (panel no se abre automáticamente).
-        """
         if self.BtnCall.isChecked():
             if self.BtnNames.isChecked():
                 self.BtnNames.setChecked(False)
@@ -602,13 +592,12 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             self.BtnNames.hide()
         else:
             self.BtnNames.show()
-            self.BtnNames.raise_()  # mantener z-order sobre el label "Camera Selection"
+            self.BtnNames.raise_()
 
     def _on_seat_name_assigned(self, seat_number: int, name: str):
         key = str(seat_number)
         if name:
-            # Exclusividad: un nombre solo puede estar en un asiento a la vez.
-            # Se aplica a GoButton Y SpecialDragButton (Chairman, Wheelchair, Second Room).
+            # Exclusividad: un nombre solo puede estar en un asiento a la vez
             for other_key, other_name in list(self._seat_names.items()):
                 if other_name == name and other_key != key:
                     other_btn = getattr(self, f"Seat{other_key}", None)
@@ -631,22 +620,22 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
                     btn = getattr(self, f"Seat{key}", None)
                     if isinstance(btn, (GoButton, SpecialDragButton)):
                         btn.set_name(new_name, emit_signal=False)
+
+            # Migrar preset de Chairman si la persona renombrada tenía uno.
+            # Sin esto, el preset queda huérfano con el nombre viejo y la
+            # próxima vez que se asigne a la persona renombrada no se encontraría.
+            if old_name in self._chairman_presets:
+                self._chairman_presets[new_name] = self._chairman_presets.pop(old_name)
+                save_chairman_presets(self._chairman_presets)
+
         save_names_data(self._names_list, self._seat_names)
 
     def _sync_assigned_to_panel(self):
-        """
-        Pasa al NamesPanel el set actualizado de nombres asignados a asientos.
-        LLAMAR siempre que cambie _seat_names (asignación, borrado, clear all).
-        """
+        """Pasa al NamesPanel el set actualizado de nombres asignados."""
         self._names_panel.set_assigned(set(self._seat_names.values()))
 
     def _clear_all_seats(self):
-        """
-        Borra todos los nombres asignados de una vez.
-        El borrado real se hace aquí (MainWindow tiene acceso a los GoButtons
-        y SpecialDragButtons).
-        NamesPanel solo dispara este callback después de pedir confirmación.
-        """
+        """Borra todos los nombres asignados de los asientos."""
         for key in list(self._seat_names.keys()):
             btn = getattr(self, f"Seat{key}", None)
             if isinstance(btn, (GoButton, SpecialDragButton)):
@@ -654,10 +643,6 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self._seat_names.clear()
         save_names_data(self._names_list, self._seat_names)
         self._sync_assigned_to_panel()
-
-    # ─────────────────────────────────────────────────────────────────────
-    # Helper UI
-    # ─────────────────────────────────────────────────────────────────────
 
     def _update_backlight_ui(self):
         cam_key = 1 if self.Cam1.isChecked() else 2
