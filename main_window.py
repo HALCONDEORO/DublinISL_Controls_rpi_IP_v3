@@ -57,6 +57,7 @@ from names_panel import NamesPanel
 from visca_mixin import ViscaMixin
 from session_mixin import SessionMixin
 from dialogs_mixin import DialogsMixin
+from config_dialog import ConfigDialog
 from seat_names_mixin import SeatNamesMixin
 
 from platform_icons import SVG_LEFT, SVG_CHAIRMAN, SVG_RIGHT

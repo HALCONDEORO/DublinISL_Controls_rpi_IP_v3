@@ -21,13 +21,133 @@
 
 import os
 import sys
+from pathlib import Path
 
-from PyQt5.QtWidgets import QMessageBox, QInputDialog
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (
+    QMessageBox, QInputDialog,
+    QDialog, QVBoxLayout, QFormLayout, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton,
+)
 
 from config import (
-    IPAddress, IPAddress2, Cam1ID, Cam2ID, Contact,
+    IPAddress, IPAddress2, Cam1ID, Cam2ID, Contact, LOGIN_PASSWORD,
     is_valid_ip, is_valid_cam_id,
 )
+
+
+class ChangePasswordDialog(QDialog):
+    """Diálogo modal para cambiar la contraseña de acceso."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Change Password')
+        self.setModal(True)
+        self.setFixedSize(340, 230)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.new_password = ''
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+
+        title = QLabel('🔒  Change Password')
+        title.setStyleSheet("font: bold 15px; color: #222;")
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        # Campos de contraseña
+        form = QFormLayout()
+        form.setSpacing(8)
+
+        self._cur = QLineEdit()
+        self._cur.setEchoMode(QLineEdit.Password)
+        self._cur.setPlaceholderText('Current password')
+
+        self._new = QLineEdit()
+        self._new.setEchoMode(QLineEdit.Password)
+        self._new.setPlaceholderText('New password')
+
+        self._confirm = QLineEdit()
+        self._confirm.setEchoMode(QLineEdit.Password)
+        self._confirm.setPlaceholderText('Repeat new password')
+
+        field_style = (
+            "QLineEdit { border: 1px solid #bbb; border-radius: 4px;"
+            " padding: 4px 6px; font: 13px; }"
+            "QLineEdit:focus { border-color: #1976D2; }"
+        )
+        for w in (self._cur, self._new, self._confirm):
+            w.setStyleSheet(field_style)
+
+        form.addRow('Current:', self._cur)
+        form.addRow('New:', self._new)
+        form.addRow('Confirm:', self._confirm)
+        layout.addLayout(form)
+
+        # Etiqueta de error inline
+        self._err = QLabel('')
+        self._err.setStyleSheet("color: #c62828; font: 12px;")
+        self._err.setAlignment(Qt.AlignCenter)
+        self._err.setWordWrap(True)
+        layout.addWidget(self._err)
+
+        # Botones OK / Cancel
+        btn_row = QHBoxLayout()
+        btn_ok = QPushButton('OK')
+        btn_ok.setFixedHeight(32)
+        btn_ok.setStyleSheet(
+            "QPushButton { background: #1976D2; border: none; border-radius: 5px;"
+            " font: bold 12px; color: white; }"
+            "QPushButton:pressed { background: #1251a0; }"
+        )
+        btn_ok.clicked.connect(self._validate)
+
+        btn_cancel = QPushButton('Cancel')
+        btn_cancel.setFixedHeight(32)
+        btn_cancel.setStyleSheet(
+            "QPushButton { background: #e0e0e0; border: none; border-radius: 5px;"
+            " font: 12px; color: #333; }"
+            "QPushButton:pressed { background: #bdbdbd; }"
+        )
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_row.addWidget(btn_ok)
+        btn_row.addWidget(btn_cancel)
+        layout.addLayout(btn_row)
+
+        self.setStyleSheet(
+            "ChangePasswordDialog {"
+            "  background: white;"
+            "  border: 2px solid #9e9e9e;"
+            "  border-radius: 10px;"
+            "}"
+        )
+
+    def _validate(self):
+        cur = self._cur.text()
+        new = self._new.text()
+        confirm = self._confirm.text()
+
+        if not cur or not new or not confirm:
+            self._err.setText('All fields are required.')
+            return
+        if cur != LOGIN_PASSWORD:
+            self._err.setText('Current password is incorrect.')
+            self._cur.clear()
+            self._cur.setFocus()
+            return
+        if new != confirm:
+            self._err.setText('New passwords do not match.')
+            self._new.clear()
+            self._confirm.clear()
+            self._new.setFocus()
+            return
+
+        self.new_password = new
+        self.accept()
 
 
 class DialogsMixin:
@@ -113,6 +233,18 @@ class DialogsMixin:
     def PTZ2Address(self):  self._change_config(2, 'ip')
     def PTZ1IDchange(self): self._change_config(1, 'id')
     def PTZ2IDchange(self): self._change_config(2, 'id')
+
+    def ChangePassword(self):
+        """Diálogo para cambiar la contraseña de acceso."""
+        dlg = ChangePasswordDialog(self)
+        if dlg.exec_() == QDialog.Accepted:
+            Path('password.txt').write_text(dlg.new_password, encoding='utf-8')
+            QMessageBox.information(
+                self, 'Password Changed',
+                'Password updated successfully.\n'
+                'The new password will be required on next login.',
+                QMessageBox.Ok,
+            )
 
     def Quit(self):
         """Cierra la aplicación limpiamente."""

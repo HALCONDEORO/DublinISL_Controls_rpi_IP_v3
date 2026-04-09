@@ -56,7 +56,7 @@ class ConfigDialog(QDialog):
         # Modal: bloquea la ventana principal mientras está abierto.
         # Evita que el operador mueva cámaras mientras el técnico cambia IPs.
         self.setModal(True)
-        self.setFixedSize(400, 320)
+        self.setFixedSize(400, 390)
         # Sin barra de título del SO en pantalla táctil (RPi fullscreen)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
 
@@ -126,6 +126,26 @@ class ConfigDialog(QDialog):
         line2.setFrameShape(QFrame.HLine)
         line2.setStyleSheet("color: #ccc;")
         layout.addWidget(line2)
+
+        # ── Sección: Contraseña ───────────────────────────────────────────
+        layout.addWidget(self._section_label('Access'))
+
+        btn_pwd = QPushButton('🔒  Change Password')
+        btn_pwd.setFixedHeight(36)
+        btn_pwd.setStyleSheet(
+            "QPushButton { background: #546E7A; border: none; border-radius: 6px;"
+            " font: 13px; color: white; }"
+            "QPushButton:pressed { background: #37474F; }"
+        )
+        btn_pwd.setToolTip('Change the login password')
+        btn_pwd.clicked.connect(lambda: (mw.ChangePassword(), self._try_close()))
+        layout.addWidget(btn_pwd)
+
+        # Separador
+        line3 = QFrame()
+        line3.setFrameShape(QFrame.HLine)
+        line3.setStyleSheet("color: #ccc;")
+        layout.addWidget(line3)
 
         # ── Versión y ayuda ───────────────────────────────────────────────
         bottom = QHBoxLayout()
