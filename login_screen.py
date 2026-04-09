@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton
-from PyQt5.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont
 from datetime import datetime, timedelta
 import json
@@ -126,20 +126,19 @@ class LoginAudit:
 
 class LoginScreen(QWidget):
     """
-    Pantalla de login con:
+    Panel de login embebido en MainWindow.
     - Bloqueo progresivo (0s, 10s, 30s, 60s, 3600s)
     - Auditoría de todos los intentos
     - Detección de ataques
-    - Animación de fade out suave
     """
-    
+
     login_successful = pyqtSignal()
-    
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle('DublinISL Controls - Login')
-        self.setGeometry(0, 0, 1920, 1080)
-        self.setStyleSheet("background-color: #1a1a1a;")
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAutoFillBackground(True)
+        self.setStyleSheet("QWidget { background-color: #000000; }")
         
         # Atributos
         self.attempts = 0
@@ -278,21 +277,10 @@ class LoginScreen(QWidget):
     
     def _animate_fade_out(self):
         """
-        Animación de fade out: login → splash screen.
-        Duración: 500ms, Curva: InOutQuad (suave).
+        Transición login → splash: emite la señal directamente.
+        (Como widget embebido, la ocultación la gestiona MainWindow.)
         """
-        # Crear animación de opacidad
-        animation = QPropertyAnimation(self, b"windowOpacity")
-        animation.setDuration(500)  # 500 milisegundos
-        animation.setStartValue(1.0)  # Visible
-        animation.setEndValue(0.0)  # Invisible
-        # Curva suave (entrada y salida suave)
-        animation.setEasingCurve(QEasingCurve.InOutQuad)
-        # Al terminar, emitir señal de éxito
-        animation.finished.connect(self.login_successful.emit)
-        animation.start()
-        # Guardar referencia para evitar que se libere
-        self._current_animation = animation
+        self.login_successful.emit()
     
     def _on_login_failure(self):
         """Manejar login fallido con bloqueo progresivo."""

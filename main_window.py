@@ -107,6 +107,36 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self._chairman_presets = load_chairman_presets()
 
         self._build_ui()
+        self._build_overlays()
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Overlays de inicio (Login → Splash → Contenido principal)
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _build_overlays(self):
+        """Crea el overlay de login encima de todo el contenido."""
+        from login_screen import LoginScreen
+        self._login_overlay = LoginScreen(parent=self)
+        self._login_overlay.setGeometry(0, 0, 1920, 1080)
+        self._login_overlay.raise_()
+        self._login_overlay.login_successful.connect(self._on_login_done)
+
+    def _on_login_done(self):
+        """Login correcto: oculta login, muestra splash e inicia tests."""
+        from splash_screen import SplashScreen
+        self._login_overlay.hide()
+
+        self._splash_overlay = SplashScreen(parent=self)
+        self._splash_overlay.setGeometry(0, 0, 1920, 1080)
+        self._splash_overlay.raise_()
+        self._splash_overlay.show()
+        self._splash_overlay.startup_complete.connect(self._on_startup_done)
+        # Arrancar tests ahora (no en __init__ de SplashScreen)
+        self._splash_overlay._start_initialization()
+
+    def _on_startup_done(self):
+        """Tests completados: oculta splash y deja visible el contenido principal."""
+        self._splash_overlay.hide()
 
     # ─────────────────────────────────────────────────────────────────────
     # Construcción de la UI

@@ -132,11 +132,11 @@ class SplashScreen(QWidget):
     _sig_status = pyqtSignal(str, str)   # mensaje, color
     _sig_progress = pyqtSignal(int)      # 0-100
 
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle('Initializing DublinISL Controls...')
-        self.setGeometry(0, 0, 1920, 1080)
-        self.setStyleSheet("background-color: #1a1a1a;")
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAutoFillBackground(True)
+        self.setStyleSheet("QWidget { background-color: #000000; }")
 
         self.tests_passed    = 0
         self.tests_total     = 0
@@ -151,8 +151,6 @@ class SplashScreen(QWidget):
         self._sig_log.connect(self._do_log)
         self._sig_status.connect(self._do_status)
         self._sig_progress.connect(self.progress_bar.setValue)
-
-        self._start_initialization()
 
     # ─────────────────────────────────────────────────────────────────────────
     #  UI
