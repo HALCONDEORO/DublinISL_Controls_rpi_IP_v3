@@ -67,23 +67,23 @@ class BootStatistics:
             except OSError:
                 pass
 
-    def record_boot(self, duration_ms: int, tests_passed: int, total_tests: int) -> bool:
-        entry = {
-            "timestamp": datetime.now().isoformat(),
-            "duration_ms": duration_ms,
-            "tests_passed": tests_passed,
-            "total_tests": total_tests,
-            "success": tests_passed == total_tests
-        }
-        try:
-            stats = self._read_stats()
-            stats.append(entry)
-            if len(stats) > 100:
-                stats = stats[-100:]
-            self.stats_file.write_text(json.dumps(stats, indent=2), encoding='utf-8')
-            return True
-        except (OSError, json.JSONDecodeError, TypeError):
-            return False
+    # def record_boot(self, duration_ms: int, tests_passed: int, total_tests: int) -> bool:
+    #     entry = {
+    #         "timestamp": datetime.now().isoformat(),
+    #         "duration_ms": duration_ms,
+    #         "tests_passed": tests_passed,
+    #         "total_tests": total_tests,
+    #         "success": tests_passed == total_tests
+    #     }
+    #     try:
+    #         stats = self._read_stats()
+    #         stats.append(entry)
+    #         if len(stats) > 100:
+    #             stats = stats[-100:]
+    #         self.stats_file.write_text(json.dumps(stats, indent=2), encoding='utf-8')
+    #         return True
+    #     except (OSError, json.JSONDecodeError, TypeError):
+    #         return False
 
     def _read_stats(self) -> list:
         try:

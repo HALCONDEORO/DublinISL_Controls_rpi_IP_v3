@@ -154,7 +154,7 @@ class LoginScreen(QWidget):
         self.lockout_schedule = [0, 0, 10, 10, 30, 30, 60, 60, 3600, 3600]
         
         # Sistema de auditoría
-        self.audit = LoginAudit()
+        # self.audit = LoginAudit()
         
         self._build_ui()
     
@@ -273,7 +273,7 @@ class LoginScreen(QWidget):
         self.password_input.setEnabled(False)
         
         # Registrar éxito en auditoría
-        self.audit.log_attempt(success=True, attempts=0, lockout_seconds=0)
+        # self.audit.log_attempt(success=True, attempts=0, lockout_seconds=0)
         
         # Animar fade out
         self._animate_fade_out()
@@ -294,18 +294,18 @@ class LoginScreen(QWidget):
         lockout_seconds = self.lockout_schedule[min(self.attempts - 1, 9)]
 
         # Registrar intento fallido en auditoría (incluye contraseña intentada)
-        self.audit.log_attempt(
-            success=False,
-            attempts=self.attempts,
-            lockout_seconds=lockout_seconds,
-            attempted_password=attempted_password,
-        )
+        # self.audit.log_attempt(
+        #     success=False,
+        #     attempts=self.attempts,
+        #     lockout_seconds=lockout_seconds,
+        #     attempted_password=attempted_password,
+        # )
         
         # Verificar si hay patrón de ataque
-        suspicious = self.audit.detect_suspicious_activity()
-        if suspicious["attack_detected"]:
-            # Alertar sobre posible ataque
-            print(f"[LOGIN SECURITY] {suspicious['recommendation']}")
+        # suspicious = self.audit.detect_suspicious_activity()
+        # if suspicious["attack_detected"]:
+        #     # Alertar sobre posible ataque
+        #     print(f"[LOGIN SECURITY] {suspicious['recommendation']}")
         
         if lockout_seconds > 0:
             # Aplicar bloqueo temporal
