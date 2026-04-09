@@ -247,8 +247,8 @@ class DialogsMixin:
             )
 
     def Quit(self):
-        """Cierra la aplicación limpiamente."""
-        sys.exit()
+        """Cierra la aplicación limpiamente (pasa por closeEvent)."""
+        self.close()
 
     def HelpMsg(self):
         """Muestra el mensaje de contacto de soporte técnico."""

@@ -52,6 +52,7 @@ from config import (
     load_names_data,
     PRESET_MAP,
 )
+from atem_monitor import ATEMMonitor
 from camera_worker import CameraWorker
 from widgets import GoButton, SpecialDragButton
 from names_panel import NamesPanel
@@ -100,9 +101,8 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         self._build_ui()
         self._build_overlays()
 
-        from atem_monitor import ATEMMonitor
         self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
-        self._atem_monitor.switched_to_input1.connect(self._send_comments_cam_home)
+        self._atem_monitor.switched_to_input2.connect(self._send_comments_cam_home)
         self._atem_monitor.start()
 
     # ─────────────────────────────────────────────────────────────────────
@@ -387,6 +387,12 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         else:
             self.BtnNames.show()
             self.BtnNames.raise_()
+
+    def closeEvent(self, event):
+        """Para el hilo del ATEM antes de cerrar la ventana."""
+        self._atem_monitor.requestInterruption()
+        self._atem_monitor.wait(2000)
+        event.accept()
 
     def _update_backlight_ui(self):
         cam_key = 1 if self.Cam1.isChecked() else 2
