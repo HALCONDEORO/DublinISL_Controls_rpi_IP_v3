@@ -166,5 +166,12 @@
     "attempts": 0,
     "lockout_seconds": 0,
     "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-09T17:24:59.490895",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
   }
 ]
