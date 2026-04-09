@@ -257,5 +257,12 @@
     "lockout_seconds": 10,
     "event_type": "login_failure",
     "attempted_password": "dale"
+  },
+  {
+    "timestamp": "2026-04-09T20:46:39.085951",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
   }
 ]
