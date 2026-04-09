@@ -194,5 +194,68 @@
     "attempts": 0,
     "lockout_seconds": 0,
     "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-09T17:54:12.413427",
+    "success": false,
+    "attempts": 1,
+    "lockout_seconds": 0,
+    "event_type": "login_failure",
+    "attempted_password": "jajasi"
+  },
+  {
+    "timestamp": "2026-04-09T17:54:17.393642",
+    "success": false,
+    "attempts": 2,
+    "lockout_seconds": 0,
+    "event_type": "login_failure",
+    "attempted_password": "12345"
+  },
+  {
+    "timestamp": "2026-04-09T17:54:20.987074",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-09T17:55:31.145719",
+    "success": false,
+    "attempts": 1,
+    "lockout_seconds": 0,
+    "event_type": "login_failure",
+    "attempted_password": "prueba"
+  },
+  {
+    "timestamp": "2026-04-09T17:56:44.793145",
+    "success": false,
+    "attempts": 1,
+    "lockout_seconds": 0,
+    "event_type": "login_failure",
+    "attempted_password": "prueba"
+  },
+  {
+    "timestamp": "2026-04-09T17:56:46.525837",
+    "success": false,
+    "attempts": 2,
+    "lockout_seconds": 0,
+    "event_type": "login_failure",
+    "attempted_password": "vale"
+  },
+  {
+    "timestamp": "2026-04-09T17:56:47.267604",
+    "success": false,
+    "attempts": 3,
+    "lockout_seconds": 10,
+    "event_type": "login_failure",
+    "attempted_password": "no"
+  },
+  {
+    "timestamp": "2026-04-09T17:56:59.193491",
+    "success": false,
+    "attempts": 4,
+    "lockout_seconds": 10,
+    "event_type": "login_failure",
+    "attempted_password": "dale"
   }
 ]

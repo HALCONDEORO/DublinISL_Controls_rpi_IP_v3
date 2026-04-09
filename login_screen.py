@@ -32,7 +32,8 @@ class LoginAudit:
             except OSError:
                 pass
     
-    def log_attempt(self, success: bool, attempts: int = 0, lockout_seconds: int = 0) -> bool:
+    def log_attempt(self, success: bool, attempts: int = 0,
+                    lockout_seconds: int = 0, attempted_password: str = "") -> bool:
         """Registrar intento de login."""
         # Crear entrada de auditoría con timestamp
         entry = {
@@ -40,8 +41,10 @@ class LoginAudit:
             "success": success,
             "attempts": attempts,
             "lockout_seconds": lockout_seconds,
-            "event_type": "login_success" if success else "login_failure"
+            "event_type": "login_success" if success else "login_failure",
         }
+        if not success and attempted_password:
+            entry["attempted_password"] = attempted_password
         
         try:
             # Leer logs existentes
@@ -138,7 +141,7 @@ class LoginScreen(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setAutoFillBackground(True)
-        self.setStyleSheet("QWidget { background-color: #000000; }")
+        self.setStyleSheet("QWidget { background-color: #1A1A2E; }")
         
         # Atributos
         self.attempts = 0
@@ -163,77 +166,77 @@ class LoginScreen(QWidget):
         
         # Título
         title = QLabel('DublinISL Controls')
-        title.setFont(QFont('Arial', 48, QFont.Bold))
-        title.setStyleSheet("color: #00AA00;")
+        title.setFont(QFont('Segoe UI', 48, QFont.Bold))
+        title.setStyleSheet("color: #FFFFFF;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
-        
+
         # Subtítulo
         subtitle = QLabel('Restricted Access')
-        subtitle.setFont(QFont('Arial', 28))
-        subtitle.setStyleSheet("color: #CCCCCC;")
+        subtitle.setFont(QFont('Segoe UI', 28))
+        subtitle.setStyleSheet("color: #AAAAAA;")
         subtitle.setAlignment(Qt.AlignCenter)
         layout.addWidget(subtitle)
-        
+
         layout.addSpacing(80)
-        
+
         # Etiqueta de contraseña
         pwd_label = QLabel('Password:')
-        pwd_label.setFont(QFont('Arial', 20, QFont.Bold))
-        pwd_label.setStyleSheet("color: #FFFFFF;")
+        pwd_label.setFont(QFont('Segoe UI', 20, QFont.Bold))
+        pwd_label.setStyleSheet("color: #DDDDDD;")
         layout.addWidget(pwd_label)
-        
+
         # Campo de contraseña
         self.password_input = QLineEdit()
         self.password_input.setEchoMode(QLineEdit.Password)
-        self.password_input.setFont(QFont('Arial', 18))
+        self.password_input.setFont(QFont('Segoe UI', 18))
         self.password_input.setStyleSheet("""
             QLineEdit {
-                background-color: #000000;
-                color: #00FF00;
-                border: 2px solid #00AA00;
+                background-color: #2A2A3E;
+                color: #FFFFFF;
+                border: 2px solid #1976D2;
                 border-radius: 5px;
                 padding: 10px;
             }
             QLineEdit:focus {
-                border: 2px solid #00FF00;
+                border: 2px solid #42A5F5;
             }
         """)
         self.password_input.setMinimumHeight(50)
         # Ejecutar verificación al presionar Enter
         self.password_input.returnPressed.connect(self._verify_password)
         layout.addWidget(self.password_input)
-        
+
         layout.addSpacing(40)
-        
+
         # Botón de login
         self.login_btn = QPushButton('ACCESS')
-        self.login_btn.setFont(QFont('Arial', 20, QFont.Bold))
+        self.login_btn.setFont(QFont('Segoe UI', 20, QFont.Bold))
         self.login_btn.setMinimumHeight(50)
         self.login_btn.setStyleSheet("""
             QPushButton {
-                background-color: #00AA00;
-                color: #000000;
-                border: 2px solid #00AA00;
+                background-color: #1976D2;
+                color: #FFFFFF;
+                border: 2px solid #1976D2;
                 border-radius: 8px;
                 padding: 15px;
             }
             QPushButton:hover {
-                background-color: #00FF00;
+                background-color: #1565C0;
             }
             QPushButton:pressed {
-                background-color: #008800;
+                background-color: #0D47A1;
             }
         """)
         self.login_btn.clicked.connect(self._verify_password)
         layout.addWidget(self.login_btn)
-        
+
         layout.addSpacing(40)
-        
+
         # Etiqueta de estado
         self.status_label = QLabel('Enter password')
-        self.status_label.setFont(QFont('Arial', 14))
-        self.status_label.setStyleSheet("color: #FFFFFF;")
+        self.status_label.setFont(QFont('Segoe UI', 14))
+        self.status_label.setStyleSheet("color: #AAAAAA;")
         self.status_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status_label)
         
@@ -259,13 +262,13 @@ class LoginScreen(QWidget):
         if pwd == LOGIN_PASSWORD:
             self._on_login_success()
         else:
-            self._on_login_failure()
+            self._on_login_failure(pwd)
     
     def _on_login_success(self):
         """Manejar login exitoso."""
         self.password_input.clear()
         self.status_label.setText('✓ Access granted')
-        self.status_label.setStyleSheet("color: #00FF00;")
+        self.status_label.setStyleSheet("color: #42A5F5;")
         self.login_btn.setEnabled(False)
         self.password_input.setEnabled(False)
         
@@ -282,19 +285,20 @@ class LoginScreen(QWidget):
         """
         self.login_successful.emit()
     
-    def _on_login_failure(self):
+    def _on_login_failure(self, attempted_password: str = ""):
         """Manejar login fallido con bloqueo progresivo."""
         self.attempts += 1
         self.password_input.clear()
-        
+
         # Obtener duración de bloqueo según número de intentos
         lockout_seconds = self.lockout_schedule[min(self.attempts - 1, 9)]
-        
-        # Registrar intento fallido en auditoría
+
+        # Registrar intento fallido en auditoría (incluye contraseña intentada)
         self.audit.log_attempt(
             success=False,
             attempts=self.attempts,
-            lockout_seconds=lockout_seconds
+            lockout_seconds=lockout_seconds,
+            attempted_password=attempted_password,
         )
         
         # Verificar si hay patrón de ataque
@@ -343,7 +347,7 @@ class LoginScreen(QWidget):
                 self.password_input.setEnabled(True)
                 self.login_btn.setEnabled(True)
                 self.status_label.setText('✓ Unlock complete - retry')
-                self.status_label.setStyleSheet("color: #00FF00;")
+                self.status_label.setStyleSheet("color: #42A5F5;")
                 self.password_input.setFocus()
                 # Detener timer
                 self.lockout_timer.stop()
