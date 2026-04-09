@@ -43,7 +43,7 @@ from PyQt5.QtGui import QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import (
     QMainWindow, QPushButton, QToolButton,
-    QLabel, QButtonGroup, QSlider,
+    QLabel, QButtonGroup, QSlider, QFrame,
 )
 
 from config import (
@@ -78,9 +78,14 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
     """Ventana principal 1920x1080 px."""
 
     _TOGGLE_STYLE = (
-        "QPushButton{background-color: white; border: 3px solid green; "
-        "font: bold 20px; color: black}"
-        "QPushButton:Checked{background-color: green; font: bold 20px; color: white}"
+        "QPushButton {"
+        "  background-color: #DCDCDC; border: none; border-radius: 10px;"
+        "  font: 600 18px 'Segoe UI'; color: #777777; padding: 6px 0px;"
+        "}"
+        "QPushButton:checked {"
+        "  background-color: white; color: #111111;"
+        "  border: 1px solid #C8C8C8;"
+        "}"
     )
 
     def __init__(self):
@@ -436,7 +441,22 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         )
         self.BtnNames.clicked.connect(self._toggle_names_panel)
 
+    def _make_toggle_frame(self, x, y, w, h):
+        frame = QFrame(self)
+        frame.setGeometry(x, y, w, h)
+        frame.setStyleSheet(
+            "QFrame { background-color: #E8E8E8; border-radius: 12px; }"
+        )
+        frame.lower()
+        return frame
+
     def _build_right_panel(self):
+        # Fondo claro del panel derecho — va primero para quedar detrás de todo
+        _panel_bg = QFrame(self)
+        _panel_bg.setGeometry(1490, 0, 430, 1080)
+        _panel_bg.setStyleSheet("QFrame { background-color: #F2F2F2; border: none; }")
+        _panel_bg.lower()
+
         self._build_section_labels()
         self._build_camera_selector()
         self._build_speed_slider()
@@ -456,9 +476,10 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
             lbl = QLabel(text, self)
             lbl.setGeometry(*geom)
             lbl.setAlignment(QtCore.Qt.AlignCenter)
-            lbl.setStyleSheet("font: bold 20px; color: black")
+            lbl.setStyleSheet("font: 600 15px 'Segoe UI'; color: #555555;")
 
     def _build_camera_selector(self):
+        self._make_toggle_frame(1496, 56, 368, 78)
         self.Cam1 = QPushButton('Platform', self)
         self.Cam1.setGeometry(1500, 60, 180, 70)
         self.Cam1.setCheckable(True); self.Cam1.setAutoExclusive(True)
@@ -494,14 +515,14 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.SpeedSlider.setTickInterval(3)
         self.SpeedSlider.setStyleSheet("""
             QSlider::groove:horizontal {
-                height: 8px; background: #cccccc; border-radius: 4px;
+                height: 6px; background: #E0E0E0; border-radius: 3px;
             }
             QSlider::handle:horizontal {
-                background: #1a7a1a; border: 2px solid #0d4d0d;
-                width: 24px; height: 24px; margin: -9px 0; border-radius: 12px;
+                background: white; border: 2px solid #7DC47D;
+                width: 22px; height: 22px; margin: -9px 0; border-radius: 11px;
             }
             QSlider::sub-page:horizontal {
-                background: #4caf50; border-radius: 4px;
+                background: #7DC47D; border-radius: 3px;
             }
         """)
 
@@ -518,6 +539,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         self.SpeedSlider.valueChanged.connect(self._on_speed_changed)
 
     def _build_preset_mode(self):
+        self._make_toggle_frame(1496, 286, 368, 78)
         self.BtnCall = QPushButton('Call', self)
         self.BtnCall.setGeometry(1500, 290, 180, 70)
         self.BtnCall.setCheckable(True); self.BtnCall.setAutoExclusive(True)

@@ -131,5 +131,40 @@
     "attempts": 0,
     "lockout_seconds": 0,
     "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-09T15:45:50.114409",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-09T15:48:11.873987",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-09T15:58:50.391842",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-09T16:04:00.978869",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
+  },
+  {
+    "timestamp": "2026-04-09T16:04:33.519261",
+    "success": true,
+    "attempts": 0,
+    "lockout_seconds": 0,
+    "event_type": "login_success"
   }
 ]
