@@ -47,6 +47,7 @@ from PyQt5.QtWidgets import (
 
 from config import (
     IPAddress, IPAddress2, Cam1ID, Cam2ID,
+    ATEMAddress,
     SEAT_POSITIONS,
     load_names_data,
     PRESET_MAP,
@@ -98,6 +99,11 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
 
         self._build_ui()
         self._build_overlays()
+
+        from atem_monitor import ATEMMonitor
+        self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
+        self._atem_monitor.switched_to_input1.connect(self._send_comments_cam_home)
+        self._atem_monitor.start()
 
     # ─────────────────────────────────────────────────────────────────────
     # Overlays de inicio (Login → Splash → Contenido principal)

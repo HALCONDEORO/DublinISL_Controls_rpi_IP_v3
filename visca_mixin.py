@@ -181,6 +181,10 @@ class ViscaMixin:
         ip, cam_id = self._active_cam()
         self._send_cmd_async(ip, cam_id, "010604FF")
 
+    def _send_comments_cam_home(self):
+        """Manda la cámara Comments (Cam2) a Home. Llamado por el ATEMMonitor."""
+        self._send_cmd_async(IPAddress2, Cam2ID, "010604FF")
+
     # ─────────────────────────────────────────────────────────────────────────
     #  Zoom
     # ─────────────────────────────────────────────────────────────────────────

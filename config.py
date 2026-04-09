@@ -63,6 +63,7 @@ IPAddress = _read_config('PTZ1IP.txt', '172.16.1.11')
 IPAddress2 = _read_config('PTZ2IP.txt', '172.16.1.12')
 Cam1ID = _read_config('Cam1ID.txt', '81')
 Cam2ID = _read_config('Cam2ID.txt', '82')
+ATEMAddress = _read_config('ATEMiP.txt', '192.168.1.240')
 Contact = _read_config('Contact.txt', 'No contact information available.')
 LOGIN_PASSWORD = _read_config('password.txt', 'dublin2024')
 
