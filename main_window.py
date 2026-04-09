@@ -55,7 +55,7 @@ from config import (
     PRESET_MAP,
 )
 from camera_worker import CameraWorker
-from widgets import GoButton, SpecialDragButton, NamesPanel, make_arrow_btn
+from widgets import GoButton, SpecialDragButton, NamesPanel, DigitalJoystick
 from visca_mixin import ViscaMixin
 from session_mixin import SessionMixin
 from dialogs_mixin import DialogsMixin
@@ -572,25 +572,17 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, QMainWindow):
         ZoomOut.setStyleSheet("background-image: url(ZoomOut_120.png); border: none")
 
     def _build_arrow_buttons(self):
-        arrow_config = [
-            (1500, 510, 135, self.UpLeft),
-            (1605, 510, 180, self.Up),
-            (1710, 510, 225, self.UpRight),
-            (1500, 617,  90, self.Left),
-            (1710, 617, 270, self.Right),
-            (1500, 724,  45, self.DownLeft),
-            (1605, 724,   0, self.Down),
-            (1710, 724, 315, self.DownRight),
-        ]
-        for x, y, deg, handler in arrow_config:
-            btn = make_arrow_btn(self, x, y, deg)
-            btn.pressed.connect(handler)
-            btn.released.connect(self.Stop)
-
-        Home = QPushButton('', self)
-        Home.setGeometry(1605, 617, 100, 100)
-        Home.clicked.connect(self.HomeButton)
-        Home.setStyleSheet("background-image: url(home.png); border: none")
+        handlers = {
+            'up':        self.Up,
+            'down':      self.Down,
+            'left':      self.Left,
+            'right':     self.Right,
+            'upleft':    self.UpLeft,
+            'upright':   self.UpRight,
+            'downleft':  self.DownLeft,
+            'downright': self.DownRight,
+        }
+        DigitalJoystick(self, 1500, 510, 310, handlers, self.Stop)
 
     def _build_focus_exposure(self):
         FocusExposureLabel = QLabel('Focus & Exposure', self)
