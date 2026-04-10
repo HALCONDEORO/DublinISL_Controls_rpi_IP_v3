@@ -61,10 +61,19 @@ class RightPanel:
 
     def _build_bg(self):
         mw = self._mw
-        bg = QFrame(mw)
-        bg.setGeometry(1490, 0, 430, 1080)
-        bg.setStyleSheet("QFrame { background-color: #F2F2F2; border: none; }")
-        bg.lower()
+        # Fondo exterior oscuro — se manda al fondo absoluto
+        outer = QFrame(mw)
+        outer.setGeometry(1490, 0, 430, 1080)
+        outer.setStyleSheet("QFrame { background-color: #B0B0B0; border: none; }")
+        outer.lower()
+
+        # Container interior claro — creado después, queda naturalmente encima del outer
+        container = QFrame(mw)
+        container.setGeometry(1490, 10, 380, 1062)
+        container.setStyleSheet(
+            "QFrame { background-color: #FFFFFF; border: none; border-radius: 8px; }"
+        )
+        # Sin lower() ni raise_(): z-order natural lo deja sobre 'outer'
 
     # ── Labels de sección ─────────────────────────────────────────────────────
 
