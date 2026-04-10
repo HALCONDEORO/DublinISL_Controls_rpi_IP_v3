@@ -42,7 +42,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import (
-    QMainWindow, QPushButton, QToolButton, QLabel,
+    QMainWindow, QPushButton, QToolButton, QLabel, QFrame,
 )
 
 from config import (
@@ -70,6 +70,8 @@ from chairman_presets import (
     next_available_preset, CHAIRMAN_GENERIC_PRESET,
 )
 from chairman_button import ChairmanButton
+from camera_indicator import CameraIndicator
+from auditorium_overlay import AuditoriumOverlay
 
 
 class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWindow):
@@ -140,6 +142,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
 
     def _build_ui(self):
         self._build_background()
+        self._build_set_overlay()
         self._build_seat_buttons()
         self._build_session_controls()
         self._build_right_panel()
@@ -147,12 +150,59 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         self._restore_seat_names()
         self._build_table_seats()
         self._build_platform_icons()   # AL FINAL: z-order
+        self._build_camera_indicator()
+        self._build_mode_indicator()
 
         self.BtnNames.raise_()
         self.BtnNames.hide()
 
         self.BtnCall.clicked.connect(lambda: self._names_panel.set_edit_mode(False))
+        self.BtnCall.clicked.connect(lambda: self._update_mode_indicator('call'))
         self.BtnSet.clicked.connect(lambda:  self._names_panel.set_edit_mode(True))
+        self.BtnSet.clicked.connect(lambda:  self._update_mode_indicator('set'))
+
+    def _build_camera_indicator(self):
+        """Crea el indicador visual de cámara activa (spotlight entre plataforma y asientos 11-12)."""
+        self._cam_indicator = CameraIndicator(self)
+        self._cam_indicator.set_mode('platform')   # Cam1 está activa por defecto
+        self._cam_indicator.raise_()
+
+    def _build_mode_indicator(self):
+        """
+        Badge en la esquina superior derecha del panel izquierdo que muestra
+        el modo actual: 📷 (Call) o ✏ (Set).
+        Se posiciona a la derecha de los iconos de plataforma, antes del panel derecho.
+        """
+        self._mode_indicator = QLabel('📷', self)
+        self._mode_indicator.setGeometry(1100, 18, 68, 68)
+        self._mode_indicator.setAlignment(Qt.AlignCenter)
+        self._mode_indicator.setStyleSheet(
+            "QLabel {"
+            "  font-size: 32px;"
+            "  background-color: rgba(0, 0, 0, 55);"
+            "  border-radius: 12px;"
+            "  border: 1px solid rgba(255,255,255,60);"
+            "}"
+        )
+        self._mode_indicator.raise_()
+
+    def _update_mode_indicator(self, mode: str):
+        """Actualiza el icono del badge y el overlay: 'call' → 📷+puntos  |  'set' → ✏+relleno"""
+        if mode == 'set':
+            self._mode_indicator.setText('✏')
+        else:
+            self._mode_indicator.setText('📷')
+        self._set_overlay.set_mode(mode)
+
+    def _build_set_overlay(self):
+        """
+        Overlay del panel izquierdo con dos modos visuales:
+          call → puntitos blancos sutiles
+          set  → relleno blanco semitransparente
+        Creado entre background y seat_buttons para z-order correcto.
+        """
+        self._set_overlay = AuditoriumOverlay(self)
+        self._set_overlay.set_mode('call')
 
     def _build_background(self):
         """Carga fondo. Falla silenciosamente si el archivo no existe."""
@@ -317,15 +367,20 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
             setattr(self, f"Seat{seat_number}", button)
 
     def _build_session_controls(self):
+        # BtnSession y SessionStatus se mantienen como atributos de MainWindow
+        # para que SessionMixin pueda actualizarlos, pero están ocultos:
+        # el control de sesión se muestra en el modal del engranaje (ConfigDialog).
         self.BtnSession = QPushButton('\u23fb', self)
         self.BtnSession.setGeometry(10, 10, 50, 50)
         self.BtnSession.setToolTip('Start Session: Power ON both cameras and go Home')
         self.BtnSession.setStyleSheet(self._STYLE_BTN_OFF)
         self.BtnSession.clicked.connect(self.ToggleSession)
+        self.BtnSession.setVisible(False)
 
         self.SessionStatus = QLabel('OFF', self)
         self.SessionStatus.setGeometry(68, 22, 60, 20)
         self.SessionStatus.setStyleSheet("font: bold 12px; color: #8b1a1a")
+        self.SessionStatus.setVisible(False)
 
         self.BtnNames = QPushButton('\U0001f465', self)
         self.BtnNames.setGeometry(1500, 15, 40, 40)
@@ -402,3 +457,5 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         else:
             self.BtnBacklight.setText('Backlight\nOFF')
             self.BtnBacklight.setStyleSheet(self._backlight_style_off)
+        # Actualizar indicador de cámara activa
+        self._cam_indicator.set_mode('platform' if cam_key == 1 else 'comments')

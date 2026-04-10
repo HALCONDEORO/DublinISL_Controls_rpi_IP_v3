@@ -56,7 +56,7 @@ class ConfigDialog(QDialog):
         # Modal: bloquea la ventana principal mientras está abierto.
         # Evita que el operador mueva cámaras mientras el técnico cambia IPs.
         self.setModal(True)
-        self.setFixedSize(400, 390)
+        self.setFixedSize(400, 500)
         # Sin barra de título del SO en pantalla táctil (RPi fullscreen)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
 
@@ -82,6 +82,42 @@ class ConfigDialog(QDialog):
         line.setFrameShape(QFrame.HLine)
         line.setStyleSheet("color: #ccc;")
         layout.addWidget(line)
+
+        # ── Sección: Session ON / OFF ─────────────────────────────────────
+        layout.addWidget(self._section_label('Session'))
+
+        is_on   = getattr(mw, 'session_active', False)
+        clr_on  = '#1a7a1a'
+        clr_off = '#8b1a1a'
+        status_color = clr_on if is_on else clr_off
+        status_text  = '⏻  ON — Session running'  if is_on else '⏻  OFF — Standby'
+        btn_text     = 'End Session'               if is_on else 'Start Session'
+        btn_bg       = clr_on                      if is_on else clr_off
+        btn_pressed  = '#0d4d0d'                   if is_on else '#5a0d0d'
+
+        session_status = QLabel(status_text)
+        session_status.setAlignment(Qt.AlignCenter)
+        session_status.setStyleSheet(
+            f"font: bold 14px; color: {status_color};"
+            " background: #f5f5f5; border-radius: 6px; padding: 6px;"
+        )
+        layout.addWidget(session_status)
+
+        btn_session = QPushButton(btn_text)
+        btn_session.setFixedHeight(40)
+        btn_session.setStyleSheet(
+            f"QPushButton {{ background: {btn_bg}; border: none; border-radius: 6px;"
+            f" font: bold 14px; color: white; }}"
+            f"QPushButton:pressed {{ background: {btn_pressed}; }}"
+        )
+        btn_session.clicked.connect(lambda: (mw.ToggleSession(), self.accept()))
+        layout.addWidget(btn_session)
+
+        # Separador
+        line_s = QFrame()
+        line_s.setFrameShape(QFrame.HLine)
+        line_s.setStyleSheet("color: #ccc;")
+        layout.addWidget(line_s)
 
         # ── Sección: Platform camera ──────────────────────────────────────
         layout.addWidget(self._section_label('Platform Camera'))

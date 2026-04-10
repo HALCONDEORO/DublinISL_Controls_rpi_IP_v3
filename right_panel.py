@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# right_panel.py — Construcción del panel derecho de controles PTZ
+# right_panel.py — Panel derecho de controles PTZ (layout-based)
 #
-# RightPanel es una clase coordinadora (no hereda de ningún widget Qt).
-# Crea todos los widgets como hijos directos del QMainWindow que se le pasa,
-# preservando las coordenadas absolutas de pantalla sin ningún ajuste.
+# Todos los widgets viven dentro de un QFrame container con QVBoxLayout.
+# Se eliminan las coordenadas absolutas; la estructura visual es idéntica
+# a la versión anterior pero el panel se adapta al container blanco.
 #
 # Atributos que crea en main_window:
 #   mw.Cam1, mw.Cam2, mw.Camgroup
@@ -16,7 +16,9 @@ from __future__ import annotations
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QButtonGroup, QFrame, QLabel, QPushButton, QSlider,
+    QButtonGroup, QFrame, QHBoxLayout, QLabel,
+    QPushButton, QSizePolicy, QSlider, QSpacerItem,
+    QVBoxLayout, QWidget,
 )
 
 from config import SPEED_MIN, SPEED_MAX, SPEED_DEFAULT
@@ -25,8 +27,10 @@ from config_dialog import ConfigDialog
 
 class RightPanel:
     """
-    Agrupa la construcción del panel derecho (x=1490..1920).
-    Los widgets son hijos del QMainWindow recibido, no de esta clase.
+    Construye el panel derecho usando layouts (sin coordenadas absolutas).
+    El container blanco ocupa (1490, 10, 380, 1062) sobre el fondo gris.
+    Todos los widgets son hijos del container, pero sus referencias
+    se asignan como atributos de main_window para compatibilidad total.
     """
 
     TOGGLE_STYLE = (
@@ -42,99 +46,110 @@ class RightPanel:
 
     def __init__(self, main_window):
         self._mw = main_window
-        self._build_bg()
-        self._build_section_labels()
-        self._build_camera_selector()
-        self._build_speed_slider()
-        self._build_preset_mode()
-        self._build_zoom_buttons()
-        self._build_focus_exposure()
-        self._build_config_buttons()
-        # El joystick se construye por separado desde MainWindow (necesita handlers)
+        self._joystick_slot = None   # QWidget placeholder para el joystick
+        self._build_outer_bg()
+        self._build_panel()
 
     def connect_joystick(self, handlers: dict, stop_handler):
-        """Construye el DigitalJoystick con los handlers de movimiento de MainWindow."""
+        """Inserta el DigitalJoystick en el slot reservado en el layout."""
         from joystick import DigitalJoystick
-        DigitalJoystick(self._mw, 1500, 510, 310, handlers, stop_handler)
+        slot = self._joystick_slot
+        DigitalJoystick(slot, None, None, slot.width(), handlers, stop_handler)
 
-    # ── Fondo del panel ───────────────────────────────────────────────────────
+    # ── Fondo exterior oscuro ─────────────────────────────────────────────────
 
-    def _build_bg(self):
+    def _build_outer_bg(self):
         mw = self._mw
-        # Fondo exterior oscuro — se manda al fondo absoluto
         outer = QFrame(mw)
         outer.setGeometry(1490, 0, 430, 1080)
         outer.setStyleSheet("QFrame { background-color: #B0B0B0; border: none; }")
         outer.lower()
 
-        # Container interior claro — creado después, queda naturalmente encima del outer
-        container = QFrame(mw)
-        container.setGeometry(1490, 10, 380, 1062)
-        container.setStyleSheet(
-            "QFrame { background-color: #FFFFFF; border: none; border-radius: 8px; }"
+    # ── Container principal con layout ────────────────────────────────────────
+
+    def _build_panel(self):
+        mw = self._mw
+
+        # Container blanco — hijo directo de mw, posicionado absolutamente
+        self._container = QFrame(mw)
+        self._container.setGeometry(1490, 10, 380, 1062)
+        self._container.setStyleSheet(
+            "QFrame#RightPanelContainer {"
+            "  background-color: #FFFFFF;"
+            "  border-radius: 8px;"
+            "  border: none;"
+            "}"
         )
-        # Sin lower() ni raise_(): z-order natural lo deja sobre 'outer'
+        self._container.setObjectName("RightPanelContainer")
 
-    # ── Labels de sección ─────────────────────────────────────────────────────
+        layout = QVBoxLayout(self._container)
+        layout.setContentsMargins(14, 16, 14, 10)
+        layout.setSpacing(7)
 
-    def _build_section_labels(self):
+        self._add_camera_selector(layout)
+        self._add_speed_slider(layout)
+        self._add_preset_mode(layout)
+        self._add_zoom_buttons(layout)
+        self._add_joystick_slot(layout)
+        self._add_separator(layout)
+        self._add_focus_exposure(layout)
+        self._add_config_buttons(layout)
+
+    # ── Secciones ─────────────────────────────────────────────────────────────
+
+    def _add_camera_selector(self, layout: QVBoxLayout):
         mw = self._mw
-        for text, geom in [
-            ('Camera Selection', (1500, 20, 360, 30)),
-            ('PTZ Speed',        (1500, 138, 360, 30)),
-            ('Camera Presets',   (1500, 253, 360, 30)),
-            ('Camera Controls',  (1500, 367, 360, 30)),
-        ]:
-            lbl = QLabel(text, mw)
-            lbl.setGeometry(*geom)
-            lbl.setAlignment(QtCore.Qt.AlignCenter)
-            lbl.setStyleSheet("font: 600 15px 'Segoe UI'; color: #555555;")
+        layout.addWidget(_section_label('Camera Selection', self._container))
 
-    # ── Selector de cámara ────────────────────────────────────────────────────
+        toggle = _toggle_frame(self._container)
+        row = QHBoxLayout(toggle)
+        row.setContentsMargins(4, 4, 4, 4)
+        row.setSpacing(0)
 
-    def _build_camera_selector(self):
-        mw = self._mw
-        _make_toggle_frame(mw, 1496, 56, 368, 78)
-
-        mw.Cam1 = QPushButton('Platform', mw)
-        mw.Cam1.setGeometry(1500, 60, 180, 70)
+        mw.Cam1 = QPushButton('Platform', toggle)
         mw.Cam1.setCheckable(True)
         mw.Cam1.setAutoExclusive(True)
         mw.Cam1.setChecked(True)
         mw.Cam1.setToolTip('Select Platform Camera')
         mw.Cam1.setStyleSheet(self.TOGGLE_STYLE)
+        mw.Cam1.setFixedHeight(62)
 
-        mw.Cam2 = QPushButton('Comments', mw)
-        mw.Cam2.setGeometry(1680, 60, 180, 70)
+        mw.Cam2 = QPushButton('Comments', toggle)
         mw.Cam2.setCheckable(True)
         mw.Cam2.setAutoExclusive(True)
         mw.Cam2.setToolTip('Select Comments Camera')
         mw.Cam2.setStyleSheet(self.TOGGLE_STYLE)
+        mw.Cam2.setFixedHeight(62)
+
+        row.addWidget(mw.Cam1)
+        row.addWidget(mw.Cam2)
+        layout.addWidget(toggle)
 
         mw.Camgroup = QButtonGroup(mw)
         mw.Camgroup.addButton(mw.Cam1)
         mw.Camgroup.addButton(mw.Cam2)
-
         mw.Cam1.clicked.connect(mw._update_backlight_ui)
         mw.Cam2.clicked.connect(mw._update_backlight_ui)
 
-    # ── Slider de velocidad ───────────────────────────────────────────────────
-
-    def _build_speed_slider(self):
+    def _add_speed_slider(self, layout: QVBoxLayout):
         mw = self._mw
+        layout.addWidget(_section_label('PTZ Speed', self._container))
 
-        slow = QLabel('SLOW', mw)
-        slow.setGeometry(1500, 190, 55, 20)
-        slow.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        slow.setStyleSheet("font: bold 13px; color: #444")
+        row = QHBoxLayout()
+        row.setSpacing(6)
 
-        mw.SpeedSlider = QSlider(Qt.Horizontal, mw)
-        mw.SpeedSlider.setGeometry(1560, 172, 230, 48)
+        slow = QLabel('SLOW', self._container)
+        slow.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        slow.setStyleSheet("font: bold 13px; color: #444;")
+        slow.setFixedWidth(38)
+
+        mw.SpeedSlider = QSlider(Qt.Horizontal, self._container)
         mw.SpeedSlider.setMinimum(SPEED_MIN)
         mw.SpeedSlider.setMaximum(SPEED_MAX)
         mw.SpeedSlider.setValue(SPEED_DEFAULT)
         mw.SpeedSlider.setTickPosition(QSlider.TicksBelow)
         mw.SpeedSlider.setTickInterval(3)
+        mw.SpeedSlider.setFixedHeight(48)
         mw.SpeedSlider.setStyleSheet("""
             QSlider::groove:horizontal {
                 height: 6px; background: #E0E0E0; border-radius: 3px;
@@ -148,112 +163,166 @@ class RightPanel:
             }
         """)
 
-        fast = QLabel('FAST', mw)
-        fast.setGeometry(1797, 190, 55, 20)
-        fast.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-        fast.setStyleSheet("font: bold 13px; color: #444")
+        fast = QLabel('FAST', self._container)
+        fast.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        fast.setStyleSheet("font: bold 13px; color: #444;")
+        fast.setFixedWidth(38)
 
-        mw.SpeedValueLabel = QLabel(mw._speed_label_text(SPEED_DEFAULT), mw)
-        mw.SpeedValueLabel.setGeometry(1500, 224, 360, 20)
-        mw.SpeedValueLabel.setAlignment(QtCore.Qt.AlignCenter)
-        mw.SpeedValueLabel.setStyleSheet("font: 12px; color: #555")
+        row.addWidget(slow)
+        row.addWidget(mw.SpeedSlider)
+        row.addWidget(fast)
+        layout.addLayout(row)
+
+        mw.SpeedValueLabel = QLabel(
+            mw._speed_label_text(SPEED_DEFAULT), self._container)
+        mw.SpeedValueLabel.setAlignment(Qt.AlignCenter)
+        mw.SpeedValueLabel.setStyleSheet("font: 12px; color: #555;")
+        layout.addWidget(mw.SpeedValueLabel)
 
         mw.SpeedSlider.valueChanged.connect(mw._on_speed_changed)
 
-    # ── Modo preset (Call / Set) ───────────────────────────────────────────────
-
-    def _build_preset_mode(self):
+    def _add_preset_mode(self, layout: QVBoxLayout):
         mw = self._mw
-        _make_toggle_frame(mw, 1496, 286, 368, 78)
+        layout.addWidget(_section_label('Camera Presets', self._container))
 
-        mw.BtnCall = QPushButton('Call', mw)
-        mw.BtnCall.setGeometry(1500, 290, 180, 70)
+        toggle = _toggle_frame(self._container)
+        row = QHBoxLayout(toggle)
+        row.setContentsMargins(4, 4, 4, 4)
+        row.setSpacing(0)
+
+        mw.BtnCall = QPushButton('Call', toggle)
         mw.BtnCall.setCheckable(True)
         mw.BtnCall.setAutoExclusive(True)
         mw.BtnCall.setChecked(True)
         mw.BtnCall.setStyleSheet(self.TOGGLE_STYLE)
+        mw.BtnCall.setFixedHeight(62)
 
-        mw.BtnSet = QPushButton('Set', mw)
-        mw.BtnSet.setGeometry(1680, 290, 180, 70)
+        mw.BtnSet = QPushButton('Set', toggle)
         mw.BtnSet.setCheckable(True)
         mw.BtnSet.setAutoExclusive(True)
         mw.BtnSet.setStyleSheet(self.TOGGLE_STYLE)
+        mw.BtnSet.setFixedHeight(62)
+
+        row.addWidget(mw.BtnCall)
+        row.addWidget(mw.BtnSet)
+        layout.addWidget(toggle)
 
         mw.PresetModeGroup = QButtonGroup(mw)
         mw.PresetModeGroup.addButton(mw.BtnCall)
         mw.PresetModeGroup.addButton(mw.BtnSet)
-
         mw.BtnCall.clicked.connect(mw._on_preset_mode_changed)
         mw.BtnSet.clicked.connect(mw._on_preset_mode_changed)
 
-    # ── Botones de zoom ───────────────────────────────────────────────────────
-
-    def _build_zoom_buttons(self):
+    def _add_zoom_buttons(self, layout: QVBoxLayout):
         mw = self._mw
+        layout.addWidget(_section_label('Camera Controls', self._container))
 
-        zoom_in = QPushButton(mw)
-        zoom_in.setGeometry(1680, 403, 100, 100)
-        zoom_in.pressed.connect(mw.ZoomIn)
-        zoom_in.released.connect(mw.ZoomStop)
-        zoom_in.setStyleSheet("background-image: url(ZoomIn_120.png); border: none")
+        row = QHBoxLayout()
+        row.setSpacing(0)
 
-        zoom_out = QPushButton(mw)
-        zoom_out.setGeometry(1510, 403, 100, 100)
+        zoom_out = QPushButton(self._container)
+        zoom_out.setFixedSize(100, 100)
         zoom_out.pressed.connect(mw.ZoomOut)
         zoom_out.released.connect(mw.ZoomStop)
-        zoom_out.setStyleSheet("background-image: url(ZoomOut_120.png); border: none")
+        zoom_out.setStyleSheet(
+            "background-image: url(ZoomOut_120.png); border: none;")
 
-    # ── Foco y exposición ─────────────────────────────────────────────────────
+        zoom_in = QPushButton(self._container)
+        zoom_in.setFixedSize(100, 100)
+        zoom_in.pressed.connect(mw.ZoomIn)
+        zoom_in.released.connect(mw.ZoomStop)
+        zoom_in.setStyleSheet(
+            "background-image: url(ZoomIn_120.png); border: none;")
 
-    def _build_focus_exposure(self):
+        row.addWidget(zoom_out)
+        row.addStretch()
+        row.addWidget(zoom_in)
+        layout.addLayout(row)
+
+    def _add_joystick_slot(self, layout: QVBoxLayout):
+        """Reserva un bloque cuadrado centrado para el DigitalJoystick."""
+        size = 310
+        slot = QWidget(self._container)
+        slot.setFixedSize(size, size)
+        self._joystick_slot = slot
+
+        center_row = QHBoxLayout()
+        center_row.addStretch()
+        center_row.addWidget(slot)
+        center_row.addStretch()
+        layout.addLayout(center_row)
+
+    def _add_separator(self, layout: QVBoxLayout):
+        line = QFrame(self._container)
+        line.setFrameShape(QFrame.HLine)
+        line.setStyleSheet("color: #E0E0E0;")
+        layout.addWidget(line)
+
+    def _add_focus_exposure(self, layout: QVBoxLayout):
         mw = self._mw
-
-        lbl = QLabel('Focus & Exposure', mw)
-        lbl.setGeometry(1500, 835, 360, 25)
-        lbl.setAlignment(QtCore.Qt.AlignCenter)
-        lbl.setStyleSheet("font: bold 16px; color: black")
+        layout.addWidget(_section_label('Focus & Exposure', self._container))
 
         _btn_style = (
             "QPushButton{background-color: white; border: 2px solid #555;"
-            " font: bold 13px; color: black; border-radius: 4px}"
-            "QPushButton:pressed{background-color: #ccc}"
+            " font: bold 13px; color: black; border-radius: 4px;}"
+            "QPushButton:pressed{background-color: #ccc;}"
         )
 
-        for label, geom, tooltip, handler in [
-            ('Auto\nFocus',    (1500, 863, 110, 50), 'Auto Focus ON',                   mw.AutoFocus),
-            ('One Push\nAF',   (1625, 863, 110, 50), 'One-shot autofocus, then manual', mw.OnePushAF),
-            ('Manual\nFocus',  (1750, 863, 110, 50), 'Manual Focus mode',               mw.ManualFocus),
-            ('▼ Darker',       (1500, 920, 110, 45), 'Decrease exposure one step',      mw.BrightnessDown),
-            ('▲ Brighter',     (1750, 920, 110, 45), 'Increase exposure one step',      mw.BrightnessUp),
+        # Fila superior: foco
+        focus_row = QHBoxLayout()
+        focus_row.setSpacing(5)
+        for label, tooltip, handler in [
+            ('Auto\nFocus',   'Auto Focus ON',                   mw.AutoFocus),
+            ('One Push\nAF',  'One-shot autofocus, then manual', mw.OnePushAF),
+            ('Manual\nFocus', 'Manual Focus mode',               mw.ManualFocus),
         ]:
-            btn = QPushButton(label, mw)
-            btn.setGeometry(*geom)
+            btn = QPushButton(label, self._container)
+            btn.setFixedHeight(50)
             btn.setToolTip(tooltip)
             btn.setStyleSheet(_btn_style)
             btn.clicked.connect(handler)
+            focus_row.addWidget(btn)
+        layout.addLayout(focus_row)
 
-        mw.BtnBacklight = QPushButton('Backlight\nOFF', mw)
-        mw.BtnBacklight.setGeometry(1625, 920, 110, 45)
+        # Fila inferior: exposición + backlight
+        exp_row = QHBoxLayout()
+        exp_row.setSpacing(5)
+        for label, tooltip, handler in [
+            ('▼ Darker',   'Decrease exposure one step', mw.BrightnessDown),
+            ('▲ Brighter', 'Increase exposure one step', mw.BrightnessUp),
+        ]:
+            btn = QPushButton(label, self._container)
+            btn.setFixedHeight(45)
+            btn.setToolTip(tooltip)
+            btn.setStyleSheet(_btn_style)
+            btn.clicked.connect(handler)
+            exp_row.addWidget(btn)
+
+        mw.BtnBacklight = QPushButton('Backlight\nOFF', self._container)
+        mw.BtnBacklight.setFixedHeight(45)
         mw.BtnBacklight.setToolTip('Toggle backlight compensation')
-        # Estilos guardados en mw para que _update_backlight_ui (en ViscaMixin) los encuentre
         mw._backlight_style_off = (
             "QPushButton{background-color: white; border: 2px solid #555;"
-            " font: bold 13px; color: black; border-radius: 4px}"
+            " font: bold 13px; color: black; border-radius: 4px;}"
         )
         mw._backlight_style_on = (
             "QPushButton{background-color: #e6a800; border: 2px solid #b37f00;"
-            " font: bold 13px; color: white; border-radius: 4px}"
+            " font: bold 13px; color: white; border-radius: 4px;}"
         )
         mw.BtnBacklight.setStyleSheet(mw._backlight_style_off)
         mw.BtnBacklight.clicked.connect(mw.BacklightToggle)
 
-    # ── Botones de configuración ──────────────────────────────────────────────
+        # Insertar backlight en posición central
+        exp_row.insertWidget(1, mw.BtnBacklight)
+        layout.addLayout(exp_row)
 
-    def _build_config_buttons(self):
+    def _add_config_buttons(self, layout: QVBoxLayout):
         mw = self._mw
 
-        btn_gear = QPushButton('⚙', mw)
-        btn_gear.setGeometry(1820, 900, 40, 40)
+        gear_row = QHBoxLayout()
+        gear_row.addStretch()
+        btn_gear = QPushButton('⚙', self._container)
+        btn_gear.setFixedSize(40, 40)
         btn_gear.setToolTip('Camera configuration')
         btn_gear.setStyleSheet(
             "QPushButton { background: rgba(80,80,80,60); border: 1px solid #999;"
@@ -261,20 +330,29 @@ class RightPanel:
             "QPushButton:pressed { background: rgba(80,80,80,140); }"
         )
         btn_gear.clicked.connect(mw._open_config_dialog)
+        gear_row.addWidget(btn_gear)
+        layout.addLayout(gear_row)
 
-        btn_close = QPushButton('Close window', mw)
-        btn_close.setGeometry(1500, 1050, 360, 22)
+        btn_close = QPushButton('Close window', self._container)
+        btn_close.setFixedHeight(24)
         btn_close.setStyleSheet(
-            "background-color: lightgrey; font: 15px; color: black; border: none")
+            "background-color: lightgrey; font: 15px; color: black; border: none;")
         btn_close.clicked.connect(mw.Quit)
+        layout.addWidget(btn_close)
 
 
-# ── Helper de módulo ──────────────────────────────────────────────────────────
+# ── Helpers de módulo ─────────────────────────────────────────────────────────
 
-def _make_toggle_frame(parent, x: int, y: int, w: int, h: int) -> QFrame:
-    """Crea el fondo gris redondeado detrás de los toggle buttons."""
+def _section_label(text: str, parent: QWidget) -> QLabel:
+    lbl = QLabel(text, parent)
+    lbl.setAlignment(Qt.AlignCenter)
+    lbl.setStyleSheet("font: 600 15px 'Segoe UI'; color: #555555;")
+    return lbl
+
+
+def _toggle_frame(parent: QWidget) -> QFrame:
     frame = QFrame(parent)
-    frame.setGeometry(x, y, w, h)
-    frame.setStyleSheet("QFrame { background-color: #E8E8E8; border-radius: 12px; }")
-    frame.lower()
+    frame.setStyleSheet(
+        "QFrame { background-color: #E8E8E8; border-radius: 12px; border: none; }"
+    )
     return frame

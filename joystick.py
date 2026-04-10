@@ -45,7 +45,10 @@ class DigitalJoystick(QWidget):
         stop_handler : callable sin argumentos
         """
         super().__init__(parent)
-        self.setGeometry(x, y, size, size)
+        if x is not None and y is not None:
+            self.setGeometry(x, y, size, size)
+        else:
+            self.setFixedSize(size, size)
         self.handlers     = handlers
         self.stop_handler = stop_handler
 
