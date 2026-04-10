@@ -3,14 +3,14 @@
 
 from __future__ import annotations
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont
 from datetime import datetime, timedelta
 import json
 from pathlib import Path
 
-from config import LOGIN_PASSWORD
+from config import LOGIN_PASSWORD, Contact
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -157,7 +157,17 @@ class LoginScreen(QWidget):
         # self.audit = LoginAudit()
         
         self._build_ui()
-    
+        QTimer.singleShot(0, self._check_schedule_bypass)
+
+    def _check_schedule_bypass(self):
+        """Auto-login si la hora actual está dentro del horario configurado."""
+        try:
+            from schedule_config import is_within_schedule
+            if is_within_schedule():
+                self.login_successful.emit()
+        except Exception:
+            pass  # Si falla la lectura del schedule, pedir contraseña normalmente
+
     def _build_ui(self):
         """Construir interfaz de usuario."""
         layout = QVBoxLayout()
@@ -231,6 +241,24 @@ class LoginScreen(QWidget):
         self.login_btn.clicked.connect(self._verify_password)
         layout.addWidget(self.login_btn)
 
+        # Botón de ayuda / contacto
+        self.help_btn = QPushButton('? HELP')
+        self.help_btn.setFont(QFont('Segoe UI', 11))
+        self.help_btn.setFixedHeight(32)
+        self.help_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #AAAAAA;
+                border: 1px solid #555;
+                border-radius: 5px;
+                padding: 4px 12px;
+            }
+            QPushButton:hover { color: #FFFFFF; border-color: #888; }
+            QPushButton:pressed { color: #CCCCCC; }
+        """)
+        self.help_btn.clicked.connect(self._show_help)
+        layout.addWidget(self.help_btn, alignment=Qt.AlignRight)
+
         layout.addSpacing(40)
 
         # Etiqueta de estado
@@ -244,6 +272,9 @@ class LoginScreen(QWidget):
         # Auto-focus en campo de contraseña
         self.password_input.setFocus()
     
+    def _show_help(self):
+        QMessageBox.information(self, 'For Technical Assistance', Contact, QMessageBox.Ok)
+
     def _verify_password(self):
         """Verificar contraseña ingresada."""
         # No hacer nada si está bloqueado

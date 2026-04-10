@@ -32,6 +32,8 @@ from PyQt5.QtWidgets import (
     QPushButton, QLabel, QFrame,
 )
 
+from schedule_dialog import ScheduleDialog
+
 from config import (
     IPAddress, IPAddress2, Cam1ID, Cam2ID,
     Cam1Check, Cam2Check,
@@ -56,7 +58,7 @@ class ConfigDialog(QDialog):
         # Modal: bloquea la ventana principal mientras está abierto.
         # Evita que el operador mueva cámaras mientras el técnico cambia IPs.
         self.setModal(True)
-        self.setFixedSize(400, 500)
+        self.setFixedSize(400, 580)
         # Sin barra de título del SO en pantalla táctil (RPi fullscreen)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
 
@@ -182,6 +184,26 @@ class ConfigDialog(QDialog):
         line3.setFrameShape(QFrame.HLine)
         line3.setStyleSheet("color: #ccc;")
         layout.addWidget(line3)
+
+        # ── Sección: Schedule ─────────────────────────────────────────────
+        layout.addWidget(self._section_label('Schedule'))
+
+        btn_schedule = QPushButton('📅  Weekly Schedule')
+        btn_schedule.setFixedHeight(36)
+        btn_schedule.setStyleSheet(
+            "QPushButton { background: #1565C0; border: none; border-radius: 6px;"
+            " font: 13px; color: white; }"
+            "QPushButton:pressed { background: #0D47A1; }"
+        )
+        btn_schedule.setToolTip('Configure days and hours when no password is required')
+        btn_schedule.clicked.connect(lambda: ScheduleDialog(self).exec_())
+        layout.addWidget(btn_schedule)
+
+        # Separador
+        line4 = QFrame()
+        line4.setFrameShape(QFrame.HLine)
+        line4.setStyleSheet("color: #ccc;")
+        layout.addWidget(line4)
 
         # ── Versión y ayuda ───────────────────────────────────────────────
         bottom = QHBoxLayout()
