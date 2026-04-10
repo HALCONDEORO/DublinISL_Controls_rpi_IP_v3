@@ -193,6 +193,9 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         else:
             self._mode_indicator.setText('📷')
         self._set_overlay.set_mode(mode)
+        GoButton.set_call_mode(mode == 'call')
+        for btn in self.findChildren(GoButton):
+            btn._apply_style()
 
     def _build_set_overlay(self):
         """

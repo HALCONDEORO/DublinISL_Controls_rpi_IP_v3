@@ -35,7 +35,7 @@ _SPECIAL_SEAT_DEFS = {
 }
 
 _SPECIAL_STYLE = (
-    "QToolButton { background-color: rgba(0,0,0,10); border: 2px solid #7B4F2E;"
+    "QToolButton { background-color: #cccccc; border: 2px solid #7B4F2E;"
     " border-radius: 5px; font: 8px; font-weight: bold; color: "
     + BUTTON_COLOR + "; }"
 )

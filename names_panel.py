@@ -173,7 +173,7 @@ class NamesPanel(QWidget):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        hint = QLabel("Drag to seat\nDouble-tap to clear")
+        hint = QLabel("Drag to seat · drag back to unassign\nDouble-tap seat to clear")
         hint.setStyleSheet("font: 9px; color: #666;")
         hint.setWordWrap(True)
         hint.setAlignment(Qt.AlignCenter)
@@ -218,6 +218,29 @@ class NamesPanel(QWidget):
         self._assigned: set = set()
         self._rebuild()
         self.set_edit_mode(False)  # Call es el modo por defecto
+        self.setAcceptDrops(True)
+
+    # ── Drop desde asientos (desasignar) ──────────────────────────────────────
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasText():
+            event.setDropAction(Qt.MoveAction)
+            event.accept()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasText():
+            event.setDropAction(Qt.MoveAction)
+            event.accept()
+
+    def dropEvent(self, event):
+        name = event.mimeData().text().strip()
+        if name:
+            event.setDropAction(Qt.MoveAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    # ─────────────────────────────────────────────────────────────────────────
 
     def set_edit_mode(self, enabled: bool):
         """

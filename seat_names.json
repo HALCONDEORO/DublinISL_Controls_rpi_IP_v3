@@ -9,10 +9,13 @@
     "Christian",
     "Tim",
     "Beatriz",
-    "Eddie"
+    "Eddie",
+    "Becky Mc"
   ],
   "seats": {
-    "1": "Gary",
-    "43": "Beatriz"
+    "44": "Beatriz",
+    "73": "Ángel",
+    "57": "Becky Mc",
+    "1": "Christian"
   }
 }

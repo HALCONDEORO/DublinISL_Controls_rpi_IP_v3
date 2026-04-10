@@ -40,7 +40,7 @@ from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
-    QMessageBox, QPushButton, QToolButton,
+    QApplication, QMessageBox, QPushButton, QToolButton,
 )
 
 from config import BUTTON_COLOR
@@ -106,6 +106,26 @@ class DragDropButton:
             # Delegar al siguiente en el MRO (QPushButton o QToolButton)
             super().mouseDoubleClickEvent(event)
 
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_start_pos = event.pos()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if not (event.buttons() & Qt.LeftButton) or not self.assigned_name:
+            super().mouseMoveEvent(event)
+            return
+        dist = (event.pos() - self._drag_start_pos).manhattanLength()
+        if dist < QApplication.startDragDistance():
+            return
+        drag = QtGui.QDrag(self)
+        mime = QtCore.QMimeData()
+        mime.setText(self.assigned_name)
+        drag.setMimeData(mime)
+        result = drag.exec_(Qt.MoveAction | Qt.CopyAction)
+        if result == Qt.MoveAction:
+            self.set_name("")
+
     def _clear_confirm_msg(self) -> str:
         """
         Texto del diálogo de confirmación de borrado.
@@ -140,6 +160,12 @@ class GoButton(DragDropButton, QPushButton):
 
     name_assigned = pyqtSignal(int, str)
 
+    _call_mode: bool = True  # compartida por todas las instancias
+
+    @classmethod
+    def set_call_mode(cls, call: bool):
+        cls._call_mode = call
+
     WIDTH  = 71
     HEIGHT = 82
 
@@ -158,18 +184,31 @@ class GoButton(DragDropButton, QPushButton):
 
     def _apply_style(self):
         """
-        Borde verde si hay nombre asignado → feedback visual de asiento ocupado.
+        Call mode : burdeo pastel vacío / burdeo oscuro si tiene nombre.
+        Set mode  : gris, borde verde si tiene nombre.
         Usa seat.svg como fondo si existe; falla silenciosamente a color sólido.
         """
-        bg = ("background-image: url(seat.svg);"
-              if os.path.exists("seat.svg") else "background-color: #cccccc;")
-        border = (
-            "border: 2px solid #2e7d32; border-radius: 4px; background-color: rgba(76,175,80,30);"
-            if self.assigned_name else "border: none;"
-        )
+        if self._call_mode:
+            svg = "seat_occupied.svg" if self.assigned_name else "seat_call.svg"
+            bg = f"background-image: url({svg}); background-repeat: no-repeat; background-position: center;"
+            border = "border: none;"
+            text_color = "white" if self.assigned_name else BUTTON_COLOR
+        elif os.path.exists("seat.svg"):
+            bg = "background-image: url(seat.svg); background-repeat: no-repeat; background-position: center;"
+            border = (
+                "border: 2px solid #2e7d32; border-radius: 4px; background-color: rgba(76,175,80,30);"
+                if self.assigned_name else "border: none;"
+            )
+            text_color = BUTTON_COLOR
+        else:
+            bg = "background-color: #cccccc;"
+            border = (
+                "border: 2px solid #2e7d32; border-radius: 4px; background-color: rgba(76,175,80,30);"
+                if self.assigned_name else "border: none;"
+            )
+            text_color = BUTTON_COLOR
         self.setStyleSheet(
-            f"QPushButton {{ {bg} background-repeat: no-repeat; background-position: center;"
-            f" {border} font: 9px; font-weight: bold; color: {BUTTON_COLOR}; }}"
+            f"QPushButton {{ {bg} {border} font: 12px; font-weight: bold; color: {text_color}; }}"
             f"QPushButton:pressed {{ background-color: rgba(0,0,0,70); }}"
         )
 
@@ -181,7 +220,7 @@ class GoButton(DragDropButton, QPushButton):
         no disparar guardados al cargar datos ya persistidos.
         """
         self.assigned_name = name
-        self.setText(f"{self.seat_number}\n{name[:10]}" if name else str(self.seat_number))
+        self.setText(name.split()[0] if name else str(self.seat_number))
         self._apply_style()
         if emit_signal:
             self.name_assigned.emit(self.seat_number, name)
@@ -233,7 +272,7 @@ class SpecialDragButton(DragDropButton, QToolButton):
         """
         self.assigned_name = name
         if name:
-            self.setText(name[:12])
+            self.setText(name.split()[0])
             self._apply_assigned_style()
         else:
             self.setText(self._default_label)
