@@ -137,6 +137,10 @@ class RightPanel:
         mw.Camgroup.addButton(mw.Cam2)
         mw.Cam1.clicked.connect(mw._update_backlight_ui)
         mw.Cam2.clicked.connect(mw._update_backlight_ui)
+        mw.Cam1.clicked.connect(mw._update_focus_ui)
+        mw.Cam2.clicked.connect(mw._update_focus_ui)
+        mw.Cam1.clicked.connect(mw._update_exposure_ui)
+        mw.Cam2.clicked.connect(mw._update_exposure_ui)
         mw.Cam1.clicked.connect(lambda: self.set_joystick_mode('platform'))
         mw.Cam2.clicked.connect(lambda: self.set_joystick_mode('comments'))
 
@@ -271,7 +275,7 @@ class RightPanel:
         mw = self._mw
         layout.addWidget(_section_label('Focus & Exposure', self._container))
 
-        _btn_style = (
+        self._btn_focus_base_style = (
             "QPushButton {"
             "  background-color: #DCDCDC; border: none; border-radius: 10px;"
             "  font: 600 13px 'Segoe UI'; color: #555555; padding: 4px 0px;"
@@ -282,15 +286,17 @@ class RightPanel:
         # Fila superior: foco
         focus_row = QHBoxLayout()
         focus_row.setSpacing(5)
-        for label, tooltip, handler in [
-            ('Auto\nFocus',   'Auto Focus ON',                   mw.AutoFocus),
-            ('One Push\nAF',  'One-shot autofocus, then manual', mw.OnePushAF),
-            ('Manual\nFocus', 'Manual Focus mode',               mw.ManualFocus),
+        self.btn_auto_focus   = QPushButton('Auto\nFocus',   self._container)
+        self.btn_one_push_af  = QPushButton('One Push\nAF',  self._container)
+        self.btn_manual_focus = QPushButton('Manual\nFocus', self._container)
+        for btn, tooltip, handler in [
+            (self.btn_auto_focus,   'Auto Focus ON',                   mw.AutoFocus),
+            (self.btn_one_push_af,  'One-shot autofocus, then manual', mw.OnePushAF),
+            (self.btn_manual_focus, 'Manual Focus mode',               mw.ManualFocus),
         ]:
-            btn = QPushButton(label, self._container)
             btn.setFixedHeight(50)
             btn.setToolTip(tooltip)
-            btn.setStyleSheet(_btn_style)
+            btn.setStyleSheet(self._btn_focus_base_style)
             btn.clicked.connect(handler)
             focus_row.addWidget(btn)
         layout.addLayout(focus_row)
@@ -298,19 +304,20 @@ class RightPanel:
         # Fila inferior: exposición + backlight
         exp_row = QHBoxLayout()
         exp_row.setSpacing(5)
-        for label, tooltip, handler in [
-            ('▼ Darker',   'Decrease exposure one step', mw.BrightnessDown),
-            ('▲ Brighter', 'Increase exposure one step', mw.BrightnessUp),
+        self.btn_darker   = QPushButton('▼ Darker\n0',   self._container)
+        self.btn_brighter = QPushButton('▲ Brighter\n0', self._container)
+        for btn, tooltip, handler in [
+            (self.btn_darker,   'Decrease exposure one step', mw.BrightnessDown),
+            (self.btn_brighter, 'Increase exposure one step', mw.BrightnessUp),
         ]:
-            btn = QPushButton(label, self._container)
-            btn.setFixedHeight(45)
+            btn.setFixedHeight(50)
             btn.setToolTip(tooltip)
-            btn.setStyleSheet(_btn_style)
+            btn.setStyleSheet(self._btn_focus_base_style)
             btn.clicked.connect(handler)
             exp_row.addWidget(btn)
 
         mw.BtnBacklight = QPushButton('Backlight\nOFF', self._container)
-        mw.BtnBacklight.setFixedHeight(45)
+        mw.BtnBacklight.setFixedHeight(50)
         mw.BtnBacklight.setToolTip('Toggle backlight compensation')
         mw._backlight_style_off = (
             "QPushButton { background-color: #DCDCDC; border: none; border-radius: 10px;"
@@ -326,6 +333,37 @@ class RightPanel:
         # Insertar backlight en posición central
         exp_row.insertWidget(1, mw.BtnBacklight)
         layout.addLayout(exp_row)
+
+    # ── Helpers de feedback visual ─────────────────────────────────────────────
+
+    def set_focus_mode(self, mode: str):
+        """Destaca el botón de foco activo (auto/manual). One Push AF nunca persiste."""
+        _ACTIVE = (
+            "QPushButton { background-color: #4a90d9; border: none; border-radius: 10px;"
+            " font: 600 13px 'Segoe UI'; color: white; padding: 4px 0px; }"
+        )
+        self.btn_auto_focus.setStyleSheet(
+            _ACTIVE if mode == 'auto' else self._btn_focus_base_style)
+        self.btn_manual_focus.setStyleSheet(
+            _ACTIVE if mode == 'manual' else self._btn_focus_base_style)
+        self.btn_one_push_af.setStyleSheet(self._btn_focus_base_style)
+
+    def set_exposure_level(self, level: int):
+        """Actualiza el texto de los botones Darker/Brighter con el nivel numérico."""
+        sign = '+' if level > 0 else ''
+        self.btn_darker.setText(f'▼ Darker\n{sign}{level}')
+        self.btn_brighter.setText(f'▲ Brighter\n{sign}{level}')
+
+    def _flash_button(self, btn: QPushButton, success: bool, duration_ms: int = 1400):
+        """Flash verde (éxito) o rojo (fallo) en el botón, luego restaura el estilo base."""
+        color = '#3d9e3d' if success else '#b33030'
+        btn.setStyleSheet(
+            f"QPushButton {{ background-color: {color}; border: none; border-radius: 10px;"
+            f" font: 600 13px 'Segoe UI'; color: white; padding: 4px 0px; }}"
+        )
+        QtCore.QTimer.singleShot(
+            duration_ms, lambda: btn.setStyleSheet(self._btn_focus_base_style))
+
 
     def _add_config_buttons(self, layout: QVBoxLayout):
         mw = self._mw

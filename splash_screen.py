@@ -269,6 +269,7 @@ class SplashScreen(QWidget):
             ("Camera 2 (Audience)",   self._test_camera2),
             ("Configuration",         self._test_config),
             ("Statistics",            self._test_statistics),
+            ("Focus & Exposure",      self._test_focus_exposure),
         ]
         self.tests_total = len(tests)
 
@@ -370,6 +371,28 @@ class SplashScreen(QWidget):
     # ─────────────────────────────────────────────────────────────────────────
     #  TESTS
     # ─────────────────────────────────────────────────────────────────────────
+
+    def _send_visca_cmd(self, ip: str, cam_id: str, cmd: str) -> bool:
+        """Envía un comando VISCA y devuelve True si la cámara responde."""
+        try:
+            full_cmd = cam_id + cmd
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(SOCKET_TIMEOUT)
+                sock.connect((ip, VISCA_PORT))
+                sock.send(binascii.unhexlify(full_cmd))
+                data = sock.recv(64)
+                return len(data) > 0
+        except Exception:
+            return False
+
+    def _test_focus_exposure(self) -> bool:
+        """
+        Verifica que los comandos de foco y exposición llegan correctamente a Cam1.
+        Envía Auto Focus y Brightness Up; devuelve True si ambos obtienen respuesta.
+        """
+        af_ok = self._send_visca_cmd(IPAddress, Cam1ID, "01043802FF")
+        br_ok = self._send_visca_cmd(IPAddress, Cam1ID, "01040D02FF")
+        return af_ok and br_ok
 
     def _test_os(self) -> bool:
         import platform

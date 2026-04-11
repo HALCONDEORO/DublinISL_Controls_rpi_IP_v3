@@ -84,6 +84,8 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         self.setGeometry(0, 0, 1920, 1080)
 
         self.backlight_on   = {1: False, 2: False}
+        self.focus_mode     = {1: 'auto', 2: 'auto'}
+        self.exposure_level = {1: 0,      2: 0     }
         self.session_active = False
 
         self._workers = {
@@ -416,6 +418,8 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         )
         # Estado inicial: Cam1 (Platform) está seleccionada → joystick en burdeo
         self._right_panel.set_joystick_mode('platform')
+        self._update_focus_ui()
+        self._update_exposure_ui()
 
     def _open_config_dialog(self):
         """Instancia y abre el diálogo de configuración técnica."""
@@ -454,6 +458,14 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         self._atem_monitor.requestInterruption()
         self._atem_monitor.wait(2000)
         event.accept()
+
+    def _update_focus_ui(self):
+        cam_key = 1 if self.Cam1.isChecked() else 2
+        self._right_panel.set_focus_mode(self.focus_mode[cam_key])
+
+    def _update_exposure_ui(self):
+        cam_key = 1 if self.Cam1.isChecked() else 2
+        self._right_panel.set_exposure_level(self.exposure_level[cam_key])
 
     def _update_backlight_ui(self):
         cam_key = 1 if self.Cam1.isChecked() else 2

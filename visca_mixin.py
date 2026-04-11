@@ -229,18 +229,30 @@ class ViscaMixin:
 
     def AutoFocus(self):
         ip, cam_id = self._active_cam()
-        if not self._send_cmd(ip, cam_id, "01043802FF"):
+        ok = self._send_cmd(ip, cam_id, "01043802FF")
+        if ok:
+            cam_key = 1 if ip == IPAddress else 2
+            self.focus_mode[cam_key] = 'auto'
+            self._update_focus_ui()
+        else:
             self.ErrorCapture()
 
     def ManualFocus(self):
         ip, cam_id = self._active_cam()
-        if not self._send_cmd(ip, cam_id, "01043803FF"):
+        ok = self._send_cmd(ip, cam_id, "01043803FF")
+        if ok:
+            cam_key = 1 if ip == IPAddress else 2
+            self.focus_mode[cam_key] = 'manual'
+            self._update_focus_ui()
+        else:
             self.ErrorCapture()
 
     def OnePushAF(self):
         """Dispara un autofocus puntual y luego queda en modo manual."""
         ip, cam_id = self._active_cam()
-        if not self._send_cmd(ip, cam_id, "01041801FF"):
+        ok = self._send_cmd(ip, cam_id, "01041801FF")
+        self._right_panel._flash_button(self._right_panel.btn_one_push_af, ok)
+        if not ok:
             self.ErrorCapture()
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -250,13 +262,25 @@ class ViscaMixin:
     def BrightnessUp(self):
         """Sube la exposición un paso (modo exposición manual)."""
         ip, cam_id = self._active_cam()
-        if not self._send_cmd(ip, cam_id, "01040D02FF"):
+        ok = self._send_cmd(ip, cam_id, "01040D02FF")
+        if ok:
+            cam_key = 1 if ip == IPAddress else 2
+            self.exposure_level[cam_key] = min(7, self.exposure_level[cam_key] + 1)
+            self._update_exposure_ui()
+        self._right_panel._flash_button(self._right_panel.btn_brighter, ok)
+        if not ok:
             self.ErrorCapture()
 
     def BrightnessDown(self):
         """Baja la exposición un paso."""
         ip, cam_id = self._active_cam()
-        if not self._send_cmd(ip, cam_id, "01040D03FF"):
+        ok = self._send_cmd(ip, cam_id, "01040D03FF")
+        if ok:
+            cam_key = 1 if ip == IPAddress else 2
+            self.exposure_level[cam_key] = max(-7, self.exposure_level[cam_key] - 1)
+            self._update_exposure_ui()
+        self._right_panel._flash_button(self._right_panel.btn_darker, ok)
+        if not ok:
             self.ErrorCapture()
 
     def BacklightToggle(self):

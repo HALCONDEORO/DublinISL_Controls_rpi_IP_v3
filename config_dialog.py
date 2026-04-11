@@ -26,7 +26,9 @@
 #   dlg = ConfigDialog(self)
 #   dlg.exec_()   # modal — bloquea hasta que se cierre
 
-from PyQt5.QtCore import Qt
+import threading
+
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFrame,
@@ -58,7 +60,7 @@ class ConfigDialog(QDialog):
         # Modal: bloquea la ventana principal mientras está abierto.
         # Evita que el operador mueva cámaras mientras el técnico cambia IPs.
         self.setModal(True)
-        self.setFixedSize(400, 580)
+        self.setFixedSize(400, 690)
         # Sin barra de título del SO en pantalla táctil (RPi fullscreen)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
 
@@ -225,6 +227,77 @@ class ConfigDialog(QDialog):
         bottom.addWidget(btn_help)
 
         layout.addLayout(bottom)
+
+        # ── Sección: Test Focus & Exposure ────────────────────────────────
+        line5 = QFrame()
+        line5.setFrameShape(QFrame.HLine)
+        line5.setStyleSheet("color: #ccc;")
+        layout.addWidget(line5)
+
+        layout.addWidget(self._section_label('Focus & Exposure Test'))
+
+        # 6 indicadores: ● con etiqueta debajo
+        test_indicators = []
+        ind_row = QHBoxLayout()
+        ind_row.setSpacing(2)
+        for label_text in ['AF', '1PAF', 'MF', 'Dark', 'Bright', 'BL']:
+            dot = QLabel('●')
+            dot.setAlignment(Qt.AlignCenter)
+            dot.setFixedHeight(16)
+            dot.setStyleSheet("color: #AAAAAA; font: 14px;")
+            test_indicators.append(dot)
+
+            cap = QLabel(label_text)
+            cap.setAlignment(Qt.AlignCenter)
+            cap.setStyleSheet("font: 9px 'Segoe UI'; color: #888;")
+            cap.setFixedHeight(12)
+
+            col = QVBoxLayout()
+            col.setSpacing(1)
+            col.addWidget(dot)
+            col.addWidget(cap)
+            ind_row.addLayout(col)
+
+        layout.addLayout(ind_row)
+
+        btn_run_test = QPushButton('▶  Run Test')
+        btn_run_test.setFixedHeight(28)
+        btn_run_test.setStyleSheet(
+            "QPushButton { background: #546E7A; border: none; border-radius: 6px;"
+            " font: 12px 'Segoe UI'; color: white; }"
+            "QPushButton:pressed { background: #37474F; }"
+            "QPushButton:disabled { background: #90A4AE; }"
+        )
+        layout.addWidget(btn_run_test)
+
+        def _run_test_step(step, commands):
+            if step >= len(commands):
+                btn_run_test.setEnabled(True)
+                btn_run_test.setText('▶  Run Test')
+                return
+            cmd, idx = commands[step]
+            ip, cam_id = mw._active_cam()
+            ok = mw._send_cmd(ip, cam_id, cmd)
+            color = '#3d9e3d' if ok else '#b33030'
+            test_indicators[idx].setStyleSheet(f"color: {color}; font: 14px;")
+            QTimer.singleShot(500, lambda: _run_test_step(step + 1, commands))
+
+        def _on_test_clicked():
+            for dot in test_indicators:
+                dot.setStyleSheet("color: #AAAAAA; font: 14px;")
+            btn_run_test.setEnabled(False)
+            btn_run_test.setText('Testing...')
+            commands = [
+                ("01043802FF", 0),   # Auto Focus
+                ("01041801FF", 1),   # One Push AF
+                ("01043803FF", 2),   # Manual Focus
+                ("01040D03FF", 3),   # Darker
+                ("01040D02FF", 4),   # Brighter
+                ("01043302FF", 5),   # Backlight ON
+            ]
+            QTimer.singleShot(100, lambda: _run_test_step(0, commands))
+
+        btn_run_test.clicked.connect(_on_test_clicked)
 
         # ── Botón cerrar ──────────────────────────────────────────────────
         # Siempre al final y centrado — el único modo de salir en táctil
