@@ -333,9 +333,9 @@ class ViscaMixin:
             ip, cam_id = IPAddress, Cam1ID
             cam_name = 'Platform'
         else:
-            # Presets de asiento: cámara activa en la UI
-            ip, cam_id = self._active_cam()
-            cam_name = "Platform" if self.Cam1.isChecked() else "Comments"
+            # Presets de asiento: siempre Cam2 (Comments)
+            ip, cam_id = IPAddress2, Cam2ID
+            cam_name = 'Comments'
 
         if self.BtnCall.isChecked():
             # Modo Call: recall preset → 01 04 3F 02 <preset> FF

@@ -69,17 +69,28 @@ class DragDropButton:
       antes requería dos ediciones en dos clases distintas.
     """
 
+    _call_mode: bool = True  # compartida por todas las subclases (GoButton, SpecialDragButton)
+
     def dragEnterEvent(self, event):
-        """Acepta drops con contenido de texto (nombre de consejero)."""
+        """Acepta drops solo en modo SET. En modo CALL ignora el drag."""
+        if self._call_mode:
+            event.ignore()
+            return
         if event.mimeData().hasText():
             event.acceptProposedAction()
 
     def dragMoveEvent(self, event):
+        if self._call_mode:
+            event.ignore()
+            return
         if event.mimeData().hasText():
             event.acceptProposedAction()
 
     def dropEvent(self, event):
-        """Al soltar un nombre sobre el botón, lo asigna al asiento."""
+        """Al soltar un nombre sobre el botón, lo asigna al asiento (solo en modo SET)."""
+        if self._call_mode:
+            event.ignore()
+            return
         name = event.mimeData().text().strip()
         if name:
             self.set_name(name)
@@ -112,7 +123,7 @@ class DragDropButton:
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if not (event.buttons() & Qt.LeftButton) or not self.assigned_name:
+        if self._call_mode or not (event.buttons() & Qt.LeftButton) or not self.assigned_name:
             super().mouseMoveEvent(event)
             return
         dist = (event.pos() - self._drag_start_pos).manhattanLength()
@@ -160,11 +171,9 @@ class GoButton(DragDropButton, QPushButton):
 
     name_assigned = pyqtSignal(int, str)
 
-    _call_mode: bool = True  # compartida por todas las instancias
-
     @classmethod
     def set_call_mode(cls, call: bool):
-        cls._call_mode = call
+        DragDropButton._call_mode = call  # propaga a GoButton y SpecialDragButton
 
     WIDTH  = 71
     HEIGHT = 82

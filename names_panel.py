@@ -16,6 +16,8 @@ from PyQt5.QtWidgets import (
     QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 
+from widgets import DragDropButton
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NamesListWidget — lista de consejeros con doble modo de arrastre
@@ -76,9 +78,12 @@ class NamesListWidget(QListWidget):
         Override para poner el nombre como text/plain (DragDropButton lo acepta)
         y para guardar _dragging_row (dropEvent lo usa para reordenar).
         CopyAction: el ítem permanece en la lista al soltar sobre un asiento.
+        Solo activo en modo SET; en modo CALL el drag externo está bloqueado.
         """
         item = self.currentItem()
         if item is None:
+            return
+        if DragDropButton._call_mode:
             return
         self._dragging_row = self.row(item)
 
@@ -223,16 +228,25 @@ class NamesPanel(QWidget):
     # ── Drop desde asientos (desasignar) ──────────────────────────────────────
 
     def dragEnterEvent(self, event):
+        if DragDropButton._call_mode:
+            event.ignore()
+            return
         if event.mimeData().hasText():
             event.setDropAction(Qt.MoveAction)
             event.accept()
 
     def dragMoveEvent(self, event):
+        if DragDropButton._call_mode:
+            event.ignore()
+            return
         if event.mimeData().hasText():
             event.setDropAction(Qt.MoveAction)
             event.accept()
 
     def dropEvent(self, event):
+        if DragDropButton._call_mode:
+            event.ignore()
+            return
         name = event.mimeData().text().strip()
         if name:
             event.setDropAction(Qt.MoveAction)
@@ -244,9 +258,8 @@ class NamesPanel(QWidget):
 
     def set_edit_mode(self, enabled: bool):
         """
-        Call (False): botones CRUD deshabilitados, reordenamiento bloqueado.
-        Set  (True):  todo habilitado.
-        El drag de nombre hacia asientos funciona en ambos modos.
+        Call (False): botones CRUD deshabilitados, reordenamiento bloqueado, drag desactivado.
+        Set  (True):  todo habilitado, drag activo.
         """
         self._list._reorder_locked = not enabled
         for btn in self._edit_buttons:
