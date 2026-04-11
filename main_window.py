@@ -86,6 +86,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         self.backlight_on   = {1: False, 2: False}
         self.focus_mode     = {1: 'auto', 2: 'auto'}
         self.exposure_level = {1: 0,      2: 0     }
+        self._zoom_cache    = {1: None,   2: None  }  # último % enviado por cámara
         self.session_active = False
 
         self._workers = {
@@ -137,6 +138,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
     def _on_startup_done(self):
         """Tests completados: oculta splash y deja visible el contenido principal."""
         self._splash_overlay.hide()
+        self._refresh_zoom_slider()  # Sincroniza slider con el zoom real de la cámara activa
 
     # ─────────────────────────────────────────────────────────────────────
     # Construcción de la UI
@@ -318,6 +320,8 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
             return
         if not self._send_cmd(IPAddress, Cam1ID, f"01043f02{preset_hex}ff"):
             self.ErrorCapture()
+        else:
+            self._invalidate_zoom_cache(IPAddress)  # preset mueve zoom de Cam1
 
     def _save_chairman_preset(self, name: str):
         """

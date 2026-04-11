@@ -34,6 +34,24 @@ class RightPanel:
     se asignan como atributos de main_window para compatibilidad total.
     """
 
+    # Estilos del slider de zoom — misma paleta que el joystick
+    _ZOOM_STYLE = (
+        "QSlider::groove:horizontal {{"
+        "  background: #E0E0E0; height: 6px; border-radius: 3px;"
+        "}}"
+        "QSlider::sub-page:horizontal {{"
+        "  background: {fill}; border-radius: 3px;"
+        "}}"
+        "QSlider::handle:horizontal {{"
+        "  background: {handle}; border: 2px solid {border};"
+        "  width: 16px; height: 16px; margin: -5px 0; border-radius: 8px;"
+        "}}"
+    )
+    _ZOOM_STYLE_PLATFORM = _ZOOM_STYLE.format(
+        fill='#9B3A3A', handle='#B41E1E', border='#6E1212')  # burdeo
+    _ZOOM_STYLE_COMMENTS = _ZOOM_STYLE.format(
+        fill='#64B464', handle='#7DC47D', border='#3A8A3A')  # verde
+
     TOGGLE_STYLE = (
         "QPushButton {"
         "  background-color: #DCDCDC; border: none; border-radius: 10px;"
@@ -228,29 +246,39 @@ class RightPanel:
 
     def _add_zoom_buttons(self, layout: QVBoxLayout):
         mw = self._mw
-        layout.addWidget(_section_label('Camera Controls', self._container))
 
-        row = QHBoxLayout()
-        row.setSpacing(0)
+        header = QHBoxLayout()
+        header.addWidget(_section_label('Zoom', self._container))
+        mw.ZoomValueLabel = QLabel("0%", self._container)
+        mw.ZoomValueLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        mw.ZoomValueLabel.setStyleSheet("font: 600 14px 'Segoe UI'; color: #444444;")
+        header.addWidget(mw.ZoomValueLabel)
+        layout.addLayout(header)
 
-        zoom_out = QPushButton(self._container)
-        zoom_out.setFixedSize(100, 100)
-        zoom_out.pressed.connect(mw.ZoomOut)
-        zoom_out.released.connect(mw.ZoomStop)
-        zoom_out.setStyleSheet(
-            "background-image: url(ZoomOut_120.png); border: none;")
+        mw.ZoomSlider = QSlider(Qt.Horizontal, self._container)
+        mw.ZoomSlider.setRange(0, 100)
+        mw.ZoomSlider.setValue(0)
+        mw.ZoomSlider.setTickPosition(QSlider.TicksBelow)
+        mw.ZoomSlider.setTickInterval(10)
+        mw.ZoomSlider.setStyleSheet(self._ZOOM_STYLE_PLATFORM)  # Cam1 activa por defecto
+        layout.addWidget(mw.ZoomSlider)
 
-        zoom_in = QPushButton(self._container)
-        zoom_in.setFixedSize(100, 100)
-        zoom_in.pressed.connect(mw.ZoomIn)
-        zoom_in.released.connect(mw.ZoomStop)
-        zoom_in.setStyleSheet(
-            "background-image: url(ZoomIn_120.png); border: none;")
+        # Debounce: envía zoom cada 150 ms mientras se arrastra; al soltar, envío inmediato
+        mw._zoom_timer = QtCore.QTimer(self._container)
+        mw._zoom_timer.setSingleShot(True)
+        mw._zoom_timer.setInterval(150)
+        mw._zoom_timer.timeout.connect(mw.ZoomAbsolute)
+        mw.ZoomSlider.valueChanged.connect(
+            lambda v: (mw.ZoomValueLabel.setText(f"{v}%"), mw._zoom_timer.start()))
+        mw.ZoomSlider.sliderReleased.connect(
+            lambda: (mw._zoom_timer.stop(), mw.ZoomAbsolute()))
 
-        row.addWidget(zoom_out)
-        row.addStretch()
-        row.addWidget(zoom_in)
-        layout.addLayout(row)
+        mw.Cam1.clicked.connect(mw._refresh_zoom_slider)
+        mw.Cam2.clicked.connect(mw._refresh_zoom_slider)
+        mw.Cam1.clicked.connect(
+            lambda: mw.ZoomSlider.setStyleSheet(self._ZOOM_STYLE_PLATFORM))
+        mw.Cam2.clicked.connect(
+            lambda: mw.ZoomSlider.setStyleSheet(self._ZOOM_STYLE_COMMENTS))
 
     def _add_joystick_slot(self, layout: QVBoxLayout):
         """Reserva un bloque cuadrado centrado para el DigitalJoystick."""

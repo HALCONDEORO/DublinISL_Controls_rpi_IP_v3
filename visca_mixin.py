@@ -20,6 +20,7 @@ import socket
 import binascii
 import threading
 
+from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
 from PyQt5.QtWidgets import QMessageBox
 
 from config import (
@@ -204,24 +205,71 @@ class ViscaMixin:
     # ─────────────────────────────────────────────────────────────────────────
     #  Zoom
     # ─────────────────────────────────────────────────────────────────────────
-    # Formato VISCA zoom variable: 8x 01 04 07 <speed_nibble> FF
-    #   Zoom In:  speed = 0x20 | zoom_speed  (nibble alto = 2)
-    #   Zoom Out: speed = 0x30 | zoom_speed  (nibble alto = 3)
-    #   Stop:     0x00
+    # Formato VISCA zoom absoluto: 8x 01 04 47 0p 0q 0r 0s FF
+    #   pqrs = 4 nibbles del valor (0x0000 wide–0x4000 tele)
+    # Formato inquiry zoom:        8x 09 04 47 FF
+    #   Respuesta:                 y0 50 0p 0q 0r 0s FF
 
-    def ZoomIn(self):
-        ip, cam_id = self._active_cam()
-        # OR con 0x20: nibble alto = 2 (zoom in), nibble bajo = velocidad
-        self._send_cmd_async(ip, cam_id, f"010407{0x20 | self._get_zoom_speed():02X}FF")
+    _ZOOM_MAX = 0x4000  # 16384 — valor VISCA máximo de zoom
 
-    def ZoomOut(self):
+    def ZoomAbsolute(self):
+        """Envía la posición de zoom absoluta según el valor del ZoomSlider (0–100 %)."""
         ip, cam_id = self._active_cam()
-        # OR con 0x30: nibble alto = 3 (zoom out), nibble bajo = velocidad
-        self._send_cmd_async(ip, cam_id, f"010407{0x30 | self._get_zoom_speed():02X}FF")
+        pct = self.ZoomSlider.value()
+        cam_key = 1 if ip == IPAddress else 2
+        self._zoom_cache[cam_key] = pct          # actualizar cache con valor enviado
+        pos = round(pct * self._ZOOM_MAX / 100)
+        p, q, r, s = (pos >> 12) & 0xF, (pos >> 8) & 0xF, (pos >> 4) & 0xF, pos & 0xF
+        self._send_cmd_async(ip, cam_id, f"010447{p:02X}{q:02X}{r:02X}{s:02X}FF")
 
-    def ZoomStop(self):
+    def _query_zoom(self, ip: str, cam_id: str) -> int | None:
+        """Consulta el zoom actual vía VISCA inquiry. Devuelve valor 0–0x4000 o None."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(SOCKET_TIMEOUT)
+                s.connect((ip, VISCA_PORT))
+                s.send(binascii.unhexlify(cam_id + "090447FF"))
+                data = s.recv(64)
+            if len(data) >= 7 and data[1] == 0x50:
+                return ((data[2] & 0xF) << 12 | (data[3] & 0xF) << 8
+                        | (data[4] & 0xF) << 4 | (data[5] & 0xF))
+        except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
+            logger.error("_query_zoom %s: %s", ip, exc)
+        return None
+
+    def _refresh_zoom_slider(self):
+        """
+        Actualiza el slider con el zoom de la cámara activa.
+        Usa el cache si ya existe un valor enviado; hace query de red solo si es None.
+        """
         ip, cam_id = self._active_cam()
-        self._send_cmd_async(ip, cam_id, "01040700FF")
+        cam_key = 1 if ip == IPAddress else 2
+        cached = self._zoom_cache.get(cam_key)
+        if cached is not None:
+            self.ZoomSlider.setValue(cached)
+            return
+
+        def _fetch():
+            val = self._query_zoom(ip, cam_id)
+            if val is not None:
+                pct = round(val * 100 / self._ZOOM_MAX)
+                self._zoom_cache[cam_key] = pct  # poblar cache desde red
+                QMetaObject.invokeMethod(
+                    self.ZoomSlider, "setValue",
+                    Qt.QueuedConnection, Q_ARG(int, pct)
+                )
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+    def _invalidate_zoom_cache(self, ip: str):
+        """
+        Invalida el cache de zoom para la cámara dada (preset recall mueve el zoom).
+        Si es la cámara activa, refresca el slider inmediatamente vía red.
+        """
+        cam_key = 1 if ip == IPAddress else 2
+        self._zoom_cache[cam_key] = None
+        if self._active_cam()[0] == ip:
+            self._refresh_zoom_slider()
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Focus
@@ -341,6 +389,8 @@ class ViscaMixin:
             # Modo Call: recall preset → 01 04 3F 02 <preset> FF
             if not self._send_cmd(ip, cam_id, f"01043f02{preset_hex}ff"):
                 self.ErrorCapture()
+            else:
+                self._invalidate_zoom_cache(ip)  # el preset mueve el zoom: refrescar slider
 
         elif self.BtnSet.isChecked():
             # Modo Set: confirmar antes de sobreescribir un preset
