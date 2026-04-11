@@ -17,7 +17,7 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont
 
-from config import IPAddress, IPAddress2, Cam1ID, Cam2ID, SOCKET_TIMEOUT, VISCA_PORT, SEAT_POSITIONS
+from config import IPAddress, IPAddress2, Cam1ID, Cam2ID, SOCKET_TIMEOUT, VISCA_PORT, SEAT_POSITIONS, ATEMAddress
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -263,13 +263,16 @@ class SplashScreen(QWidget):
         Siempre emite startup_complete al finalizar (con o sin errores).
         """
         tests = [
-            ("Operating System",      self._test_os),
-            ("Network Connectivity",  self._test_network),
-            ("Camera 1 (Platform)",   self._test_camera1),
-            ("Camera 2 (Audience)",   self._test_camera2),
-            ("Configuration",         self._test_config),
-            ("Statistics",            self._test_statistics),
-            ("Focus & Exposure",      self._test_focus_exposure),
+            ("Operating System",       self._test_os),
+            ("Network Connectivity",   self._test_network),
+            ("Camera 1 (Platform)",    self._test_camera1),
+            ("Camera 2 (Audience)",    self._test_camera2),
+            ("Configuration",          self._test_config),
+            ("Statistics",             self._test_statistics),
+            ("Focus & Exposure Cam1",  self._test_focus_exposure_cam1),
+            ("Focus & Exposure Cam2",  self._test_focus_exposure_cam2),
+            ("ATEM Switcher",          self._test_atem),
+            ("Data Files",             self._test_data_files),
         ]
         self.tests_total = len(tests)
 
@@ -287,24 +290,24 @@ class SplashScreen(QWidget):
                         result = {"success": False, "error": str(exc), "duration_ms": 0}
                     self._process_test_result(test_name, result)
 
-            # Estadísticas de boot
-            duration_ms = int((time.time() - self.boot_start_time) * 1000)
-            self.boot_stats.record_boot(duration_ms, self.tests_passed, self.tests_total)
+            # # Estadísticas de boot
+            # duration_ms = int((time.time() - self.boot_start_time) * 1000)
+            # self.boot_stats.record_boot(duration_ms, self.tests_passed, self.tests_total)
 
-            # Resumen de tiempos
-            self._update_log("\nTEST DURATION SUMMARY:")
-            for name, result in self.test_results.items():
-                status = "OK" if result.get("success") else "FAIL"
-                self._update_log(f"  [{status}] {name}: {result.get('duration_ms', 0)}ms")
-            self._update_log(f"\nTotal: {duration_ms}ms")
+            # # Resumen de tiempos
+            # self._update_log("\nTEST DURATION SUMMARY:")
+            # for name, result in self.test_results.items():
+            #     status = "OK" if result.get("success") else "FAIL"
+            #     self._update_log(f"  [{status}] {name}: {result.get('duration_ms', 0)}ms")
+            # self._update_log(f"\nTotal: {duration_ms}ms")
 
-            summary = self.boot_stats.get_summary()
-            if summary:
-                self._update_log(
-                    f"\nBoots: {summary['total_boots']} | "
-                    f"OK: {summary['success_rate']} | "
-                    f"Avg: {summary['avg_duration_ms']}ms"
-                )
+            # summary = self.boot_stats.get_summary()
+            # if summary:
+            #     self._update_log(
+            #         f"\nBoots: {summary['total_boots']} | "
+            #         f"OK: {summary['success_rate']} | "
+            #         f"Avg: {summary['avg_duration_ms']}ms"
+            #     )
 
             # Estado final
             if self.tests_passed == self.tests_total:
@@ -385,14 +388,46 @@ class SplashScreen(QWidget):
         except Exception:
             return False
 
-    def _test_focus_exposure(self) -> bool:
+    def _test_focus_exposure_cam1(self) -> bool:
         """
         Verifica que los comandos de foco y exposición llegan correctamente a Cam1.
-        Envía Auto Focus y Brightness Up; devuelve True si ambos obtienen respuesta.
+        Envía Auto Focus, Brightness Up y Backlight ON.
         """
-        af_ok = self._send_visca_cmd(IPAddress, Cam1ID, "01043802FF")
-        br_ok = self._send_visca_cmd(IPAddress, Cam1ID, "01040D02FF")
+        af_ok = self._send_visca_cmd(IPAddress, Cam1ID, "01043802FF")  # Auto Focus
+        br_ok = self._send_visca_cmd(IPAddress, Cam1ID, "01040D02FF")  # Brightness Up
+        bl_ok = self._send_visca_cmd(IPAddress, Cam1ID, "01043302FF")  # Backlight ON
+        return af_ok and br_ok and bl_ok
+
+    def _test_focus_exposure_cam2(self) -> bool:
+        """
+        Verifica que los comandos de foco y exposición llegan correctamente a Cam2.
+        Envía Auto Focus y Brightness Up.
+        """
+        af_ok = self._send_visca_cmd(IPAddress2, Cam2ID, "01043802FF")  # Auto Focus
+        br_ok = self._send_visca_cmd(IPAddress2, Cam2ID, "01040D02FF")  # Brightness Up
         return af_ok and br_ok
+
+    def _test_atem(self) -> bool:
+        """Verifica conectividad TCP con el ATEM Switcher (puerto 9910)."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(SOCKET_TIMEOUT)
+                return sock.connect_ex((ATEMAddress, 9910)) == 0
+        except OSError:
+            return False
+
+    def _test_data_files(self) -> bool:
+        """Verifica que seat_names.json y schedule.json son legibles y válidos."""
+        from config import load_names_data
+        names_ok = bool(load_names_data().get("names") is not None)
+        sched_ok = True
+        try:
+            p = Path("schedule.json")
+            if p.exists():
+                json.loads(p.read_text(encoding='utf-8'))
+        except (json.JSONDecodeError, OSError):
+            sched_ok = False
+        return names_ok and sched_ok
 
     def _test_os(self) -> bool:
         import platform
