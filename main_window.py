@@ -413,6 +413,8 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
             },
             stop_handler=self.Stop,
         )
+        # Estado inicial: Cam1 (Platform) está seleccionada → joystick en burdeo
+        self._right_panel.set_joystick_mode('platform')
 
     def _open_config_dialog(self):
         """Instancia y abre el diálogo de configuración técnica."""

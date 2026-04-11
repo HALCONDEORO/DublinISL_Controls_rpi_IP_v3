@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor, QPainter
 from PyQt5.QtWidgets import (
     QButtonGroup, QFrame, QHBoxLayout, QLabel,
     QPushButton, QSizePolicy, QSlider, QSpacerItem,
@@ -54,7 +55,12 @@ class RightPanel:
         """Inserta el DigitalJoystick en el slot reservado en el layout."""
         from joystick import DigitalJoystick
         slot = self._joystick_slot
-        DigitalJoystick(slot, None, None, slot.width(), handlers, stop_handler)
+        self._joystick = DigitalJoystick(slot, None, None, slot.width(), handlers, stop_handler)
+
+    def set_joystick_mode(self, mode: str):
+        """'platform' → burdeo  |  'comments' → verde."""
+        if hasattr(self, '_joystick'):
+            self._joystick.set_mode(mode)
 
     # ── Fondo exterior oscuro ─────────────────────────────────────────────────
 
@@ -106,7 +112,7 @@ class RightPanel:
         row.setContentsMargins(4, 4, 4, 4)
         row.setSpacing(0)
 
-        mw.Cam1 = QPushButton('Platform', toggle)
+        mw.Cam1 = _IndicatorButton('Platform', toggle)
         mw.Cam1.setCheckable(True)
         mw.Cam1.setAutoExclusive(True)
         mw.Cam1.setChecked(True)
@@ -114,7 +120,7 @@ class RightPanel:
         mw.Cam1.setStyleSheet(self.TOGGLE_STYLE)
         mw.Cam1.setFixedHeight(62)
 
-        mw.Cam2 = QPushButton('Comments', toggle)
+        mw.Cam2 = _IndicatorButton('Comments', toggle)
         mw.Cam2.setCheckable(True)
         mw.Cam2.setAutoExclusive(True)
         mw.Cam2.setToolTip('Select Comments Camera')
@@ -130,6 +136,8 @@ class RightPanel:
         mw.Camgroup.addButton(mw.Cam2)
         mw.Cam1.clicked.connect(mw._update_backlight_ui)
         mw.Cam2.clicked.connect(mw._update_backlight_ui)
+        mw.Cam1.clicked.connect(lambda: self.set_joystick_mode('platform'))
+        mw.Cam2.clicked.connect(lambda: self.set_joystick_mode('comments'))
 
     def _add_speed_slider(self, layout: QVBoxLayout):
         mw = self._mw
@@ -263,9 +271,11 @@ class RightPanel:
         layout.addWidget(_section_label('Focus & Exposure', self._container))
 
         _btn_style = (
-            "QPushButton{background-color: white; border: 2px solid #555;"
-            " font: bold 13px; color: black; border-radius: 4px;}"
-            "QPushButton:pressed{background-color: #ccc;}"
+            "QPushButton {"
+            "  background-color: #DCDCDC; border: none; border-radius: 10px;"
+            "  font: 600 13px 'Segoe UI'; color: #555555; padding: 4px 0px;"
+            "}"
+            "QPushButton:pressed { background-color: #B8B8B8; color: #111111; }"
         )
 
         # Fila superior: foco
@@ -302,12 +312,12 @@ class RightPanel:
         mw.BtnBacklight.setFixedHeight(45)
         mw.BtnBacklight.setToolTip('Toggle backlight compensation')
         mw._backlight_style_off = (
-            "QPushButton{background-color: white; border: 2px solid #555;"
-            " font: bold 13px; color: black; border-radius: 4px;}"
+            "QPushButton { background-color: #DCDCDC; border: none; border-radius: 10px;"
+            " font: 600 13px 'Segoe UI'; color: #555555; padding: 4px 0px; }"
         )
         mw._backlight_style_on = (
-            "QPushButton{background-color: #e6a800; border: 2px solid #b37f00;"
-            " font: bold 13px; color: white; border-radius: 4px;}"
+            "QPushButton { background-color: #e6a800; border: none; border-radius: 10px;"
+            " font: 600 13px 'Segoe UI'; color: white; padding: 4px 0px; }"
         )
         mw.BtnBacklight.setStyleSheet(mw._backlight_style_off)
         mw.BtnBacklight.clicked.connect(mw.BacklightToggle)
@@ -339,6 +349,32 @@ class RightPanel:
             "background-color: lightgrey; font: 15px; color: black; border: none;")
         btn_close.clicked.connect(mw.Quit)
         layout.addWidget(btn_close)
+
+
+# ── Widgets personalizados ────────────────────────────────────────────────────
+
+class _IndicatorButton(QPushButton):
+    """QPushButton que dibuja un pequeño punto rojo tenue en la esquina
+    superior derecha cuando el botón está seleccionado (checked)."""
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self.isChecked():
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        r = 5
+        margin = 8
+        x = self.width() - r * 2 - margin
+        y = margin
+        # Halo tenue
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(220, 50, 50, 50))
+        painter.drawEllipse(x - 2, y - 2, r * 2 + 4, r * 2 + 4)
+        # Punto rojo principal
+        painter.setBrush(QColor(210, 45, 45, 180))
+        painter.drawEllipse(x, y, r * 2, r * 2)
+        painter.end()
 
 
 # ── Helpers de módulo ─────────────────────────────────────────────────────────

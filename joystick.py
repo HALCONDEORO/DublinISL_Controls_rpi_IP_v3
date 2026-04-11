@@ -25,17 +25,30 @@ class DigitalJoystick(QWidget):
         4: 'down', 5: 'downleft', 6: 'left', 7: 'upleft',
     }
 
-    # Paleta — coincide con el esquema del panel derecho
-    _C_RING_BG      = QtGui.QColor(220, 220, 220, 230)   # ~#DCDCDC, toggle buttons
-    _C_RING_BORDER  = QtGui.QColor(180, 180, 180)         # ~#B4B4B4
-    _C_TICK         = QtGui.QColor(125, 196, 125)         # #7DC47D, acento verde slider
-    _C_TICK_ACTIVE  = QtGui.QColor(25, 118, 210)          # #1976D2, azul selector cámara
-    _C_KNOB_HI      = QtGui.QColor(255, 255, 255)         # blanco
-    _C_KNOB_LO      = QtGui.QColor(185, 185, 185)         # gris claro
+    # Paleta — colores fijos del aro
+    _C_RING_BG      = QtGui.QColor(220, 220, 220, 230)
+    _C_RING_BORDER  = QtGui.QColor(180, 180, 180)
+    _C_KNOB_HI      = QtGui.QColor(255, 255, 255)
+    _C_KNOB_LO      = QtGui.QColor(185, 185, 185)
     _C_KNOB_BORDER  = QtGui.QColor(160, 160, 160)
-    _C_KNOB_ACT_HI  = QtGui.QColor(232, 248, 232)         # verde muy claro
-    _C_KNOB_ACT_LO  = QtGui.QColor(100, 180, 100)         # verde medio
-    _C_KNOB_ACT_BRD = QtGui.QColor(125, 196, 125)         # #7DC47D
+
+    # Paleta modo "set" — verde
+    _COLORS_SET = {
+        'tick':     QtGui.QColor(125, 196, 125),   # #7DC47D
+        'tick_act': QtGui.QColor(25,  118, 210),   # #1976D2
+        'knob_hi':  QtGui.QColor(232, 248, 232),
+        'knob_lo':  QtGui.QColor(100, 180, 100),
+        'knob_brd': QtGui.QColor(125, 196, 125),
+    }
+
+    # Paleta modo "call" — burdeo
+    _COLORS_CALL = {
+        'tick':     QtGui.QColor(155,  58,  58),   # burdeo tenue
+        'tick_act': QtGui.QColor(180,  30,  30),   # burdeo activo
+        'knob_hi':  QtGui.QColor(249, 220, 220),   # rojo muy claro
+        'knob_lo':  QtGui.QColor(160,  50,  50),   # burdeo medio
+        'knob_brd': QtGui.QColor(110,  18,  18),   # burdeo oscuro
+    }
 
     def __init__(self, parent, x: int, y: int, size: int,
                  handlers: dict, stop_handler):
@@ -51,6 +64,7 @@ class DigitalJoystick(QWidget):
             self.setFixedSize(size, size)
         self.handlers     = handlers
         self.stop_handler = stop_handler
+        self._palette     = self._COLORS_SET   # modo por defecto: set (verde)
 
         # Permite que la transparencia del aro se componga sobre el panel
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -65,6 +79,12 @@ class DigitalJoystick(QWidget):
         self._knob_pos = QtCore.QPointF(r, r)
         self._tracking = False
         self._cur_dir  = None
+
+    # ── modo de color ──────────────────────────────────────────────────────────
+    def set_mode(self, mode: str):
+        """'platform' → burdeo  |  'comments' → verde."""
+        self._palette = self._COLORS_CALL if mode == 'platform' else self._COLORS_SET
+        self.update()
 
     # ── helpers ────────────────────────────────────────────────────────────────
     @property
@@ -93,12 +113,14 @@ class DigitalJoystick(QWidget):
             tx  = cx + tick_r * math.sin(rad)
             ty  = cy - tick_r * math.cos(rad)
             is_active = (self._cur_dir == self._DIR_MAP[i])
-            p.setBrush(self._C_TICK_ACTIVE if is_active else self._C_TICK)
+            p.setBrush(self._palette['tick_act'] if is_active else self._palette['tick'])
             p.drawEllipse(QtCore.QPointF(tx, ty), tick_size, tick_size)
 
         # Knob (bolita) — color cambia según estado
         if self._tracking and self._cur_dir:
-            hi, lo, brd = self._C_KNOB_ACT_HI, self._C_KNOB_ACT_LO, self._C_KNOB_ACT_BRD
+            hi  = self._palette['knob_hi']
+            lo  = self._palette['knob_lo']
+            brd = self._palette['knob_brd']
         else:
             hi, lo, brd = self._C_KNOB_HI, self._C_KNOB_LO, self._C_KNOB_BORDER
 
