@@ -3,7 +3,8 @@
     "allow": [
       "Bash(python -c ':*)",
       "Bash(git diff:*)",
-      "Bash(grep -n \"def go_to_preset\" /c/Users/marco/Desktop/Update2026/*.py)"
+      "Bash(grep -n \"def go_to_preset\" /c/Users/marco/Desktop/Update2026/*.py)",
+      "Bash(wc -l /c/Users/marco/Desktop/Update2026/*.py)"
     ]
   }
 }

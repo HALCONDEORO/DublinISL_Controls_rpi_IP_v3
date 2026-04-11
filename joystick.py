@@ -6,8 +6,10 @@
 import math
 
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import QWidget
+
+from config import SPEED_MAX
 
 
 class DigitalJoystick(QWidget):
@@ -24,6 +26,9 @@ class DigitalJoystick(QWidget):
         0: 'up', 1: 'upright', 2: 'right', 3: 'downright',
         4: 'down', 5: 'downleft', 6: 'left', 7: 'upleft',
     }
+
+    _SECTOR_HALF = 22.5   # grados por medio sector
+    _HYSTERESIS  = 10.0   # banda de histéresis en grados
 
     # Paleta — colores fijos del aro
     _C_RING_BG      = QtGui.QColor(220, 220, 220, 230)
@@ -51,20 +56,24 @@ class DigitalJoystick(QWidget):
     }
 
     def __init__(self, parent, x: int, y: int, size: int,
-                 handlers: dict, stop_handler):
+                 handlers: dict, stop_handler, speed_provider=None):
         """
-        handlers     : dict con claves 'up','down','left','right',
-                       'upleft','upright','downleft','downright'
-        stop_handler : callable sin argumentos
+        handlers       : dict con claves 'up','down','left','right',
+                         'upleft','upright','downleft','downright'
+                         Cada handler recibe (pan_spd: int, tilt_spd: int).
+        stop_handler   : callable sin argumentos
+        speed_provider : callable que devuelve int (velocidad máxima).
+                         Si es None usa SPEED_MAX como máximo.
         """
         super().__init__(parent)
         if x is not None and y is not None:
             self.setGeometry(x, y, size, size)
         else:
             self.setFixedSize(size, size)
-        self.handlers     = handlers
-        self.stop_handler = stop_handler
-        self._palette     = self._COLORS_SET   # modo por defecto: set (verde)
+        self.handlers        = handlers
+        self.stop_handler    = stop_handler
+        self._speed_provider = speed_provider or (lambda: SPEED_MAX)
+        self._palette        = self._COLORS_SET   # modo por defecto: set (verde)
 
         # Permite que la transparencia del aro se componga sobre el panel
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -76,9 +85,17 @@ class DigitalJoystick(QWidget):
         self._knob_r  = r * 0.28     # radio de la bolita
         self._dead_r  = r * 0.22     # zona muerta
 
-        self._knob_pos = QtCore.QPointF(r, r)
-        self._tracking = False
-        self._cur_dir  = None
+        self._knob_pos     = QtCore.QPointF(r, r)
+        self._tracking     = False
+        self._cur_dir      = None
+        self._cur_sector   = None    # None = sin sector activo
+        self._cur_pan_spd  = 1
+        self._cur_tilt_spd = 1
+
+        # Timer de reenvío continuo: mantiene el comando activo cada 150 ms
+        self._timer = QTimer(self)
+        self._timer.setInterval(150)
+        self._timer.timeout.connect(self._on_timer_tick)
 
     # ── modo de color ──────────────────────────────────────────────────────────
     def set_mode(self, mode: str):
@@ -143,11 +160,19 @@ class DigitalJoystick(QWidget):
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self._tracking = False
-            self._knob_pos = QtCore.QPointF(self._center)
-            self._cur_dir  = None
+            self._timer.stop()
+            self._tracking   = False
+            self._knob_pos   = QtCore.QPointF(self._center)
+            self._cur_dir    = None
+            self._cur_sector = None
             self.stop_handler()
             self.update()
+
+    # ── timer de reenvío ───────────────────────────────────────────────────────
+    def _on_timer_tick(self):
+        """Reenvía el comando activo cada 150 ms para robustez ante paquetes perdidos."""
+        if self._cur_dir and self._tracking:
+            self.handlers[self._cur_dir](self._cur_pan_spd, self._cur_tilt_spd)
 
     # ── lógica de dirección ────────────────────────────────────────────────────
     def _process(self, qpoint):
@@ -160,23 +185,51 @@ class DigitalJoystick(QWidget):
         if dist > self._outer_r:
             scale = self._outer_r / dist
             dx, dy = dx * scale, dy * scale
+            dist = self._outer_r
         self._knob_pos = center + QtCore.QPointF(dx, dy)
 
         # Zona muerta
         if dist < self._dead_r:
             if self._cur_dir is not None:
-                self._cur_dir = None
+                self._timer.stop()
+                self._cur_dir    = None
+                self._cur_sector = None
                 self.stop_handler()
             self.update()
             return
 
+        # Velocidad proporcional: componente de cada eje escalada al máximo del slider
+        max_spd  = self._speed_provider()
+        pan_spd  = max(1, round((abs(dx) / self._outer_r) * max_spd))
+        tilt_spd = max(1, round((abs(dy) / self._outer_r) * max_spd))
+
         # Ángulo: 0=arriba, 90=derecha, 180=abajo, 270=izquierda
-        angle   = math.degrees(math.atan2(dx, -dy)) % 360
-        sector  = int((angle + 22.5) / 45) % 8
-        new_dir = self._DIR_MAP[sector]
+        angle      = math.degrees(math.atan2(dx, -dy)) % 360
+        raw_sector = int((angle + self._SECTOR_HALF) / 45) % 8
+
+        # Histéresis: requiere ≥_HYSTERESIS grados dentro del nuevo sector para aceptarlo
+        if self._cur_sector is None:
+            accepted_sector = raw_sector
+        elif raw_sector == self._cur_sector:
+            accepted_sector = self._cur_sector
+        else:
+            sector_center      = raw_sector * 45.0
+            delta              = (angle - sector_center + 180) % 360 - 180
+            dist_from_boundary = self._SECTOR_HALF - abs(delta)
+            accepted_sector    = raw_sector if dist_from_boundary >= self._HYSTERESIS else self._cur_sector
+
+        new_dir = self._DIR_MAP[accepted_sector]
 
         if new_dir != self._cur_dir:
-            self._cur_dir = new_dir
-            self.handlers[new_dir]()
+            self._cur_sector   = accepted_sector
+            self._cur_dir      = new_dir
+            self._cur_pan_spd  = pan_spd
+            self._cur_tilt_spd = tilt_spd
+            self.handlers[new_dir](pan_spd, tilt_spd)
+            if not self._timer.isActive():
+                self._timer.start()
+        else:
+            self._cur_pan_spd  = pan_spd
+            self._cur_tilt_spd = tilt_spd
 
         self.update()

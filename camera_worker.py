@@ -84,6 +84,26 @@ class CameraWorker:
             logger.warning("CameraWorker %s: cola llena, descartado: %s", self.ip, hex_cmd)
             return False
 
+    def send_priority(self, hex_cmd: str):
+        """
+        Vacía la cola de comandos pendientes y coloca hex_cmd en primer lugar.
+
+        Usar para comandos críticos de parada: garantiza que el STOP se
+        ejecute inmediatamente sin esperar a comandos de movimiento acumulados.
+        Los comandos ya en vuelo (siendo enviados por el worker) no se ven afectados.
+        """
+        # Drenar la cola sin bloquear
+        while True:
+            try:
+                self._queue.get_nowait()
+            except queue.Empty:
+                break
+        # Insertar el comando prioritario
+        try:
+            self._queue.put_nowait(hex_cmd)
+        except queue.Full:
+            pass
+
     def _connect(self) -> Optional[socket.socket]:
         """
         Intenta abrir una conexión TCP nueva con la cámara.

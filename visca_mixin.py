@@ -65,15 +65,28 @@ class ViscaMixin:
         """
         Envía un comando VISCA en background sin esperar respuesta.
         Delega en CameraWorker (socket persistente, cola, reconexión automática).
-
-        Se usa para comandos de tiempo real (Stop, ZoomStop) donde
-        la latencia importa más que la confirmación.
         """
         worker = self._workers.get(ip)
         if worker:
             worker.send(cam_id_hex + cmd_suffix)
         else:
             # Fallback: thread puntual si el worker no existe (no debería ocurrir)
+            threading.Thread(
+                target=self._send_cmd,
+                args=(ip, cam_id_hex, cmd_suffix),
+                daemon=True
+            ).start()
+
+    def _send_cmd_priority(self, ip: str, cam_id_hex: str, cmd_suffix: str):
+        """
+        Vacía la cola del worker y coloca este comando en primer lugar.
+        Usar exclusivamente para STOP: garantiza que ningún comando de
+        movimiento acumulado retrase la parada.
+        """
+        worker = self._workers.get(ip)
+        if worker:
+            worker.send_priority(cam_id_hex + cmd_suffix)
+        else:
             threading.Thread(
                 target=self._send_cmd,
                 args=(ip, cam_id_hex, cmd_suffix),
@@ -144,37 +157,40 @@ class ViscaMixin:
     #   tilt_dir: 01=Arriba, 02=Abajo, 03=Parado
     # La velocidad de los ejes parados se envía como 0x00 para no mover nada.
 
-    def _move(self, pan_dir: int, tilt_dir: int):
+    def _move(self, pan_dir: int, tilt_dir: int,
+              pan_spd: int = None, tilt_spd: int = None):
         """
         Envía comando de movimiento pan/tilt a la cámara activa.
+        Si pan_spd/tilt_spd son None, lee la velocidad del SpeedSlider (retrocompatible).
         Los ejes con dirección 0x03 (parado) reciben velocidad 0 para
         no producir deriva accidental.
         """
         ip, cam_id = self._active_cam()
-        spd = self._get_speed()
-        pan_spd  = 0 if pan_dir  == 0x03 else spd
-        tilt_spd = 0 if tilt_dir == 0x03 else spd
+        if pan_spd is None:
+            pan_spd = tilt_spd = self._get_speed()
+        pan_spd  = 0 if pan_dir  == 0x03 else pan_spd
+        tilt_spd = 0 if tilt_dir == 0x03 else tilt_spd
         self._send_cmd_async(ip, cam_id,
             f"010601{pan_spd:02X}{tilt_spd:02X}{pan_dir:02X}{tilt_dir:02X}FF")
 
     # 8 direcciones: combinación de pan (01/02/03) y tilt (01/02/03)
-    def UpLeft(self):    self._move(0x01, 0x01)
-    def Up(self):        self._move(0x03, 0x01)
-    def UpRight(self):   self._move(0x02, 0x01)
-    def Left(self):      self._move(0x01, 0x03)
-    def Right(self):     self._move(0x02, 0x03)
-    def DownLeft(self):  self._move(0x01, 0x02)
-    def Down(self):      self._move(0x03, 0x02)
-    def DownRight(self): self._move(0x02, 0x02)
+    def UpLeft(self, pan_spd=None, tilt_spd=None):    self._move(0x01, 0x01, pan_spd, tilt_spd)
+    def Up(self, pan_spd=None, tilt_spd=None):        self._move(0x03, 0x01, pan_spd, tilt_spd)
+    def UpRight(self, pan_spd=None, tilt_spd=None):   self._move(0x02, 0x01, pan_spd, tilt_spd)
+    def Left(self, pan_spd=None, tilt_spd=None):      self._move(0x01, 0x03, pan_spd, tilt_spd)
+    def Right(self, pan_spd=None, tilt_spd=None):     self._move(0x02, 0x03, pan_spd, tilt_spd)
+    def DownLeft(self, pan_spd=None, tilt_spd=None):  self._move(0x01, 0x02, pan_spd, tilt_spd)
+    def Down(self, pan_spd=None, tilt_spd=None):      self._move(0x03, 0x02, pan_spd, tilt_spd)
+    def DownRight(self, pan_spd=None, tilt_spd=None): self._move(0x02, 0x02, pan_spd, tilt_spd)
 
     def Stop(self):
         """
         Para el movimiento pan/tilt.
-        Se envía async porque se llama en released() — necesita llegar
-        lo antes posible para evitar que la cámara siga moviéndose.
+        Vacía la cola de comandos pendientes y coloca STOP en primer lugar,
+        garantizando que ningún comando de movimiento acumulado retrase la parada.
         """
         ip, cam_id = self._active_cam()
-        self._send_cmd_async(ip, cam_id, "01060100000303FF")
+        self._send_cmd_priority(ip, cam_id, "01060100000303FF")
 
     def HomeButton(self):
         """Mueve la cámara activa a su posición Home."""

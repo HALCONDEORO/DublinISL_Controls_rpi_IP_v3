@@ -51,11 +51,12 @@ class RightPanel:
         self._build_outer_bg()
         self._build_panel()
 
-    def connect_joystick(self, handlers: dict, stop_handler):
+    def connect_joystick(self, handlers: dict, stop_handler, speed_provider=None):
         """Inserta el DigitalJoystick en el slot reservado en el layout."""
         from joystick import DigitalJoystick
         slot = self._joystick_slot
-        self._joystick = DigitalJoystick(slot, None, None, slot.width(), handlers, stop_handler)
+        self._joystick = DigitalJoystick(slot, None, None, slot.width(),
+                                         handlers, stop_handler, speed_provider)
 
     def set_joystick_mode(self, mode: str):
         """'platform' → burdeo  |  'comments' → verde."""
