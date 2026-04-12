@@ -8,8 +8,8 @@
 # Atributos que crea en main_window:
 #   mw.Cam1, mw.Cam2, mw.Camgroup
 #   mw.SpeedSlider, mw.SpeedValueLabel
-#   mw.BtnCall, mw.BtnSet, mw.PresetModeGroup
 #   mw.BtnBacklight, mw._backlight_style_off, mw._backlight_style_on
+# Nota: mw.BtnCall, mw.BtnSet y mw.PresetModeGroup se crean en main_window._build_mode_buttons()
 
 from __future__ import annotations
 
@@ -18,8 +18,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QPainter
 from PyQt5.QtWidgets import (
     QButtonGroup, QFrame, QHBoxLayout, QLabel,
-    QPushButton, QSizePolicy, QSlider, QSpacerItem,
-    QVBoxLayout, QWidget,
+    QPushButton, QSlider, QVBoxLayout, QWidget,
 )
 
 from config import SPEED_MIN, SPEED_MAX, SPEED_DEFAULT
@@ -117,7 +116,6 @@ class RightPanel:
 
         self._add_camera_selector(layout)
         self._add_speed_slider(layout)
-        self._add_preset_mode(layout)
         self._add_zoom_buttons(layout)
         self._add_joystick_slot(layout)
         self._add_separator(layout)
@@ -208,38 +206,6 @@ class RightPanel:
             lambda: mw.SpeedSlider.setStyleSheet(self._SLIDER_STYLE_PLATFORM))
         mw.Cam2.clicked.connect(
             lambda: mw.SpeedSlider.setStyleSheet(self._SLIDER_STYLE_COMMENTS))
-
-    def _add_preset_mode(self, layout: QVBoxLayout):
-        mw = self._mw
-        layout.addWidget(_section_label('Camera Presets', self._container))
-
-        toggle = _toggle_frame(self._container)
-        row = QHBoxLayout(toggle)
-        row.setContentsMargins(4, 4, 4, 4)
-        row.setSpacing(0)
-
-        mw.BtnCall = QPushButton('Call', toggle)
-        mw.BtnCall.setCheckable(True)
-        mw.BtnCall.setAutoExclusive(True)
-        mw.BtnCall.setChecked(True)
-        mw.BtnCall.setStyleSheet(self.TOGGLE_STYLE)
-        mw.BtnCall.setFixedHeight(62)
-
-        mw.BtnSet = QPushButton('Set', toggle)
-        mw.BtnSet.setCheckable(True)
-        mw.BtnSet.setAutoExclusive(True)
-        mw.BtnSet.setStyleSheet(self.TOGGLE_STYLE)
-        mw.BtnSet.setFixedHeight(62)
-
-        row.addWidget(mw.BtnCall)
-        row.addWidget(mw.BtnSet)
-        layout.addWidget(toggle)
-
-        mw.PresetModeGroup = QButtonGroup(mw)
-        mw.PresetModeGroup.addButton(mw.BtnCall)
-        mw.PresetModeGroup.addButton(mw.BtnSet)
-        mw.BtnCall.clicked.connect(mw._on_preset_mode_changed)
-        mw.BtnSet.clicked.connect(mw._on_preset_mode_changed)
 
     def _add_zoom_buttons(self, layout: QVBoxLayout):
         mw = self._mw

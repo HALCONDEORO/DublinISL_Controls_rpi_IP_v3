@@ -42,7 +42,8 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import (
-    QMainWindow, QPushButton, QToolButton, QLabel, QFrame,
+    QButtonGroup, QFrame, QLabel, QMainWindow,
+    QPushButton, QToolButton, QVBoxLayout,
 )
 
 from config import (
@@ -155,7 +156,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         self._build_table_seats()
         self._build_platform_icons()   # AL FINAL: z-order
         self._build_camera_indicator()
-        self._build_mode_indicator()
+        self._build_mode_buttons()
 
         self.BtnNames.raise_()
         self.BtnNames.hide()
@@ -171,31 +172,89 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         self._cam_indicator.set_mode('platform')   # Cam1 está activa por defecto
         self._cam_indicator.raise_()
 
-    def _build_mode_indicator(self):
+    def _build_mode_buttons(self):
         """
-        Badge en la esquina superior derecha del panel izquierdo que muestra
-        el modo actual: 📷 (Call) o ✏ (Set).
-        Se posiciona a la derecha de los iconos de plataforma, antes del panel derecho.
+        Crea BtnCall y BtnSet como botones flotantes a la izquierda del panel derecho.
+        Cada botón muestra la etiqueta (CALL/SET) arriba y el icono (📷/✏) abajo.
         """
-        self._mode_indicator = QLabel('📷', self)
-        self._mode_indicator.setGeometry(1100, 18, 68, 68)
-        self._mode_indicator.setAlignment(Qt.AlignCenter)
-        self._mode_indicator.setStyleSheet(
-            "QLabel {"
-            "  font-size: 32px;"
-            "  background-color: rgba(0, 0, 0, 55);"
-            "  border-radius: 12px;"
-            "  border: 1px solid rgba(255,255,255,60);"
-            "}"
+        STYLE_ACTIVE = (
+            "QFrame { background-color: rgba(255,255,255,230); border-radius: 12px;"
+            "  border: 2px solid rgba(0,0,0,120); }"
         )
-        self._mode_indicator.raise_()
+        STYLE_INACTIVE = (
+            "QFrame { background-color: rgba(0,0,0,130); border-radius: 12px;"
+            "  border: 1px solid rgba(255,255,255,25); }"
+        )
+        LBL_STYLE  = "QLabel { font: 700 11px 'Segoe UI'; color: #222222; background: transparent; border: none; }"
+        ICON_STYLE = "QLabel { font-size: 32px; background: transparent; border: none; }"
+
+        def make_frame(label_text, icon_text, x, y, active):
+            frame = QFrame(self)
+            frame.setGeometry(x, y, 82, 72)
+            frame.setStyleSheet(STYLE_ACTIVE if active else STYLE_INACTIVE)
+            frame.setCursor(Qt.PointingHandCursor)
+            vbox = QVBoxLayout(frame)
+            vbox.setContentsMargins(4, 5, 4, 5)
+            vbox.setSpacing(2)
+            lbl = QLabel(label_text, frame)
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet(LBL_STYLE)
+            if not active:
+                lbl.hide()
+            icon = QLabel(icon_text, frame)
+            icon.setAlignment(Qt.AlignCenter)
+            icon.setStyleSheet(ICON_STYLE)
+            vbox.addWidget(lbl)
+            vbox.addWidget(icon)
+            frame._label = lbl
+            frame._active_style   = STYLE_ACTIVE
+            frame._inactive_style = STYLE_INACTIVE
+            return frame
+
+        call_frame = make_frame("CALL", "📷", 1400, 28,  active=True)
+        set_frame  = make_frame("SET",  "✏",  1400, 108, active=False)
+
+        def activate(frame, other):
+            frame.setStyleSheet(frame._active_style)
+            frame._label.show()
+            other.setStyleSheet(other._inactive_style)
+            other._label.hide()
+
+        # Botones lógicos invisibles — mantienen estado y conectan con el resto del código
+        self.BtnCall = QPushButton(self)
+        self.BtnCall.setCheckable(True)
+        self.BtnCall.setAutoExclusive(True)
+        self.BtnCall.setChecked(True)
+        self.BtnCall.hide()
+
+        self.BtnSet = QPushButton(self)
+        self.BtnSet.setCheckable(True)
+        self.BtnSet.setAutoExclusive(True)
+        self.BtnSet.hide()
+
+        self.PresetModeGroup = QButtonGroup(self)
+        self.PresetModeGroup.addButton(self.BtnCall)
+        self.PresetModeGroup.addButton(self.BtnSet)
+
+        def _call_press(e):
+            self.BtnCall.click()
+            activate(call_frame, set_frame)
+
+        def _set_press(e):
+            self.BtnSet.click()
+            activate(set_frame, call_frame)
+
+        call_frame.mousePressEvent = _call_press
+        set_frame.mousePressEvent  = _set_press
+
+        self.BtnCall.clicked.connect(self._on_preset_mode_changed)
+        self.BtnSet.clicked.connect(self._on_preset_mode_changed)
+
+        call_frame.raise_()
+        set_frame.raise_()
 
     def _update_mode_indicator(self, mode: str):
-        """Actualiza el icono del badge y el overlay: 'call' → 📷+puntos  |  'set' → ✏+relleno"""
-        if mode == 'set':
-            self._mode_indicator.setText('✏')
-        else:
-            self._mode_indicator.setText('📷')
+        """Actualiza el overlay y los estilos de GoButton según el modo activo."""
         self._set_overlay.set_mode(mode)
         GoButton.set_call_mode(mode == 'call')
         for btn in self.findChildren(GoButton):
