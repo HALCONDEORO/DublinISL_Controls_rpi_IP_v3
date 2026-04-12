@@ -26,6 +26,7 @@
 #   dlg = ConfigDialog(self)
 #   dlg.exec_()   # modal — bloquea hasta que se cierre
 
+import socket
 import threading
 
 from PyQt5.QtCore import Qt, QTimer
@@ -36,7 +37,7 @@ from PyQt5.QtWidgets import (
 
 from schedule_dialog import ScheduleDialog
 
-from config import CAM1, CAM2
+from config import CAM1, CAM2, ATEMAddress
 
 
 class ConfigDialog(QDialog):
@@ -233,11 +234,11 @@ class ConfigDialog(QDialog):
 
         layout.addWidget(self._section_label('Focus & Exposure Test'))
 
-        # 6 indicadores: ● con etiqueta debajo
+        # 7 indicadores: ● con etiqueta debajo
         test_indicators = []
         ind_row = QHBoxLayout()
         ind_row.setSpacing(2)
-        for label_text in ['AF', '1PAF', 'MF', 'Dark', 'Bright', 'BL']:
+        for label_text in ['AF', '1PAF', 'MF', 'Dark', 'Bright', 'BL', 'ATEM']:
             dot = QLabel('●')
             dot.setAlignment(Qt.AlignCenter)
             dot.setFixedHeight(16)
@@ -267,17 +268,16 @@ class ConfigDialog(QDialog):
         )
         layout.addWidget(btn_run_test)
 
-        def _run_test_step(step, commands):
-            if step >= len(commands):
-                btn_run_test.setEnabled(True)
-                btn_run_test.setText('▶  Run Test')
-                return
-            cmd, idx = commands[step]
-            ip, cam_id = mw._visca._active_cam()
-            ok = mw._visca._send_cmd(ip, cam_id, cmd)
+        def _test_atem_connection():
+            try:
+                with socket.create_connection((ATEMAddress, 9910), timeout=3):
+                    ok = True
+            except OSError:
+                ok = False
             color = '#3d9e3d' if ok else '#b33030'
-            test_indicators[idx].setStyleSheet(f"color: {color}; font: 14px;")
-            QTimer.singleShot(500, lambda: _run_test_step(step + 1, commands))
+            test_indicators[6].setStyleSheet(f"color: {color}; font: 14px;")
+            btn_run_test.setEnabled(True)
+            btn_run_test.setText('▶  Run Test')
 
         def _on_test_clicked():
             for dot in test_indicators:
@@ -292,7 +292,22 @@ class ConfigDialog(QDialog):
                 ("01040D02FF", 4),   # Brighter
                 ("01043302FF", 5),   # Backlight ON
             ]
-            QTimer.singleShot(100, lambda: _run_test_step(0, commands))
+
+            def _after_visca():
+                threading.Thread(target=_test_atem_connection, daemon=True).start()
+
+            def _run_with_atem(step):
+                if step >= len(commands):
+                    QTimer.singleShot(100, _after_visca)
+                    return
+                cmd, idx = commands[step]
+                ip, cam_id = mw._visca._active_cam()
+                ok = mw._visca._send_cmd(ip, cam_id, cmd)
+                color = '#3d9e3d' if ok else '#b33030'
+                test_indicators[idx].setStyleSheet(f"color: {color}; font: 14px;")
+                QTimer.singleShot(500, lambda: _run_with_atem(step + 1))
+
+            QTimer.singleShot(100, lambda: _run_with_atem(0))
 
         btn_run_test.clicked.connect(_on_test_clicked)
 
