@@ -19,7 +19,7 @@
 #     ejecuta directamente con su botón propio, igual que antes.
 #   - Se cierra con el botón "Close" del diálogo o con Escape.
 #   - Los colores de los labels de IP/ID reflejan el estado de conectividad
-#     (Cam1Check / Cam2Check): verde = responde, rojo = no responde.
+#     (CAM1.check / CAM2.check): verde = responde, rojo = no responde.
 #
 # USO EN main_window.py:
 #   from config_dialog import ConfigDialog
@@ -36,10 +36,7 @@ from PyQt5.QtWidgets import (
 
 from schedule_dialog import ScheduleDialog
 
-from config import (
-    IPAddress, IPAddress2, Cam1ID, Cam2ID,
-    Cam1Check, Cam2Check,
-)
+from config import CAM1, CAM2
 
 
 class ConfigDialog(QDialog):
@@ -114,7 +111,7 @@ class ConfigDialog(QDialog):
             f" font: bold 14px; color: white; }}"
             f"QPushButton:pressed {{ background: {btn_pressed}; }}"
         )
-        btn_session.clicked.connect(lambda: (mw.ToggleSession(), self.accept()))
+        btn_session.clicked.connect(lambda: (mw._session.ToggleSession(), self.accept()))
         layout.addWidget(btn_session)
 
         # Separador
@@ -128,18 +125,18 @@ class ConfigDialog(QDialog):
 
         row1 = QHBoxLayout()
         # Botón IP: muestra la IP actual, color según conectividad
-        btn_ip1 = QPushButton('Platform  ' + IPAddress)
-        btn_ip1.setStyleSheet(self._cam_btn_style(Cam1Check, align_left=True))
+        btn_ip1 = QPushButton('Platform  ' + CAM1.ip)
+        btn_ip1.setStyleSheet(self._cam_btn_style(CAM1.check, align_left=True))
         btn_ip1.setToolTip('Change Platform camera IP address')
-        btn_ip1.clicked.connect(lambda: (mw.PTZ1Address(), self._try_close()))
+        btn_ip1.clicked.connect(lambda: (mw._dialogs.PTZ1Address(), self._try_close()))
         row1.addWidget(btn_ip1)
 
         # Botón ID: más pequeño, a la derecha
-        btn_id1 = QPushButton('ID  ' + Cam1ID)
+        btn_id1 = QPushButton('ID  ' + CAM1.cam_id)
         btn_id1.setFixedWidth(80)
-        btn_id1.setStyleSheet(self._cam_btn_style(Cam1Check))
+        btn_id1.setStyleSheet(self._cam_btn_style(CAM1.check))
         btn_id1.setToolTip('Change Platform camera VISCA ID')
-        btn_id1.clicked.connect(lambda: (mw.PTZ1IDchange(), self._try_close()))
+        btn_id1.clicked.connect(lambda: (mw._dialogs.PTZ1IDchange(), self._try_close()))
         row1.addWidget(btn_id1)
         layout.addLayout(row1)
 
@@ -147,17 +144,17 @@ class ConfigDialog(QDialog):
         layout.addWidget(self._section_label('Comments Camera'))
 
         row2 = QHBoxLayout()
-        btn_ip2 = QPushButton('Comments  ' + IPAddress2)
-        btn_ip2.setStyleSheet(self._cam_btn_style(Cam2Check, align_left=True))
+        btn_ip2 = QPushButton('Comments  ' + CAM2.ip)
+        btn_ip2.setStyleSheet(self._cam_btn_style(CAM2.check, align_left=True))
         btn_ip2.setToolTip('Change Comments camera IP address')
-        btn_ip2.clicked.connect(lambda: (mw.PTZ2Address(), self._try_close()))
+        btn_ip2.clicked.connect(lambda: (mw._dialogs.PTZ2Address(), self._try_close()))
         row2.addWidget(btn_ip2)
 
-        btn_id2 = QPushButton('ID  ' + Cam2ID)
+        btn_id2 = QPushButton('ID  ' + CAM2.cam_id)
         btn_id2.setFixedWidth(80)
-        btn_id2.setStyleSheet(self._cam_btn_style(Cam2Check))
+        btn_id2.setStyleSheet(self._cam_btn_style(CAM2.check))
         btn_id2.setToolTip('Change Comments camera VISCA ID')
-        btn_id2.clicked.connect(lambda: (mw.PTZ2IDchange(), self._try_close()))
+        btn_id2.clicked.connect(lambda: (mw._dialogs.PTZ2IDchange(), self._try_close()))
         row2.addWidget(btn_id2)
         layout.addLayout(row2)
 
@@ -178,7 +175,7 @@ class ConfigDialog(QDialog):
             "QPushButton:pressed { background: #37474F; }"
         )
         btn_pwd.setToolTip('Change the login password')
-        btn_pwd.clicked.connect(lambda: (mw.ChangePassword(), self._try_close()))
+        btn_pwd.clicked.connect(lambda: (mw._dialogs.ChangePassword(), self._try_close()))
         layout.addWidget(btn_pwd)
 
         # Separador
@@ -223,7 +220,7 @@ class ConfigDialog(QDialog):
             " border-radius: 4px; font: 12px; color: #333; }"
             "QPushButton:pressed { background: #e0e0e0; }"
         )
-        btn_help.clicked.connect(mw.HelpMsg)
+        btn_help.clicked.connect(mw._dialogs.HelpMsg)
         bottom.addWidget(btn_help)
 
         layout.addLayout(bottom)

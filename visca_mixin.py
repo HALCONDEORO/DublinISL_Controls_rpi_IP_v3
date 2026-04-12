@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-# visca_mixin.py — Mixin con todos los métodos de control VISCA
+# visca_mixin.py — Controlador VISCA inyectado por composición en MainWindow
 #
 # Responsabilidad única: contener TODA la lógica de envío de comandos VISCA
 # (movimiento, zoom, focus, exposición, presets).
 #
 # MOTIVO DE SEPARACIÓN: estos métodos son independientes del layout de la UI.
 # Separarlos permite modificar comandos VISCA sin tocar main_window.py, y
-# facilita añadir tests unitarios con un mock de _send_cmd.
+# facilita añadir tests unitarios con un mock de la ventana.
 #
-# PATRÓN MIXIN: esta clase no hereda de QMainWindow.  Se mezcla con
-# MainWindow en main_window.py mediante herencia múltiple.  Accede a
-# atributos de MainWindow (self.Cam1, self.SpeedSlider, etc.) porque
-# en tiempo de ejecución self es una instancia de MainWindow.
+# PATRÓN COMPOSICIÓN: esta clase recibe la ventana principal (window) en su
+# constructor y accede a sus widgets y datos a través de self._w.
+# Reemplaza el patrón mixin (herencia múltiple): para testear basta
+# instanciar ViscaController con un SimpleNamespace o mock de ventana.
 
-from __future__ import annotations  # Permite type hints modernos en Python <3.10
+from __future__ import annotations
 
 import logging
 import socket
@@ -24,16 +24,17 @@ from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
 from PyQt5.QtWidgets import QMessageBox
 
 from config import (
-    IPAddress, IPAddress2, Cam1ID, Cam2ID,
+    CAM1, CAM2,
     PRESET_MAP, SPEED_MIN, SPEED_MAX, SOCKET_TIMEOUT, VISCA_PORT
-    # SPEED_MIN se importa aquí (nivel de módulo) y NO dentro de _speed_label_text()
-    # — importar dentro de una función es válido pero va contra PEP 8 y confunde.
 )
 
 logger = logging.getLogger(__name__)
 
 
-class ViscaMixin:
+class ViscaController:
+
+    def __init__(self, window):
+        self._w = window
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Helpers de envío VISCA
@@ -67,7 +68,7 @@ class ViscaMixin:
         Envía un comando VISCA en background sin esperar respuesta.
         Delega en CameraWorker (socket persistente, cola, reconexión automática).
         """
-        worker = self._workers.get(ip)
+        worker = self._w._workers.get(ip)
         if worker:
             worker.send(cam_id_hex + cmd_suffix)
         else:
@@ -84,7 +85,7 @@ class ViscaMixin:
         Usar exclusivamente para STOP: garantiza que ningún comando de
         movimiento acumulado retrase la parada.
         """
-        worker = self._workers.get(ip)
+        worker = self._w._workers.get(ip)
         if worker:
             worker.send_priority(cam_id_hex + cmd_suffix)
         else:
@@ -99,13 +100,17 @@ class ViscaMixin:
         Devuelve (ip, cam_id) de la cámara actualmente seleccionada en la UI.
         Centraliza la lectura del toggle Cam1/Cam2 para no repetirlo en cada método.
         """
-        if self.Cam1.isChecked():
-            return IPAddress, Cam1ID
-        return IPAddress2, Cam2ID
+        if self._w.Cam1.isChecked():
+            return CAM1.ip, CAM1.cam_id
+        return CAM2.ip, CAM2.cam_id
+
+    def _cam_key(self, ip: str) -> int:
+        """Devuelve 1 para Cam1 y 2 para Cam2. Clave de los dicts por cámara."""
+        return 1 if ip == CAM1.ip else 2
 
     def ErrorCapture(self):
         """Muestra diálogo de error de red. Se llama cuando _send_cmd devuelve False."""
-        QMessageBox.warning(self, 'Camera Control Error',
+        QMessageBox.warning(self._w, 'Camera Control Error',
                             'A network error occurred. Check camera connections.')
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -117,7 +122,7 @@ class ViscaMixin:
         Lee la velocidad actual del slider (1-18).
         Se usa directamente como byte de velocidad pan/tilt en los comandos VISCA.
         """
-        return self.SpeedSlider.value()
+        return self._w.SpeedSlider.value()
 
     def _get_zoom_speed(self) -> int:
         """
@@ -125,7 +130,7 @@ class ViscaMixin:
         El protocolo VISCA limita la velocidad de zoom a 0x00-0x07.
         Se escala proporcionalmente y se clampea para evitar valores fuera de rango.
         """
-        return max(1, min(7, round(self.SpeedSlider.value() * 7 / SPEED_MAX)))
+        return max(1, min(7, round(self._w.SpeedSlider.value() * 7 / SPEED_MAX)))
 
     def _speed_label_text(self, value: int) -> str:
         """
@@ -148,7 +153,7 @@ class ViscaMixin:
 
     def _on_speed_changed(self, value: int):
         """Callback del slider: actualiza la etiqueta de velocidad en tiempo real."""
-        self.SpeedValueLabel.setText(self._speed_label_text(value))
+        self._w.SpeedValueLabel.setText(self._speed_label_text(value))
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Movimiento Pan/Tilt
@@ -200,7 +205,7 @@ class ViscaMixin:
 
     def _send_comments_cam_home(self):
         """Manda la cámara Comments (Cam2) a Home. Llamado por el ATEMMonitor."""
-        self._send_cmd_async(IPAddress2, Cam2ID, "010604FF")
+        self._send_cmd_async(CAM2.ip, CAM2.cam_id, "010604FF")
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Zoom
@@ -215,9 +220,9 @@ class ViscaMixin:
     def ZoomAbsolute(self):
         """Envía la posición de zoom absoluta según el valor del ZoomSlider (0–100 %)."""
         ip, cam_id = self._active_cam()
-        pct = self.ZoomSlider.value()
-        cam_key = 1 if ip == IPAddress else 2
-        self._zoom_cache[cam_key] = pct          # actualizar cache con valor enviado
+        pct = self._w.ZoomSlider.value()
+        cam_key = self._cam_key(ip)
+        self._w._zoom_cache[cam_key] = pct          # actualizar cache con valor enviado
         pos = round(pct * self._ZOOM_MAX / 100)
         p, q, r, s = (pos >> 12) & 0xF, (pos >> 8) & 0xF, (pos >> 4) & 0xF, pos & 0xF
         self._send_cmd_async(ip, cam_id, f"010447{p:02X}{q:02X}{r:02X}{s:02X}FF")
@@ -243,19 +248,19 @@ class ViscaMixin:
         Usa el cache si ya existe un valor enviado; hace query de red solo si es None.
         """
         ip, cam_id = self._active_cam()
-        cam_key = 1 if ip == IPAddress else 2
-        cached = self._zoom_cache.get(cam_key)
+        cam_key = self._cam_key(ip)
+        cached = self._w._zoom_cache.get(cam_key)
         if cached is not None:
-            self.ZoomSlider.setValue(cached)
+            self._w.ZoomSlider.setValue(cached)
             return
 
         def _fetch():
             val = self._query_zoom(ip, cam_id)
             if val is not None:
                 pct = round(val * 100 / self._ZOOM_MAX)
-                self._zoom_cache[cam_key] = pct  # poblar cache desde red
+                self._w._zoom_cache[cam_key] = pct  # poblar cache desde red
                 QMetaObject.invokeMethod(
-                    self.ZoomSlider, "setValue",
+                    self._w.ZoomSlider, "setValue",
                     Qt.QueuedConnection, Q_ARG(int, pct)
                 )
 
@@ -266,8 +271,8 @@ class ViscaMixin:
         Invalida el cache de zoom para la cámara dada (preset recall mueve el zoom).
         Si es la cámara activa, refresca el slider inmediatamente vía red.
         """
-        cam_key = 1 if ip == IPAddress else 2
-        self._zoom_cache[cam_key] = None
+        cam_key = self._cam_key(ip)
+        self._w._zoom_cache[cam_key] = None
         if self._active_cam()[0] == ip:
             self._refresh_zoom_slider()
 
@@ -279,9 +284,9 @@ class ViscaMixin:
         ip, cam_id = self._active_cam()
         ok = self._send_cmd(ip, cam_id, "01043802FF")
         if ok:
-            cam_key = 1 if ip == IPAddress else 2
-            self.focus_mode[cam_key] = 'auto'
-            self._update_focus_ui()
+            cam_key = self._cam_key(ip)
+            self._w.focus_mode[cam_key] = 'auto'
+            self._w._update_focus_ui()
         else:
             self.ErrorCapture()
 
@@ -289,9 +294,9 @@ class ViscaMixin:
         ip, cam_id = self._active_cam()
         ok = self._send_cmd(ip, cam_id, "01043803FF")
         if ok:
-            cam_key = 1 if ip == IPAddress else 2
-            self.focus_mode[cam_key] = 'manual'
-            self._update_focus_ui()
+            cam_key = self._cam_key(ip)
+            self._w.focus_mode[cam_key] = 'manual'
+            self._w._update_focus_ui()
         else:
             self.ErrorCapture()
 
@@ -299,7 +304,7 @@ class ViscaMixin:
         """Dispara un autofocus puntual y luego queda en modo manual."""
         ip, cam_id = self._active_cam()
         ok = self._send_cmd(ip, cam_id, "01041801FF")
-        self._right_panel._flash_button(self._right_panel.btn_one_push_af, ok)
+        self._w._right_panel._flash_button(self._w._right_panel.btn_one_push_af, ok)
         if not ok:
             self.ErrorCapture()
 
@@ -312,10 +317,10 @@ class ViscaMixin:
         ip, cam_id = self._active_cam()
         ok = self._send_cmd(ip, cam_id, "01040D02FF")
         if ok:
-            cam_key = 1 if ip == IPAddress else 2
-            self.exposure_level[cam_key] = min(7, self.exposure_level[cam_key] + 1)
-            self._update_exposure_ui()
-        self._right_panel._flash_button(self._right_panel.btn_brighter, ok)
+            cam_key = self._cam_key(ip)
+            self._w.exposure_level[cam_key] = min(7, self._w.exposure_level[cam_key] + 1)
+            self._w._update_exposure_ui()
+        self._w._right_panel._flash_button(self._w._right_panel.btn_brighter, ok)
         if not ok:
             self.ErrorCapture()
 
@@ -324,10 +329,10 @@ class ViscaMixin:
         ip, cam_id = self._active_cam()
         ok = self._send_cmd(ip, cam_id, "01040D03FF")
         if ok:
-            cam_key = 1 if ip == IPAddress else 2
-            self.exposure_level[cam_key] = max(-7, self.exposure_level[cam_key] - 1)
-            self._update_exposure_ui()
-        self._right_panel._flash_button(self._right_panel.btn_darker, ok)
+            cam_key = self._cam_key(ip)
+            self._w.exposure_level[cam_key] = max(-7, self._w.exposure_level[cam_key] - 1)
+            self._w._update_exposure_ui()
+        self._w._right_panel._flash_button(self._w._right_panel.btn_darker, ok)
         if not ok:
             self.ErrorCapture()
 
@@ -338,18 +343,18 @@ class ViscaMixin:
         el botón refleje el estado real al cambiar entre cámaras.
         """
         ip, cam_id = self._active_cam()
-        cam_key = 1 if ip == IPAddress else 2
+        cam_key = self._cam_key(ip)
 
-        if self.backlight_on[cam_key]:
+        if self._w.backlight_on[cam_key]:
             # Desactivar backlight compensation
             if self._send_cmd(ip, cam_id, "01043303FF"):
-                self.backlight_on[cam_key] = False
+                self._w.backlight_on[cam_key] = False
         else:
             # Activar backlight compensation
             if self._send_cmd(ip, cam_id, "01043302FF"):
-                self.backlight_on[cam_key] = True
+                self._w.backlight_on[cam_key] = True
 
-        self._update_backlight_ui()
+        self._w._update_backlight_ui()
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Presets
@@ -378,24 +383,24 @@ class ViscaMixin:
         # Determinar qué cámara controlar
         if preset_number in (1, 2, 3):
             # Presets de plataforma: siempre Cam1 (Platform)
-            ip, cam_id = IPAddress, Cam1ID
+            ip, cam_id = CAM1.ip, CAM1.cam_id
             cam_name = 'Platform'
         else:
             # Presets de asiento: siempre Cam2 (Comments)
-            ip, cam_id = IPAddress2, Cam2ID
+            ip, cam_id = CAM2.ip, CAM2.cam_id
             cam_name = 'Comments'
 
-        if self.BtnCall.isChecked():
+        if self._w.BtnCall.isChecked():
             # Modo Call: recall preset → 01 04 3F 02 <preset> FF
             if not self._send_cmd(ip, cam_id, f"01043f02{preset_hex}ff"):
                 self.ErrorCapture()
             else:
                 self._invalidate_zoom_cache(ip)  # el preset mueve el zoom: refrescar slider
 
-        elif self.BtnSet.isChecked():
+        elif self._w.BtnSet.isChecked():
             # Modo Set: confirmar antes de sobreescribir un preset
             reply = QMessageBox.question(
-                self, f'Record Preset {preset_number} ({cam_name})',
+                self._w, f'Record Preset {preset_number} ({cam_name})',
                 "Are you sure you want to record this preset?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No
             )

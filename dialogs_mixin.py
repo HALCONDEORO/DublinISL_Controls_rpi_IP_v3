@@ -31,7 +31,7 @@ from PyQt5.QtWidgets import (
 )
 
 from config import (
-    IPAddress, IPAddress2, Cam1ID, Cam2ID, Contact, LOGIN_PASSWORD,
+    CAM1, CAM2, Contact, LOGIN_PASSWORD,
     is_valid_ip, is_valid_cam_id,
 )
 
@@ -150,7 +150,10 @@ class ChangePasswordDialog(QDialog):
         self.accept()
 
 
-class DialogsMixin:
+class DialogsController:
+
+    def __init__(self, window):
+        self._w = window
 
     def _change_config(self, cam_num: int, config_type: str):
         """
@@ -178,14 +181,14 @@ class DialogsMixin:
 
         # Determinar qué campo cambiar según config_type
         if config_type == 'ip':
-            current  = IPAddress  if cam_num == 1 else IPAddress2
+            current  = CAM1.ip  if cam_num == 1 else CAM2.ip
             filename = 'PTZ1IP.txt' if cam_num == 1 else 'PTZ2IP.txt'
             field    = 'IP address'
             validate = is_valid_ip
             hint     = 'four numbers separated by dots (e.g. 172.16.1.11)'
             label    = 'IP Address'
         else:  # 'id'
-            current  = Cam1ID      if cam_num == 1 else Cam2ID
+            current  = CAM1.cam_id if cam_num == 1 else CAM2.cam_id
             filename = 'Cam1ID.txt' if cam_num == 1 else 'Cam2ID.txt'
             field    = 'VISCA ID'
             validate = is_valid_cam_id
@@ -196,7 +199,7 @@ class DialogsMixin:
 
         # Paso 1: confirmación — evitar cambios accidentales
         if QMessageBox.warning(
-            self, title,
+            self._w, title,
             f'Do you want to change the {field} used to control the {cam_name} camera?',
             QMessageBox.Ok, QMessageBox.Cancel
         ) != QMessageBox.Ok:
@@ -204,7 +207,7 @@ class DialogsMixin:
 
         # Paso 2: pedir nuevo valor
         text, ok = QInputDialog.getText(
-            self, title,
+            self._w, title,
             f'New {field} for {cam_name} Camera (current: {current}):',
             text=current,
         )
@@ -216,7 +219,7 @@ class DialogsMixin:
         # Paso 3: validar
         if not validate(text):
             QMessageBox.warning(
-                self, f'Invalid {label}',
+                self._w, f'Invalid {label}',
                 f'"{text}" is not a valid {field}.\nPlease enter {hint}.'
             )
             return
@@ -236,11 +239,11 @@ class DialogsMixin:
 
     def ChangePassword(self):
         """Diálogo para cambiar la contraseña de acceso."""
-        dlg = ChangePasswordDialog(self)
+        dlg = ChangePasswordDialog(self._w)
         if dlg.exec_() == QDialog.Accepted:
             Path('password.txt').write_text(dlg.new_password, encoding='utf-8')
             QMessageBox.information(
-                self, 'Password Changed',
+                self._w, 'Password Changed',
                 'Password updated successfully.\n'
                 'The new password will be required on next login.',
                 QMessageBox.Ok,
@@ -248,8 +251,8 @@ class DialogsMixin:
 
     def Quit(self):
         """Cierra la aplicación limpiamente (pasa por closeEvent)."""
-        self.close()
+        self._w.close()
 
     def HelpMsg(self):
         """Muestra el mensaje de contacto de soporte técnico."""
-        QMessageBox.information(self, 'For Technical Assistance', Contact, QMessageBox.Ok)
+        QMessageBox.information(self._w, 'For Technical Assistance', Contact, QMessageBox.Ok)

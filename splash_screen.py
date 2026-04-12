@@ -17,7 +17,7 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont
 
-from config import IPAddress, IPAddress2, Cam1ID, Cam2ID, SOCKET_TIMEOUT, VISCA_PORT, SEAT_POSITIONS, ATEMAddress
+from config import CAM1, CAM2, SOCKET_TIMEOUT, VISCA_PORT, SEAT_POSITIONS, ATEMAddress
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -393,9 +393,9 @@ class SplashScreen(QWidget):
         Verifica que los comandos de foco y exposición llegan correctamente a Cam1.
         Envía Auto Focus, Brightness Up y Backlight ON.
         """
-        af_ok = self._send_visca_cmd(IPAddress, Cam1ID, "01043802FF")  # Auto Focus
-        br_ok = self._send_visca_cmd(IPAddress, Cam1ID, "01040D02FF")  # Brightness Up
-        bl_ok = self._send_visca_cmd(IPAddress, Cam1ID, "01043302FF")  # Backlight ON
+        af_ok = self._send_visca_cmd(CAM1.ip, CAM1.cam_id, "01043802FF")  # Auto Focus
+        br_ok = self._send_visca_cmd(CAM1.ip, CAM1.cam_id, "01040D02FF")  # Brightness Up
+        bl_ok = self._send_visca_cmd(CAM1.ip, CAM1.cam_id, "01043302FF")  # Backlight ON
         return af_ok and br_ok and bl_ok
 
     def _test_focus_exposure_cam2(self) -> bool:
@@ -403,8 +403,8 @@ class SplashScreen(QWidget):
         Verifica que los comandos de foco y exposición llegan correctamente a Cam2.
         Envía Auto Focus y Brightness Up.
         """
-        af_ok = self._send_visca_cmd(IPAddress2, Cam2ID, "01043802FF")  # Auto Focus
-        br_ok = self._send_visca_cmd(IPAddress2, Cam2ID, "01040D02FF")  # Brightness Up
+        af_ok = self._send_visca_cmd(CAM2.ip, CAM2.cam_id, "01043802FF")  # Auto Focus
+        br_ok = self._send_visca_cmd(CAM2.ip, CAM2.cam_id, "01040D02FF")  # Brightness Up
         return af_ok and br_ok
 
     def _test_atem(self) -> bool:
@@ -438,10 +438,10 @@ class SplashScreen(QWidget):
         return True
 
     def _test_camera1(self) -> bool:
-        return self._test_camera(IPAddress, Cam1ID)
+        return self._test_camera(CAM1.ip, CAM1.cam_id)
 
     def _test_camera2(self) -> bool:
-        return self._test_camera(IPAddress2, Cam2ID)
+        return self._test_camera(CAM2.ip, CAM2.cam_id)
 
     def _test_camera(self, ip: str, cam_id: str) -> bool:
         """
@@ -461,7 +461,7 @@ class SplashScreen(QWidget):
         return connected
 
     def _test_config(self) -> bool:
-        return all([IPAddress, IPAddress2, Cam1ID, Cam2ID, SEAT_POSITIONS])
+        return all([CAM1.ip, CAM1.cam_id, CAM2.ip, CAM2.cam_id, SEAT_POSITIONS])
 
     def _test_statistics(self) -> bool:
         self.boot_stats._ensure_file_exists()

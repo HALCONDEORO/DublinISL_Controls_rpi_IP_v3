@@ -9,6 +9,7 @@ import re
 import socket
 import binascii
 import threading
+from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -56,13 +57,29 @@ NAMES_FILE = 'seat_names.json'
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  DATACLASS DE CONFIGURACIÓN DE CÁMARA
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class CameraConfig:
+    """Configuración de una cámara PTZ: dirección IP, VISCA ID y estado de conectividad."""
+    ip: str
+    cam_id: str
+    check: str = field(default="Red")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  CARGAR CONFIGURACIÓN DESDE ARCHIVOS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-IPAddress = _read_config('PTZ1IP.txt', '172.16.1.11')
-IPAddress2 = _read_config('PTZ2IP.txt', '172.16.1.12')
-Cam1ID = _read_config('Cam1ID.txt', '81')
-Cam2ID = _read_config('Cam2ID.txt', '82')
+CAM1 = CameraConfig(
+    ip=_read_config('PTZ1IP.txt', '172.16.1.11'),
+    cam_id=_read_config('Cam1ID.txt', '81'),
+)
+CAM2 = CameraConfig(
+    ip=_read_config('PTZ2IP.txt', '172.16.1.12'),
+    cam_id=_read_config('Cam2ID.txt', '82'),
+)
 ATEMAddress = _read_config('ATEMIP.txt', '192.168.1.240')
 Contact = _read_config('Contact.txt', 'No contact information available.')
 LOGIN_PASSWORD = _read_config('password.txt', 'dublin2024')
@@ -279,8 +296,8 @@ _cam2_result = [False]
 
 try:
     # Iniciar dos threads simultáneamente para chequear cámaras
-    def _run_cam1(): _cam1_result[0] = check_camera(IPAddress, Cam1ID)
-    def _run_cam2(): _cam2_result[0] = check_camera(IPAddress2, Cam2ID)
+    def _run_cam1(): _cam1_result[0] = check_camera(CAM1.ip, CAM1.cam_id)
+    def _run_cam2(): _cam2_result[0] = check_camera(CAM2.ip, CAM2.cam_id)
     t1 = threading.Thread(target=_run_cam1, daemon=True)
     t2 = threading.Thread(target=_run_cam2, daemon=True)
     t1.start()
@@ -291,6 +308,6 @@ try:
 except Exception as exc:
     logger.error("Error en threads de verificación de cámaras: %s", exc)
 
-# Traducir resultado a "Green" o "Red" para compatibilidad
-Cam1Check = "Green" if _cam1_result[0] else "Red"
-Cam2Check = "Green" if _cam2_result[0] else "Red"
+# Almacenar resultado de conectividad en cada instancia
+CAM1.check = "Green" if _cam1_result[0] else "Red"
+CAM2.check = "Green" if _cam2_result[0] else "Red"

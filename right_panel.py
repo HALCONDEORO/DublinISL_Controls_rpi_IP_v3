@@ -196,12 +196,12 @@ class RightPanel:
         layout.addLayout(row)
 
         mw.SpeedValueLabel = QLabel(
-            mw._speed_label_text(SPEED_DEFAULT), self._container)
+            mw._visca._speed_label_text(SPEED_DEFAULT), self._container)
         mw.SpeedValueLabel.setAlignment(Qt.AlignCenter)
         mw.SpeedValueLabel.setStyleSheet("font: 12px; color: #555;")
         layout.addWidget(mw.SpeedValueLabel)
 
-        mw.SpeedSlider.valueChanged.connect(mw._on_speed_changed)
+        mw.SpeedSlider.valueChanged.connect(mw._visca._on_speed_changed)
         mw.Cam1.clicked.connect(
             lambda: mw.SpeedSlider.setStyleSheet(self._SLIDER_STYLE_PLATFORM))
         mw.Cam2.clicked.connect(
@@ -230,14 +230,14 @@ class RightPanel:
         mw._zoom_timer = QtCore.QTimer(self._container)
         mw._zoom_timer.setSingleShot(True)
         mw._zoom_timer.setInterval(150)
-        mw._zoom_timer.timeout.connect(mw.ZoomAbsolute)
+        mw._zoom_timer.timeout.connect(mw._visca.ZoomAbsolute)
         mw.ZoomSlider.valueChanged.connect(
             lambda v: (mw.ZoomValueLabel.setText(f"{v}%"), mw._zoom_timer.start()))
         mw.ZoomSlider.sliderReleased.connect(
-            lambda: (mw._zoom_timer.stop(), mw.ZoomAbsolute()))
+            lambda: (mw._zoom_timer.stop(), mw._visca.ZoomAbsolute()))
 
-        mw.Cam1.clicked.connect(mw._refresh_zoom_slider)
-        mw.Cam2.clicked.connect(mw._refresh_zoom_slider)
+        mw.Cam1.clicked.connect(mw._visca._refresh_zoom_slider)
+        mw.Cam2.clicked.connect(mw._visca._refresh_zoom_slider)
         mw.Cam1.clicked.connect(
             lambda: mw.ZoomSlider.setStyleSheet(self._ZOOM_STYLE_PLATFORM))
         mw.Cam2.clicked.connect(
@@ -281,9 +281,9 @@ class RightPanel:
         self.btn_one_push_af  = QPushButton('One Push\nAF',  self._container)
         self.btn_manual_focus = QPushButton('Manual\nFocus', self._container)
         for btn, tooltip, handler in [
-            (self.btn_auto_focus,   'Auto Focus ON',                   mw.AutoFocus),
-            (self.btn_one_push_af,  'One-shot autofocus, then manual', mw.OnePushAF),
-            (self.btn_manual_focus, 'Manual Focus mode',               mw.ManualFocus),
+            (self.btn_auto_focus,   'Auto Focus ON',                   mw._visca.AutoFocus),
+            (self.btn_one_push_af,  'One-shot autofocus, then manual', mw._visca.OnePushAF),
+            (self.btn_manual_focus, 'Manual Focus mode',               mw._visca.ManualFocus),
         ]:
             btn.setFixedHeight(50)
             btn.setToolTip(tooltip)
@@ -298,8 +298,8 @@ class RightPanel:
         self.btn_darker   = QPushButton('▼ Darker\n0',   self._container)
         self.btn_brighter = QPushButton('▲ Brighter\n0', self._container)
         for btn, tooltip, handler in [
-            (self.btn_darker,   'Decrease exposure one step', mw.BrightnessDown),
-            (self.btn_brighter, 'Increase exposure one step', mw.BrightnessUp),
+            (self.btn_darker,   'Decrease exposure one step', mw._visca.BrightnessDown),
+            (self.btn_brighter, 'Increase exposure one step', mw._visca.BrightnessUp),
         ]:
             btn.setFixedHeight(50)
             btn.setToolTip(tooltip)
@@ -319,7 +319,7 @@ class RightPanel:
             " font: 600 13px 'Segoe UI'; color: white; padding: 4px 0px; }"
         )
         mw.BtnBacklight.setStyleSheet(mw._backlight_style_off)
-        mw.BtnBacklight.clicked.connect(mw.BacklightToggle)
+        mw.BtnBacklight.clicked.connect(mw._visca.BacklightToggle)
 
         # Insertar backlight en posición central
         exp_row.insertWidget(1, mw.BtnBacklight)
@@ -377,7 +377,7 @@ class RightPanel:
         btn_close.setFixedHeight(24)
         btn_close.setStyleSheet(
             "background-color: lightgrey; font: 15px; color: black; border: none;")
-        btn_close.clicked.connect(mw.Quit)
+        btn_close.clicked.connect(mw._dialogs.Quit)
         layout.addWidget(btn_close)
 
 

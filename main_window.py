@@ -32,6 +32,14 @@
 #     en chairman_presets para no perder el preset guardado.
 #   MOTIVO: distintos oradores tienen estaturas y distancias distintas;
 #   guardar la posición por persona evita reajustar la cámara manualmente.
+#
+# CAMBIOS COMPOSICIÓN:
+#   - Herencia múltiple de mixins eliminada. Cada mixin se convierte en un
+#     controlador inyectado como atributo: self._visca, self._session,
+#     self._dialogs, self._seat_names_ctrl.
+#   MOTIVO: el orden de MRO era frágil y los mixins eran difíciles de testear.
+#   Con composición, cada controlador es una clase independiente que recibe
+#   la ventana como argumento, facilitando los tests con mocks.
 
 from __future__ import annotations
 
@@ -47,7 +55,7 @@ from PyQt5.QtWidgets import (
 )
 
 from config import (
-    IPAddress, IPAddress2, Cam1ID, Cam2ID,
+    CAM1, CAM2,
     ATEMAddress,
     SEAT_POSITIONS,
     load_names_data,
@@ -57,11 +65,11 @@ from atem_monitor import ATEMMonitor
 from camera_worker import CameraWorker
 from widgets import GoButton, SpecialDragButton
 from names_panel import NamesPanel
-from visca_mixin import ViscaMixin
-from session_mixin import SessionMixin
-from dialogs_mixin import DialogsMixin
+from visca_mixin import ViscaController
+from session_mixin import SessionController
+from dialogs_mixin import DialogsController
 from config_dialog import ConfigDialog
-from seat_names_mixin import SeatNamesMixin
+from seat_names_mixin import SeatNamesController
 
 from platform_icons import SVG_LEFT, SVG_CHAIRMAN, SVG_RIGHT
 from seat_builder import build_special_seat_button
@@ -75,7 +83,7 @@ from camera_indicator import CameraIndicator
 from auditorium_overlay import AuditoriumOverlay
 
 
-class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWindow):
+class MainWindow(QMainWindow):
     """Ventana principal 1920x1080 px."""
 
     def __init__(self):
@@ -91,8 +99,8 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         self.session_active = False
 
         self._workers = {
-            IPAddress:  CameraWorker(IPAddress),
-            IPAddress2: CameraWorker(IPAddress2),
+            CAM1.ip: CameraWorker(CAM1.ip),
+            CAM2.ip: CameraWorker(CAM2.ip),
         }
 
         _data = load_names_data()
@@ -104,11 +112,19 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         # vean siempre el mismo dict sin necesidad de sincronizar copias.
         self._chairman_presets = load_chairman_presets()
 
+        # ── Controladores inyectados por composición ──────────────────────
+        # Se instancian antes de _build_ui para que las señales de la UI
+        # puedan conectarse directamente a sus métodos.
+        self._visca           = ViscaController(self)
+        self._session         = SessionController(self)
+        self._dialogs         = DialogsController(self)
+        self._seat_names_ctrl = SeatNamesController(self)
+
         self._build_ui()
         self._build_overlays()
 
         self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
-        self._atem_monitor.switched_to_input2.connect(self._send_comments_cam_home)
+        self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
         self._atem_monitor.start()
 
     # ─────────────────────────────────────────────────────────────────────
@@ -139,7 +155,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
     def _on_startup_done(self):
         """Tests completados: oculta splash y deja visible el contenido principal."""
         self._splash_overlay.hide()
-        self._refresh_zoom_slider()  # Sincroniza slider con el zoom real de la cámara activa
+        self._visca._refresh_zoom_slider()  # Sincroniza slider con el zoom real de la cámara activa
 
     # ─────────────────────────────────────────────────────────────────────
     # Construcción de la UI
@@ -152,7 +168,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         self._build_session_controls()
         self._build_right_panel()
         self._build_names_panel()
-        self._restore_seat_names()
+        self._seat_names_ctrl._restore_seat_names()
         self._build_table_seats()
         self._build_platform_icons()   # AL FINAL: z-order
         self._build_camera_indicator()
@@ -322,7 +338,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
             " font: bold 13px; color: black; }"
             "QToolButton:pressed { background-color: rgba(0,0,0,40); }"
         )
-        btn.clicked.connect(lambda checked=False: self.go_to_preset(2))
+        btn.clicked.connect(lambda checked=False: self._visca.go_to_preset(2))
         btn.raise_()
 
         # ── Chairman (preset 1) — ChairmanButton ──────────────────────────
@@ -336,10 +352,10 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
             parent=self,
         )
         self._chairman_btn.setGeometry(cx - btn_w // 2, 10, btn_w, btn_h)
-        self._chairman_btn.name_assigned.connect(self._on_seat_name_assigned)
+        self._chairman_btn.name_assigned.connect(self._seat_names_ctrl._on_seat_name_assigned)
         # Click sin nombre asignado → preset genérico 1
         self._chairman_btn.clicked.connect(
-            lambda checked=False: self.go_to_preset(CHAIRMAN_GENERIC_PRESET))
+            lambda checked=False: self._visca.go_to_preset(CHAIRMAN_GENERIC_PRESET))
         self._chairman_btn.raise_()
         # Clave "1" en seat_names.json y en _restore_seat_names
         setattr(self, "Seat1", self._chairman_btn)
@@ -359,7 +375,7 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
             " font: bold 13px; color: black; }"
             "QToolButton:pressed { background-color: rgba(0,0,0,40); }"
         )
-        btn.clicked.connect(lambda checked=False: self.go_to_preset(3))
+        btn.clicked.connect(lambda checked=False: self._visca.go_to_preset(3))
         btn.raise_()
 
     # ─────────────────────────────────────────────────────────────────────
@@ -377,10 +393,10 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         if not preset_hex:
             print(f"[CHAIRMAN] Preset {preset_num} no está en PRESET_MAP")
             return
-        if not self._send_cmd(IPAddress, Cam1ID, f"01043f02{preset_hex}ff"):
-            self.ErrorCapture()
+        if not self._visca._send_cmd(CAM1.ip, CAM1.cam_id, f"01043f02{preset_hex}ff"):
+            self._visca.ErrorCapture()
         else:
-            self._invalidate_zoom_cache(IPAddress)  # preset mueve zoom de Cam1
+            self._visca._invalidate_zoom_cache(CAM1.ip)  # preset mueve zoom de Cam1
 
     def _save_chairman_preset(self, name: str):
         """
@@ -408,8 +424,8 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
             print(f"[CHAIRMAN] Preset {preset_num} no está en PRESET_MAP")
             return
 
-        if not self._send_cmd(IPAddress, Cam1ID, f"01043f01{preset_hex}ff"):
-            self.ErrorCapture()
+        if not self._visca._send_cmd(CAM1.ip, CAM1.cam_id, f"01043f01{preset_hex}ff"):
+            self._visca.ErrorCapture()
             return
 
         save_chairman_presets(self._chairman_presets)
@@ -429,20 +445,20 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
             else:
                 button = GoButton(seat_number, self)
                 button.move(x, y)
-            button.name_assigned.connect(self._on_seat_name_assigned)
+            button.name_assigned.connect(self._seat_names_ctrl._on_seat_name_assigned)
             button.clicked.connect(
-                lambda checked=False, n=seat_number: self.go_to_preset(n))
+                lambda checked=False, n=seat_number: self._visca.go_to_preset(n))
             setattr(self, f"Seat{seat_number}", button)
 
     def _build_session_controls(self):
         # BtnSession y SessionStatus se mantienen como atributos de MainWindow
-        # para que SessionMixin pueda actualizarlos, pero están ocultos:
+        # para que SessionController pueda actualizarlos, pero están ocultos:
         # el control de sesión se muestra en el modal del engranaje (ConfigDialog).
         self.BtnSession = QPushButton('\u23fb', self)
         self.BtnSession.setGeometry(10, 10, 50, 50)
         self.BtnSession.setToolTip('Start Session: Power ON both cameras and go Home')
-        self.BtnSession.setStyleSheet(self._STYLE_BTN_OFF)
-        self.BtnSession.clicked.connect(self.ToggleSession)
+        self.BtnSession.setStyleSheet(SessionController._STYLE_BTN_OFF)
+        self.BtnSession.clicked.connect(self._session.ToggleSession)
         self.BtnSession.setVisible(False)
 
         self.SessionStatus = QLabel('OFF', self)
@@ -467,16 +483,16 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
         self._right_panel = RightPanel(self)
         self._right_panel.connect_joystick(
             handlers={
-                'up':        self.Up,
-                'down':      self.Down,
-                'left':      self.Left,
-                'right':     self.Right,
-                'upleft':    self.UpLeft,
-                'upright':   self.UpRight,
-                'downleft':  self.DownLeft,
-                'downright': self.DownRight,
+                'up':        self._visca.Up,
+                'down':      self._visca.Down,
+                'left':      self._visca.Left,
+                'right':     self._visca.Right,
+                'upleft':    self._visca.UpLeft,
+                'upright':   self._visca.UpRight,
+                'downleft':  self._visca.DownLeft,
+                'downright': self._visca.DownRight,
             },
-            stop_handler=self.Stop,
+            stop_handler=self._visca.Stop,
             speed_provider=self.SpeedSlider.value,
         )
         # Estado inicial: Cam1 (Platform) está seleccionada → joystick en burdeo
@@ -495,8 +511,8 @@ class MainWindow(ViscaMixin, SessionMixin, DialogsMixin, SeatNamesMixin, QMainWi
 
     def _build_names_panel(self):
         self._names_panel = NamesPanel(
-            self._names_list, self._on_names_list_changed,
-            self._clear_all_seats, parent=self)
+            self._names_list, self._seat_names_ctrl._on_names_list_changed,
+            self._seat_names_ctrl._clear_all_seats, parent=self)
         self._names_panel.hide()
 
     def _toggle_names_panel(self, checked: bool):

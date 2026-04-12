@@ -17,10 +17,10 @@
 from PyQt5 import QtCore
 from PyQt5.QtWidgets import QMessageBox
 
-from config import IPAddress, IPAddress2, Cam1ID, Cam2ID
+from config import CAM1, CAM2
 
 
-class SessionMixin:
+class SessionController:
 
     # ── Estilos del botón de sesión ────────────────────────────────────────
     # Extraídos como constantes de clase para evitar duplicación.
@@ -46,6 +46,9 @@ class SessionMixin:
         "QPushButton:pressed{background-color: #0d4d0d}"
     )
 
+    def __init__(self, window):
+        self._w = window
+
     def ToggleSession(self):
         """
         Botón ⏻: alterna entre iniciar y terminar la sesión.
@@ -61,19 +64,19 @@ class SessionMixin:
           2. Envía Standby (01 04 00 03 FF) a ambas cámaras.
           3. Actualiza UI a estado OFF.
         """
-        if not self.session_active:
+        if not self._w.session_active:
             # ── Arrancar sesión ───────────────────────────────────────────
-            self.session_active = True
+            self._w.session_active = True
 
             # Deshabilitar botón mientras las cámaras arrancan
-            self.BtnSession.setEnabled(False)
-            self.BtnSession.setStyleSheet(self._STYLE_BTN_STARTING)  # gris: en proceso
-            self.SessionStatus.setText('Starting...')
-            self.SessionStatus.setStyleSheet("font: bold 12px; color: #888")
+            self._w.BtnSession.setEnabled(False)
+            self._w.BtnSession.setStyleSheet(self._STYLE_BTN_STARTING)  # gris: en proceso
+            self._w.SessionStatus.setText('Starting...')
+            self._w.SessionStatus.setStyleSheet("font: bold 12px; color: #888")
 
             # Power ON ambas cámaras: 8x 01 04 00 02 FF
-            self._send_cmd(IPAddress,  Cam1ID, "01040002FF")
-            self._send_cmd(IPAddress2, Cam2ID, "01040002FF")
+            self._w._visca._send_cmd(CAM1.ip, CAM1.cam_id, "01040002FF")
+            self._w._visca._send_cmd(CAM2.ip, CAM2.cam_id, "01040002FF")
 
             # Esperar 8 s antes de enviar Home: los motores PTZ necesitan
             # este tiempo para inicializarse después de encenderse.
@@ -82,20 +85,20 @@ class SessionMixin:
         else:
             # ── Terminar sesión ───────────────────────────────────────────
             reply = QMessageBox.question(
-                self, 'End Session',
+                self._w, 'End Session',
                 'Power off both cameras and end the session?',
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No
             )
             if reply == QMessageBox.Yes:
                 # Standby ambas cámaras: 8x 01 04 00 03 FF
-                self._send_cmd(IPAddress,  Cam1ID, "01040003FF")
-                self._send_cmd(IPAddress2, Cam2ID, "01040003FF")
+                self._w._visca._send_cmd(CAM1.ip, CAM1.cam_id, "01040003FF")
+                self._w._visca._send_cmd(CAM2.ip, CAM2.cam_id, "01040003FF")
 
-                self.session_active = False
-                self.BtnSession.setStyleSheet(self._STYLE_BTN_OFF)  # rojo: apagado
-                self.BtnSession.setToolTip('Start Session: Power ON both cameras and go Home')
-                self.SessionStatus.setText('OFF')
-                self.SessionStatus.setStyleSheet("font: bold 12px; color: #8b1a1a")
+                self._w.session_active = False
+                self._w.BtnSession.setStyleSheet(self._STYLE_BTN_OFF)  # rojo: apagado
+                self._w.BtnSession.setToolTip('Start Session: Power ON both cameras and go Home')
+                self._w.SessionStatus.setText('OFF')
+                self._w.SessionStatus.setStyleSheet("font: bold 12px; color: #8b1a1a")
 
     def _session_home(self):
         """
@@ -103,11 +106,11 @@ class SessionMixin:
         Envía Home a ambas cámaras y activa el botón de sesión (verde = ON).
         """
         # Home: 8x 01 06 04 FF
-        self._send_cmd(IPAddress,  Cam1ID, "010604FF")
-        self._send_cmd(IPAddress2, Cam2ID, "010604FF")
+        self._w._visca._send_cmd(CAM1.ip, CAM1.cam_id, "010604FF")
+        self._w._visca._send_cmd(CAM2.ip, CAM2.cam_id, "010604FF")
 
-        self.BtnSession.setStyleSheet(self._STYLE_BTN_ON)  # verde: sesión activa
-        self.BtnSession.setToolTip('End Session: Power OFF (standby) both cameras')
-        self.BtnSession.setEnabled(True)
-        self.SessionStatus.setText('ON')
-        self.SessionStatus.setStyleSheet("font: bold 12px; color: #1a7a1a")
+        self._w.BtnSession.setStyleSheet(self._STYLE_BTN_ON)  # verde: sesión activa
+        self._w.BtnSession.setToolTip('End Session: Power OFF (standby) both cameras')
+        self._w.BtnSession.setEnabled(True)
+        self._w.SessionStatus.setText('ON')
+        self._w.SessionStatus.setStyleSheet("font: bold 12px; color: #1a7a1a")
