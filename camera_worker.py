@@ -34,7 +34,7 @@ from PyQt5.QtCore import QObject, pyqtSignal
 
 logger = logging.getLogger(__name__)
 
-from config import SOCKET_TIMEOUT, VISCA_PORT
+from config import SOCKET_TIMEOUT, VISCA_PORT, CAMERA_QUEUE_MAXSIZE, HEARTBEAT_TIMEOUT
 
 
 @dataclass
@@ -79,8 +79,6 @@ class CameraWorker:
       se descartan cuando la cola está llena.
     """
 
-    _QUEUE_MAXSIZE = 20  # Límite de cola: descarta comandos nuevos si se llena
-
     def __init__(self, ip: str, port: int = VISCA_PORT):
         self.ip   = ip
         self.port = port
@@ -89,7 +87,7 @@ class CameraWorker:
         self._is_connected = False            # estado actual de conexión
 
         # Cola con límite: put_nowait() lanza queue.Full si está llena
-        self._queue: queue.Queue = queue.Queue(maxsize=self._QUEUE_MAXSIZE)
+        self._queue: queue.Queue = queue.Queue(maxsize=CAMERA_QUEUE_MAXSIZE)
 
         # CAMBIADO: anotación de tipo usa Optional en lugar de `socket.socket | None`
         # MOTIVO: `|` para tipos es sintaxis Python 3.10+; Optional es compatible con 3.9
@@ -250,9 +248,9 @@ class CameraWorker:
         y el worker reintenta reconectando.
         """
         while True:
-            # Espera hasta 5 s; si no hay comando, ejecuta heartbeat y vuelve a esperar
+            # Espera hasta HEARTBEAT_TIMEOUT s; si no hay comando, ejecuta heartbeat y vuelve a esperar
             try:
-                cmd = self._queue.get(timeout=5.0)
+                cmd = self._queue.get(timeout=HEARTBEAT_TIMEOUT)
             except queue.Empty:
                 self._ping()
                 continue

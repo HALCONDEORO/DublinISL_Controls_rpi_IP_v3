@@ -52,6 +52,10 @@ SPEED_DEFAULT = 8
 # Timeout para conexiones socket (1 s: suficiente en LAN local)
 SOCKET_TIMEOUT = 1
 VISCA_PORT = 5678
+# Límite de cola del worker: descarta comandos nuevos si se llena
+CAMERA_QUEUE_MAXSIZE = 20
+# Segundos sin comando antes de enviar heartbeat (ping)
+HEARTBEAT_TIMEOUT = 5.0
 BUTTON_COLOR = "black"
 NAMES_FILE = 'seat_names.json'
 
