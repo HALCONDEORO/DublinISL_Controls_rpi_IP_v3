@@ -29,9 +29,16 @@ import binascii
 import threading
 from typing import Optional  # reemplaza `socket.socket | None` (sintaxis 3.10+)
 
+from PyQt5.QtCore import QObject, pyqtSignal
+
 logger = logging.getLogger(__name__)
 
 from config import SOCKET_TIMEOUT, VISCA_PORT
+
+
+class CameraWorkerSignals(QObject):
+    """Señales Qt para CameraWorker (QObject requerido para pyqtSignal)."""
+    connection_changed = pyqtSignal(bool)  # True = conectado, False = desconectado
 
 
 class CameraWorker:
@@ -53,6 +60,9 @@ class CameraWorker:
     def __init__(self, ip: str, port: int = VISCA_PORT):
         self.ip   = ip
         self.port = port
+
+        self.signals = CameraWorkerSignals()  # señales Qt para la UI
+        self._is_connected = False            # estado actual de conexión
 
         # Cola con límite: put_nowait() lanza queue.Full si está llena
         self._queue: queue.Queue = queue.Queue(maxsize=self._QUEUE_MAXSIZE)
@@ -104,6 +114,28 @@ class CameraWorker:
         except queue.Full:
             pass
 
+    def _set_connected(self, connected: bool):
+        """Actualiza el estado de conexión y emite señal si cambia."""
+        if connected != self._is_connected:
+            self._is_connected = connected
+            self.signals.connection_changed.emit(connected)
+
+    def _ping(self):
+        """Heartbeat periódico: verifica/restaura la conexión cuando la cola está inactiva."""
+        with self._lock:
+            sock_ref = self._sock
+
+        if sock_ref is not None:
+            # Socket existe → consideramos la conexión activa
+            self._set_connected(True)
+        else:
+            # Sin socket → intentar reconectar
+            with self._lock:
+                if self._sock is None:
+                    self._sock = self._connect()
+                sock_ref = self._sock
+            self._set_connected(sock_ref is not None)
+
     def _connect(self) -> Optional[socket.socket]:
         """
         Intenta abrir una conexión TCP nueva con la cámara.
@@ -121,12 +153,14 @@ class CameraWorker:
             s.settimeout(SOCKET_TIMEOUT)
             s.connect((self.ip, self.port))
             logger.info("CameraWorker: conectado a %s:%s", self.ip, self.port)
+            self._set_connected(True)
             return s
         except (socket.timeout, socket.error, OSError) as exc:
             # [WARN] y no [ERROR]: fallo de conexión en arranque es esperado
             # si las cámaras aún no están encendidas o alcanzables en desarrollo.
             logger.warning("CameraWorker: no se pudo conectar a %s: %s", self.ip, exc)
             s.close()  # Cierre explícito: evita leak de file descriptors
+            self._set_connected(False)
             return None
 
     def _close_socket(self):
@@ -138,6 +172,7 @@ class CameraWorker:
                 except Exception:
                     pass
                 self._sock = None
+        self._set_connected(False)
 
     def _run(self):
         """
@@ -158,7 +193,12 @@ class CameraWorker:
         y el worker reintenta reconectando.
         """
         while True:
-            cmd = self._queue.get()  # Bloquea hasta que haya algo en la cola
+            # Espera hasta 5 s; si no hay comando, ejecuta heartbeat y vuelve a esperar
+            try:
+                cmd = self._queue.get(timeout=5.0)
+            except queue.Empty:
+                self._ping()
+                continue
 
             # Intentar hasta 2 veces: 1ª con socket existente, 2ª tras reconectar
             for attempt in range(2):
@@ -180,6 +220,7 @@ class CameraWorker:
                     raw = binascii.unhexlify(cmd)
                     sock_ref.send(raw)
                     sock_ref.recv(1024)  # Leer ACK de la cámara (sin lock)
+                    self._set_connected(True)
                     break  # Éxito: salir del bucle de reintentos
 
                 except (socket.timeout, socket.error, OSError, binascii.Error) as exc:

@@ -123,6 +123,12 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._build_overlays()
 
+        # Conectar señales de estado de conexión a los botones de cámara
+        self._workers[CAM1.ip].signals.connection_changed.connect(
+            lambda ok: self.Cam1.set_connected(ok))
+        self._workers[CAM2.ip].signals.connection_changed.connect(
+            lambda ok: self.Cam2.set_connected(ok))
+
         self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
         self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
         self._atem_monitor.start()

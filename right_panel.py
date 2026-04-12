@@ -418,26 +418,43 @@ class RightPanel:
 # ── Widgets personalizados ────────────────────────────────────────────────────
 
 class _IndicatorButton(QPushButton):
-    """QPushButton que dibuja un pequeño punto rojo tenue en la esquina
-    superior derecha cuando el botón está seleccionado (checked)."""
+    """QPushButton con dos indicadores pintados:
+      - Esquina superior derecha: punto rojo cuando está seleccionado (checked).
+      - Esquina superior izquierda: LED verde/rojo de estado de conexión, siempre visible.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._connected: bool = False  # False = desconectado, True = conectado
+
+    def set_connected(self, connected: bool):
+        """Actualiza el estado de conexión y repinta el botón."""
+        if connected != self._connected:
+            self._connected = connected
+            self.update()
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        if not self.isChecked():
-            return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         r = 5
         margin = 8
-        x = self.width() - r * 2 - margin
-        y = margin
-        # Halo tenue
+
+        # ── LED de conexión (esquina superior izquierda) ─────────────────
+        lx = margin
+        ly = margin
+        if self._connected:
+            halo_color = QColor(40, 180, 80, 60)
+            led_color  = QColor(35, 170, 70, 210)
+        else:
+            halo_color = QColor(200, 40, 40, 60)
+            led_color  = QColor(190, 35, 35, 210)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(220, 50, 50, 50))
-        painter.drawEllipse(x - 2, y - 2, r * 2 + 4, r * 2 + 4)
-        # Punto rojo principal
-        painter.setBrush(QColor(210, 45, 45, 180))
-        painter.drawEllipse(x, y, r * 2, r * 2)
+        painter.setBrush(halo_color)
+        painter.drawEllipse(lx - 2, ly - 2, r * 2 + 4, r * 2 + 4)
+        painter.setBrush(led_color)
+        painter.drawEllipse(lx, ly, r * 2, r * 2)
+
         painter.end()
 
 
