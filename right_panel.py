@@ -51,9 +51,25 @@ class RightPanel:
     _SLIDER_STYLE_COMMENTS = _SLIDER_STYLE.format(
         fill='#64B464', handle='#7DC47D', border='#3A8A3A')  # verde
 
-    # Aliases para compatibilidad con las conexiones de zoom
-    _ZOOM_STYLE_PLATFORM = _SLIDER_STYLE_PLATFORM
-    _ZOOM_STYLE_COMMENTS = _SLIDER_STYLE_COMMENTS
+    # Estilo vertical para el slider de zoom (a la derecha del joystick)
+    # Con invertedAppearance=True el handle sube al aumentar el valor;
+    # add-page:vertical es la zona DEBAJO del handle → se llena de abajo hacia arriba.
+    _ZOOM_VERTICAL_STYLE = (
+        "QSlider::groove:vertical {{"
+        "  background: #E0E0E0; width: 6px; border-radius: 3px;"
+        "}}"
+        "QSlider::add-page:vertical {{"
+        "  background: {fill}; border-radius: 3px;"
+        "}}"
+        "QSlider::handle:vertical {{"
+        "  background: {handle}; border: 2px solid {border};"
+        "  width: 22px; height: 22px; margin: 0 -9px; border-radius: 11px;"
+        "}}"
+    )
+    _ZOOM_STYLE_PLATFORM = _ZOOM_VERTICAL_STYLE.format(
+        fill='#9B3A3A', handle='#B41E1E', border='#6E1212')  # burdeo
+    _ZOOM_STYLE_COMMENTS = _ZOOM_VERTICAL_STYLE.format(
+        fill='#64B464', handle='#7DC47D', border='#3A8A3A')  # verde
 
     TOGGLE_STYLE = (
         "QPushButton {"
@@ -115,9 +131,7 @@ class RightPanel:
         layout.setSpacing(7)
 
         self._add_camera_selector(layout)
-        self._add_speed_slider(layout)
-        self._add_zoom_buttons(layout)
-        self._add_joystick_slot(layout)
+        self._add_ptz_block(layout)
         self._add_separator(layout)
         self._add_focus_exposure(layout)
         self._add_config_buttons(layout)
@@ -164,42 +178,53 @@ class RightPanel:
         mw.Cam1.clicked.connect(lambda: self.set_joystick_mode('platform'))
         mw.Cam2.clicked.connect(lambda: self.set_joystick_mode('comments'))
 
-    def _add_speed_slider(self, layout: QVBoxLayout):
+    def _add_ptz_block(self, layout: QVBoxLayout):
+        """Bloque unificado: Speed (fila superior) · Joystick + Zoom (fila inferior)."""
         mw = self._mw
-        layout.addWidget(_section_label('PTZ Speed', self._container))
 
-        row = QHBoxLayout()
-        row.setSpacing(6)
+        block = QFrame(self._container)
+        block.setStyleSheet(
+            "QFrame { background-color: #F2F2F2; border-radius: 12px; border: none; }"
+        )
+        bl = QVBoxLayout(block)
+        bl.setContentsMargins(12, 10, 12, 10)
+        bl.setSpacing(6)
 
-        slow = QLabel('SLOW', self._container)
+        # ── Fila 1: PTZ Speed (ancho completo del bloque) ─────────────────────
+        bl.addWidget(_section_label('PTZ Speed', block))
+
+        speed_row = QHBoxLayout()
+        speed_row.setSpacing(6)
+
+        slow = QLabel('SLOW', block)
         slow.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         slow.setStyleSheet("font: bold 13px; color: #444;")
         slow.setFixedWidth(38)
 
-        mw.SpeedSlider = QSlider(Qt.Horizontal, self._container)
+        mw.SpeedSlider = QSlider(Qt.Horizontal, block)
         mw.SpeedSlider.setMinimum(SPEED_MIN)
         mw.SpeedSlider.setMaximum(SPEED_MAX)
         mw.SpeedSlider.setValue(SPEED_DEFAULT)
         mw.SpeedSlider.setTickPosition(QSlider.TicksBelow)
         mw.SpeedSlider.setTickInterval(3)
         mw.SpeedSlider.setFixedHeight(48)
-        mw.SpeedSlider.setStyleSheet(self._SLIDER_STYLE_PLATFORM)  # Cam1 activa por defecto
+        mw.SpeedSlider.setStyleSheet(self._SLIDER_STYLE_PLATFORM)
 
-        fast = QLabel('FAST', self._container)
+        fast = QLabel('FAST', block)
         fast.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         fast.setStyleSheet("font: bold 13px; color: #444;")
         fast.setFixedWidth(38)
 
-        row.addWidget(slow)
-        row.addWidget(mw.SpeedSlider)
-        row.addWidget(fast)
-        layout.addLayout(row)
+        speed_row.addWidget(slow)
+        speed_row.addWidget(mw.SpeedSlider)
+        speed_row.addWidget(fast)
+        bl.addLayout(speed_row)
 
         mw.SpeedValueLabel = QLabel(
-            mw._visca._speed_label_text(SPEED_DEFAULT), self._container)
+            mw._visca._speed_label_text(SPEED_DEFAULT), block)
         mw.SpeedValueLabel.setAlignment(Qt.AlignCenter)
         mw.SpeedValueLabel.setStyleSheet("font: 12px; color: #555;")
-        layout.addWidget(mw.SpeedValueLabel)
+        bl.addWidget(mw.SpeedValueLabel)
 
         mw.SpeedSlider.valueChanged.connect(mw._visca._on_speed_changed)
         mw.Cam1.clicked.connect(
@@ -207,27 +232,39 @@ class RightPanel:
         mw.Cam2.clicked.connect(
             lambda: mw.SpeedSlider.setStyleSheet(self._SLIDER_STYLE_COMMENTS))
 
-    def _add_zoom_buttons(self, layout: QVBoxLayout):
-        mw = self._mw
+        # ── Fila 2: Joystick (izquierda) + Zoom vertical (derecha) ───────────
+        joy_size = 248
+        slot = QWidget(block)
+        slot.setFixedSize(joy_size, joy_size)
+        self._joystick_slot = slot
 
-        header = QHBoxLayout()
-        header.addWidget(_section_label('Zoom', self._container))
-        mw.ZoomValueLabel = QLabel("0%", self._container)
-        mw.ZoomValueLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        mw.ZoomValueLabel.setStyleSheet("font: 600 14px 'Segoe UI'; color: #444444;")
-        header.addWidget(mw.ZoomValueLabel)
-        layout.addLayout(header)
+        # Contenedor zoom con altura fija = joystick → slider arriba, label abajo
+        zoom_w = QWidget(block)
+        zoom_w.setFixedSize(56, joy_size)
+        zoom_lay = QVBoxLayout(zoom_w)
+        zoom_lay.setContentsMargins(0, 0, 0, 0)
+        zoom_lay.setSpacing(4)
 
-        mw.ZoomSlider = QSlider(Qt.Horizontal, self._container)
+        mw.ZoomSlider = QSlider(Qt.Vertical, zoom_w)
         mw.ZoomSlider.setRange(0, 100)
         mw.ZoomSlider.setValue(0)
-        mw.ZoomSlider.setTickPosition(QSlider.TicksBelow)
+        mw.ZoomSlider.setTickPosition(QSlider.TicksRight)
         mw.ZoomSlider.setTickInterval(10)
-        mw.ZoomSlider.setStyleSheet(self._ZOOM_STYLE_PLATFORM)  # Cam1 activa por defecto
-        layout.addWidget(mw.ZoomSlider)
+        mw.ZoomSlider.setFixedHeight(joy_size - 44)
+        mw.ZoomSlider.setStyleSheet(self._ZOOM_STYLE_PLATFORM)
+        zoom_lay.addWidget(mw.ZoomSlider, alignment=Qt.AlignHCenter)
+
+        mw.ZoomValueLabel = QLabel("0%", zoom_w)
+        mw.ZoomValueLabel.setAlignment(Qt.AlignCenter)
+        mw.ZoomValueLabel.setStyleSheet("font: 600 13px 'Segoe UI'; color: #444444;")
+        zoom_lay.addWidget(mw.ZoomValueLabel)
+
+        zoom_title = _section_label('Zoom', zoom_w)
+        zoom_title.setAlignment(Qt.AlignCenter)
+        zoom_lay.addWidget(zoom_title)
 
         # Debounce: envía zoom cada 150 ms mientras se arrastra; al soltar, envío inmediato
-        mw._zoom_timer = QtCore.QTimer(self._container)
+        mw._zoom_timer = QtCore.QTimer(block)
         mw._zoom_timer.setSingleShot(True)
         mw._zoom_timer.setInterval(150)
         mw._zoom_timer.timeout.connect(mw._visca.ZoomAbsolute)
@@ -243,18 +280,15 @@ class RightPanel:
         mw.Cam2.clicked.connect(
             lambda: mw.ZoomSlider.setStyleSheet(self._ZOOM_STYLE_COMMENTS))
 
-    def _add_joystick_slot(self, layout: QVBoxLayout):
-        """Reserva un bloque cuadrado centrado para el DigitalJoystick."""
-        size = 310
-        slot = QWidget(self._container)
-        slot.setFixedSize(size, size)
-        self._joystick_slot = slot
+        joy_zoom_row = QHBoxLayout()
+        joy_zoom_row.setSpacing(8)
+        joy_zoom_row.addStretch()
+        joy_zoom_row.addWidget(slot, alignment=Qt.AlignTop)
+        joy_zoom_row.addWidget(zoom_w, alignment=Qt.AlignTop)
+        joy_zoom_row.addStretch()
+        bl.addLayout(joy_zoom_row)
 
-        center_row = QHBoxLayout()
-        center_row.addStretch()
-        center_row.addWidget(slot)
-        center_row.addStretch()
-        layout.addLayout(center_row)
+        layout.addWidget(block)
 
     def _add_separator(self, layout: QVBoxLayout):
         line = QFrame(self._container)
