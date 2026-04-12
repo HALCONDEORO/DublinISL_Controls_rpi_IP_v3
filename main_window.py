@@ -501,6 +501,10 @@ class MainWindow(QMainWindow):
         self._update_focus_ui()
         self._update_exposure_ui()
 
+        # Conectar heartbeat de cada worker al LED de estado del botón correspondiente
+        self._cameras.worker(CAM1.ip).signals.connection_changed.connect(self.Cam1.set_connected)
+        self._cameras.worker(CAM2.ip).signals.connection_changed.connect(self.Cam2.set_connected)
+
     def _open_config_dialog(self):
         """Instancia y abre el diálogo de configuración técnica."""
         dlg = ConfigDialog(parent=self)
