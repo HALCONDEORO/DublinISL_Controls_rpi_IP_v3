@@ -34,8 +34,8 @@ class RightPanel:
     se asignan como atributos de main_window para compatibilidad total.
     """
 
-    # Estilos del slider de zoom — misma paleta que el joystick
-    _ZOOM_STYLE = (
+    # Estilo base compartido para ambos sliders — handle 22 px, groove 6 px
+    _SLIDER_STYLE = (
         "QSlider::groove:horizontal {{"
         "  background: #E0E0E0; height: 6px; border-radius: 3px;"
         "}}"
@@ -44,13 +44,17 @@ class RightPanel:
         "}}"
         "QSlider::handle:horizontal {{"
         "  background: {handle}; border: 2px solid {border};"
-        "  width: 16px; height: 16px; margin: -5px 0; border-radius: 8px;"
+        "  width: 22px; height: 22px; margin: -9px 0; border-radius: 11px;"
         "}}"
     )
-    _ZOOM_STYLE_PLATFORM = _ZOOM_STYLE.format(
+    _SLIDER_STYLE_PLATFORM = _SLIDER_STYLE.format(
         fill='#9B3A3A', handle='#B41E1E', border='#6E1212')  # burdeo
-    _ZOOM_STYLE_COMMENTS = _ZOOM_STYLE.format(
+    _SLIDER_STYLE_COMMENTS = _SLIDER_STYLE.format(
         fill='#64B464', handle='#7DC47D', border='#3A8A3A')  # verde
+
+    # Aliases para compatibilidad con las conexiones de zoom
+    _ZOOM_STYLE_PLATFORM = _SLIDER_STYLE_PLATFORM
+    _ZOOM_STYLE_COMMENTS = _SLIDER_STYLE_COMMENTS
 
     TOGGLE_STYLE = (
         "QPushButton {"
@@ -181,18 +185,7 @@ class RightPanel:
         mw.SpeedSlider.setTickPosition(QSlider.TicksBelow)
         mw.SpeedSlider.setTickInterval(3)
         mw.SpeedSlider.setFixedHeight(48)
-        mw.SpeedSlider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                height: 6px; background: #E0E0E0; border-radius: 3px;
-            }
-            QSlider::handle:horizontal {
-                background: white; border: 2px solid #7DC47D;
-                width: 22px; height: 22px; margin: -9px 0; border-radius: 11px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #7DC47D; border-radius: 3px;
-            }
-        """)
+        mw.SpeedSlider.setStyleSheet(self._SLIDER_STYLE_PLATFORM)  # Cam1 activa por defecto
 
         fast = QLabel('FAST', self._container)
         fast.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -211,6 +204,10 @@ class RightPanel:
         layout.addWidget(mw.SpeedValueLabel)
 
         mw.SpeedSlider.valueChanged.connect(mw._on_speed_changed)
+        mw.Cam1.clicked.connect(
+            lambda: mw.SpeedSlider.setStyleSheet(self._SLIDER_STYLE_PLATFORM))
+        mw.Cam2.clicked.connect(
+            lambda: mw.SpeedSlider.setStyleSheet(self._SLIDER_STYLE_COMMENTS))
 
     def _add_preset_mode(self, layout: QVBoxLayout):
         mw = self._mw
