@@ -507,36 +507,42 @@ class ViscaProtocol:
         Modo Call: envía recall preset (02).
         Modo Set:  pide confirmación y envía save preset (01).
         """
-        preset_hex = PRESET_MAP.get(preset_number)
-        if not preset_hex:
-            logger.warning("go_to_preset: preset %d no está en PRESET_MAP", preset_number)
-            return
-
-        # Determinar qué cámara controlar
-        if preset_number in (1, 2, 3):
-            # Presets de plataforma: siempre Cam1 (Platform)
-            ip, cam_id = CAM1.ip, CAM1.cam_id
-            cam_name = 'Platform'
-        else:
-            # Presets de asiento: siempre Cam2 (Comments)
-            ip, cam_id = CAM2.ip, CAM2.cam_id
-            cam_name = 'Comments'
-
         if self._ui_cb.is_call_mode():
-            # Modo Call: recall preset → 01 04 3F 02 <preset> FF
+            self._recall_preset(preset_number)
+        elif self._ui_cb.is_set_mode():
+            self._save_preset(preset_number)
+
+    def _recall_preset(self, preset_number: int):
+        """Modo Call: envía recall preset → 01 04 3F 02 <preset> FF."""
+        preset_hex, ip, cam_id = self._resolve_preset(preset_number)
+        if preset_hex is None:
+            return
+        self._dispatch(ViscaCommand(
+            camera=self._cam_key(ip),
+            payload=bytes.fromhex(cam_id + f"01043f02{preset_hex}ff"),
+            on_success=lambda: self._invalidate_zoom_cache(ip),
+            on_failure=lambda: self._ui(self._ui_cb.show_error),
+        ))
+
+    def _save_preset(self, preset_number: int):
+        """Modo Set: pide confirmación y envía save preset → 01 04 3F 01 <preset> FF."""
+        preset_hex, ip, cam_id = self._resolve_preset(preset_number)
+        if preset_hex is None:
+            return
+        cam_name = 'Platform' if preset_number in (1, 2, 3) else 'Comments'
+        if self._ui_cb.confirm_preset(preset_number, cam_name):
             self._dispatch(ViscaCommand(
                 camera=self._cam_key(ip),
-                payload=bytes.fromhex(cam_id + f"01043f02{preset_hex}ff"),
-                on_success=lambda: self._invalidate_zoom_cache(ip),
+                payload=bytes.fromhex(cam_id + f"01043f01{preset_hex}ff"),
                 on_failure=lambda: self._ui(self._ui_cb.show_error),
             ))
 
-        elif self._ui_cb.is_set_mode():
-            # Modo Set: confirmar antes de sobreescribir un preset
-            if self._ui_cb.confirm_preset(preset_number, cam_name):
-                # Save preset → 01 04 3F 01 <preset> FF
-                self._dispatch(ViscaCommand(
-                    camera=self._cam_key(ip),
-                    payload=bytes.fromhex(cam_id + f"01043f01{preset_hex}ff"),
-                    on_failure=lambda: self._ui(self._ui_cb.show_error),
-                ))
+    def _resolve_preset(self, preset_number: int):
+        """Devuelve (preset_hex, ip, cam_id) para el preset dado, o (None, None, None) si inválido."""
+        preset_hex = PRESET_MAP.get(preset_number)
+        if not preset_hex:
+            logger.warning("go_to_preset: preset %d no está en PRESET_MAP", preset_number)
+            return None, None, None
+        if preset_number in (1, 2, 3):
+            return preset_hex, CAM1.ip, CAM1.cam_id
+        return preset_hex, CAM2.ip, CAM2.cam_id
