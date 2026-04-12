@@ -19,6 +19,7 @@ import socket
 import binascii
 import threading
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import Callable, Optional
 
 from config import (
@@ -29,6 +30,18 @@ from camera_worker import ViscaCommand
 from camera_manager import CameraManager
 
 logger = logging.getLogger(__name__)
+
+
+class PanDir(IntEnum):
+    LEFT  = 0x01
+    RIGHT = 0x02
+    STOP  = 0x03
+
+
+class TiltDir(IntEnum):
+    UP   = 0x01
+    DOWN = 0x02
+    STOP = 0x03
 
 
 @dataclass
@@ -251,19 +264,18 @@ class ViscaProtocol:
     #   tilt_dir: 01=Arriba, 02=Abajo, 03=Parado
     # La velocidad de los ejes parados se envía como 0x00 para no mover nada.
 
-    def _move(self, pan_dir: int, tilt_dir: int,
+    def _move(self, pan_dir: PanDir, tilt_dir: TiltDir,
               pan_spd: int = None, tilt_spd: int = None):
         """
         Envía comando de movimiento pan/tilt a la cámara activa.
         Si pan_spd/tilt_spd son None, lee la velocidad del SpeedSlider (retrocompatible).
-        Los ejes con dirección 0x03 (parado) reciben velocidad 0 para
-        no producir deriva accidental.
+        Los ejes con dirección STOP reciben velocidad 0 para no producir deriva accidental.
         """
         ip, cam_id = self._active_cam()
         if pan_spd is None:
             pan_spd = tilt_spd = self._get_speed()
-        pan_spd  = 0 if pan_dir  == 0x03 else pan_spd
-        tilt_spd = 0 if tilt_dir == 0x03 else tilt_spd
+        pan_spd  = 0 if pan_dir  == PanDir.STOP  else pan_spd
+        tilt_spd = 0 if tilt_dir == TiltDir.STOP else tilt_spd
         self._dispatch(ViscaCommand(
             camera=self._cam_key(ip),
             payload=bytes.fromhex(
@@ -271,15 +283,15 @@ class ViscaProtocol:
             ),
         ))
 
-    # 8 direcciones: combinación de pan (01/02/03) y tilt (01/02/03)
-    def UpLeft(self, pan_spd=None, tilt_spd=None):    self._move(0x01, 0x01, pan_spd, tilt_spd)
-    def Up(self, pan_spd=None, tilt_spd=None):        self._move(0x03, 0x01, pan_spd, tilt_spd)
-    def UpRight(self, pan_spd=None, tilt_spd=None):   self._move(0x02, 0x01, pan_spd, tilt_spd)
-    def Left(self, pan_spd=None, tilt_spd=None):      self._move(0x01, 0x03, pan_spd, tilt_spd)
-    def Right(self, pan_spd=None, tilt_spd=None):     self._move(0x02, 0x03, pan_spd, tilt_spd)
-    def DownLeft(self, pan_spd=None, tilt_spd=None):  self._move(0x01, 0x02, pan_spd, tilt_spd)
-    def Down(self, pan_spd=None, tilt_spd=None):      self._move(0x03, 0x02, pan_spd, tilt_spd)
-    def DownRight(self, pan_spd=None, tilt_spd=None): self._move(0x02, 0x02, pan_spd, tilt_spd)
+    # 8 direcciones: combinación de PanDir y TiltDir
+    def UpLeft(self, pan_spd=None, tilt_spd=None):    self._move(PanDir.LEFT,  TiltDir.UP,   pan_spd, tilt_spd)
+    def Up(self, pan_spd=None, tilt_spd=None):        self._move(PanDir.STOP,  TiltDir.UP,   pan_spd, tilt_spd)
+    def UpRight(self, pan_spd=None, tilt_spd=None):   self._move(PanDir.RIGHT, TiltDir.UP,   pan_spd, tilt_spd)
+    def Left(self, pan_spd=None, tilt_spd=None):      self._move(PanDir.LEFT,  TiltDir.STOP, pan_spd, tilt_spd)
+    def Right(self, pan_spd=None, tilt_spd=None):     self._move(PanDir.RIGHT, TiltDir.STOP, pan_spd, tilt_spd)
+    def DownLeft(self, pan_spd=None, tilt_spd=None):  self._move(PanDir.LEFT,  TiltDir.DOWN, pan_spd, tilt_spd)
+    def Down(self, pan_spd=None, tilt_spd=None):      self._move(PanDir.STOP,  TiltDir.DOWN, pan_spd, tilt_spd)
+    def DownRight(self, pan_spd=None, tilt_spd=None): self._move(PanDir.RIGHT, TiltDir.DOWN, pan_spd, tilt_spd)
 
     def Stop(self):
         """
