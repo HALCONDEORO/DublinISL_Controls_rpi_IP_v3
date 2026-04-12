@@ -62,7 +62,7 @@ from config import (
     PRESET_MAP,
 )
 from atem_monitor import ATEMMonitor
-from camera_worker import CameraWorker
+from camera_manager import CameraManager
 from widgets import GoButton, SpecialDragButton
 from names_panel import NamesPanel
 from visca_mixin import ViscaController
@@ -92,16 +92,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle('Camera Controls')
         self.setGeometry(0, 0, 1920, 1080)
 
-        self.backlight_on   = {1: False, 2: False}
-        self.focus_mode     = {1: 'auto', 2: 'auto'}
-        self.exposure_level = {1: 0,      2: 0     }
-        self._zoom_cache    = {1: None,   2: None  }  # último % enviado por cámara
         self.session_active = False
-
-        self._workers = {
-            CAM1.ip: CameraWorker(CAM1.ip),
-            CAM2.ip: CameraWorker(CAM2.ip),
-        }
+        self._cameras = CameraManager(CAM1, CAM2)
 
         _data = load_names_data()
         self._names_list = _data["names"]
@@ -124,9 +116,9 @@ class MainWindow(QMainWindow):
         self._build_overlays()
 
         # Conectar señales de estado de conexión a los botones de cámara
-        self._workers[CAM1.ip].signals.connection_changed.connect(
+        self._cameras.worker(CAM1.ip).signals.connection_changed.connect(
             lambda ok: self.Cam1.set_connected(ok))
-        self._workers[CAM2.ip].signals.connection_changed.connect(
+        self._cameras.worker(CAM2.ip).signals.connection_changed.connect(
             lambda ok: self.Cam2.set_connected(ok))
 
         self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
@@ -546,15 +538,15 @@ class MainWindow(QMainWindow):
 
     def _update_focus_ui(self):
         cam_key = 1 if self.Cam1.isChecked() else 2
-        self._right_panel.set_focus_mode(self.focus_mode[cam_key])
+        self._right_panel.set_focus_mode(self._cameras.focus_mode[cam_key])
 
     def _update_exposure_ui(self):
         cam_key = 1 if self.Cam1.isChecked() else 2
-        self._right_panel.set_exposure_level(self.exposure_level[cam_key])
+        self._right_panel.set_exposure_level(self._cameras.exposure_level[cam_key])
 
     def _update_backlight_ui(self):
         cam_key = 1 if self.Cam1.isChecked() else 2
-        if self.backlight_on[cam_key]:
+        if self._cameras.backlight_on[cam_key]:
             self.BtnBacklight.setText('Backlight\nON')
             self.BtnBacklight.setStyleSheet(self._backlight_style_on)
         else:

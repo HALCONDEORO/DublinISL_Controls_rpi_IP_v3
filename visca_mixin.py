@@ -68,7 +68,7 @@ class ViscaController:
         Envía un comando VISCA en background sin esperar respuesta.
         Delega en CameraWorker (socket persistente, cola, reconexión automática).
         """
-        worker = self._w._workers.get(ip)
+        worker = self._w._cameras.worker(ip)
         if worker:
             worker.send(cam_id_hex + cmd_suffix)
         else:
@@ -85,7 +85,7 @@ class ViscaController:
         Usar exclusivamente para STOP: garantiza que ningún comando de
         movimiento acumulado retrase la parada.
         """
-        worker = self._w._workers.get(ip)
+        worker = self._w._cameras.worker(ip)
         if worker:
             worker.send_priority(cam_id_hex + cmd_suffix)
         else:
@@ -221,8 +221,7 @@ class ViscaController:
         """Envía la posición de zoom absoluta según el valor del ZoomSlider (0–100 %)."""
         ip, cam_id = self._active_cam()
         pct = self._w.ZoomSlider.value()
-        cam_key = self._cam_key(ip)
-        self._w._zoom_cache[cam_key] = pct          # actualizar cache con valor enviado
+        self._w._cameras.set_zoom(ip, pct)          # actualizar cache con valor enviado
         pos = round(pct * self._ZOOM_MAX / 100)
         p, q, r, s = (pos >> 12) & 0xF, (pos >> 8) & 0xF, (pos >> 4) & 0xF, pos & 0xF
         self._send_cmd_async(ip, cam_id, f"010447{p:02X}{q:02X}{r:02X}{s:02X}FF")
@@ -248,8 +247,7 @@ class ViscaController:
         Usa el cache si ya existe un valor enviado; hace query de red solo si es None.
         """
         ip, cam_id = self._active_cam()
-        cam_key = self._cam_key(ip)
-        cached = self._w._zoom_cache.get(cam_key)
+        cached = self._w._cameras.get_zoom(ip)
         if cached is not None:
             self._w.ZoomSlider.setValue(cached)
             return
@@ -258,7 +256,7 @@ class ViscaController:
             val = self._query_zoom(ip, cam_id)
             if val is not None:
                 pct = round(val * 100 / self._ZOOM_MAX)
-                self._w._zoom_cache[cam_key] = pct  # poblar cache desde red
+                self._w._cameras.set_zoom(ip, pct)  # poblar cache desde red
                 QMetaObject.invokeMethod(
                     self._w.ZoomSlider, "setValue",
                     Qt.QueuedConnection, Q_ARG(int, pct)
@@ -271,8 +269,7 @@ class ViscaController:
         Invalida el cache de zoom para la cámara dada (preset recall mueve el zoom).
         Si es la cámara activa, refresca el slider inmediatamente vía red.
         """
-        cam_key = self._cam_key(ip)
-        self._w._zoom_cache[cam_key] = None
+        self._w._cameras.invalidate_zoom(ip)
         if self._active_cam()[0] == ip:
             self._refresh_zoom_slider()
 
@@ -285,7 +282,7 @@ class ViscaController:
         ok = self._send_cmd(ip, cam_id, "01043802FF")
         if ok:
             cam_key = self._cam_key(ip)
-            self._w.focus_mode[cam_key] = 'auto'
+            self._w._cameras.focus_mode[cam_key] = 'auto'
             self._w._update_focus_ui()
         else:
             self.ErrorCapture()
@@ -295,7 +292,7 @@ class ViscaController:
         ok = self._send_cmd(ip, cam_id, "01043803FF")
         if ok:
             cam_key = self._cam_key(ip)
-            self._w.focus_mode[cam_key] = 'manual'
+            self._w._cameras.focus_mode[cam_key] = 'manual'
             self._w._update_focus_ui()
         else:
             self.ErrorCapture()
@@ -318,7 +315,7 @@ class ViscaController:
         ok = self._send_cmd(ip, cam_id, "01040D02FF")
         if ok:
             cam_key = self._cam_key(ip)
-            self._w.exposure_level[cam_key] = min(7, self._w.exposure_level[cam_key] + 1)
+            self._w._cameras.exposure_level[cam_key] = min(7, self._w._cameras.exposure_level[cam_key] + 1)
             self._w._update_exposure_ui()
         self._w._right_panel._flash_button(self._w._right_panel.btn_brighter, ok)
         if not ok:
@@ -330,7 +327,7 @@ class ViscaController:
         ok = self._send_cmd(ip, cam_id, "01040D03FF")
         if ok:
             cam_key = self._cam_key(ip)
-            self._w.exposure_level[cam_key] = max(-7, self._w.exposure_level[cam_key] - 1)
+            self._w._cameras.exposure_level[cam_key] = max(-7, self._w._cameras.exposure_level[cam_key] - 1)
             self._w._update_exposure_ui()
         self._w._right_panel._flash_button(self._w._right_panel.btn_darker, ok)
         if not ok:
@@ -345,14 +342,14 @@ class ViscaController:
         ip, cam_id = self._active_cam()
         cam_key = self._cam_key(ip)
 
-        if self._w.backlight_on[cam_key]:
+        if self._w._cameras.backlight_on[cam_key]:
             # Desactivar backlight compensation
             if self._send_cmd(ip, cam_id, "01043303FF"):
-                self._w.backlight_on[cam_key] = False
+                self._w._cameras.backlight_on[cam_key] = False
         else:
             # Activar backlight compensation
             if self._send_cmd(ip, cam_id, "01043302FF"):
-                self._w.backlight_on[cam_key] = True
+                self._w._cameras.backlight_on[cam_key] = True
 
         self._w._update_backlight_ui()
 
