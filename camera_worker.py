@@ -24,6 +24,7 @@ from __future__ import annotations  # type hints modernos sin romper Python 3.9 
 
 import logging
 import queue
+import select
 import socket
 import threading
 from dataclasses import dataclass
@@ -150,8 +151,15 @@ class CameraWorker:
             sock_ref = self._sock
 
         if sock_ref is not None:
-            # Socket existe → consideramos la conexión activa
-            self._set_connected(True)
+            if self._socket_alive(sock_ref):
+                self._set_connected(True)
+            else:
+                # Socket muerto (cámara apagada / cable desconectado)
+                self._close_socket()
+                with self._lock:
+                    self._sock = self._connect()
+                    sock_ref = self._sock
+                self._set_connected(sock_ref is not None)
         else:
             # Sin socket → intentar reconectar
             with self._lock:
@@ -159,6 +167,31 @@ class CameraWorker:
                     self._sock = self._connect()
                 sock_ref = self._sock
             self._set_connected(sock_ref is not None)
+
+    @staticmethod
+    def _socket_alive(sock: socket.socket) -> bool:
+        """
+        Comprueba si un socket TCP sigue activo sin enviar datos de aplicación.
+
+        Usa select() con timeout cero para ver si el descriptor tiene datos
+        listos para leer. En TCP, readable sin haber enviado nada significa
+        que el par envió EOF (FIN) o RST, es decir, la conexión está cerrada.
+        Si no hay nada legible, intenta send(b"") — una escritura vacía no
+        transmite bytes pero sí detecta si el descriptor local es válido.
+        """
+        try:
+            readable, _, _ = select.select([sock], [], [], 0)
+            if readable:
+                # Hay datos listos: en un protocolo petición/respuesta como VISCA
+                # no deberían llegar datos espontáneos; si los hay, o el par cerró
+                # la conexión (recv devuelve b"") o llegó basura → desconectado.
+                data = sock.recv(1)
+                return len(data) > 0
+            # Sin datos pendientes → verificar que el descriptor local sigue abierto
+            sock.send(b"")
+            return True
+        except (OSError, socket.error):
+            return False
 
     def _connect(self) -> Optional[socket.socket]:
         """
