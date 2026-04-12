@@ -78,54 +78,9 @@ class ViscaController:
             return CAM1.ip, CAM1.cam_id
         return CAM2.ip, CAM2.cam_id
 
-    # ─────────────────────────────────────────────────────────────────────────
-    #  API pública — delegación directa a ViscaProtocol
-    # ─────────────────────────────────────────────────────────────────────────
-
     def _on_speed_changed(self, value: int):
         """Callback del slider: actualiza la etiqueta de velocidad en tiempo real."""
         self._w.SpeedValueLabel.setText(self._proto._speed_label_text(value))
 
-    def ErrorCapture(self):
-        """Muestra diálogo de error de red."""
-        self._proto.ErrorCapture()
-
-    def _speed_label_text(self, value: int) -> str:
-        return self._proto._speed_label_text(value)
-
-    # Envío directo (usado por config_dialog, main_window, session_mixin)
-    def _send_cmd(self, ip: str, cam_id_hex: str, cmd_suffix: str) -> bool:
-        return self._proto._send_cmd(ip, cam_id_hex, cmd_suffix)
-
-    def _invalidate_zoom_cache(self, ip: str):
-        self._proto._invalidate_zoom_cache(ip)
-
-    # Movimiento
-    def UpLeft(self, pan_spd=None, tilt_spd=None):    self._proto.UpLeft(pan_spd, tilt_spd)
-    def Up(self, pan_spd=None, tilt_spd=None):        self._proto.Up(pan_spd, tilt_spd)
-    def UpRight(self, pan_spd=None, tilt_spd=None):   self._proto.UpRight(pan_spd, tilt_spd)
-    def Left(self, pan_spd=None, tilt_spd=None):      self._proto.Left(pan_spd, tilt_spd)
-    def Right(self, pan_spd=None, tilt_spd=None):     self._proto.Right(pan_spd, tilt_spd)
-    def DownLeft(self, pan_spd=None, tilt_spd=None):  self._proto.DownLeft(pan_spd, tilt_spd)
-    def Down(self, pan_spd=None, tilt_spd=None):      self._proto.Down(pan_spd, tilt_spd)
-    def DownRight(self, pan_spd=None, tilt_spd=None): self._proto.DownRight(pan_spd, tilt_spd)
-    def Stop(self):                                    self._proto.Stop()
-    def HomeButton(self):                              self._proto.HomeButton()
-    def _send_comments_cam_home(self):                 self._proto._send_comments_cam_home()
-
-    # Zoom
-    def ZoomAbsolute(self):          self._proto.ZoomAbsolute()
-    def _refresh_zoom_slider(self):  self._proto._refresh_zoom_slider()
-
-    # Focus
-    def AutoFocus(self):   self._proto.AutoFocus()
-    def ManualFocus(self): self._proto.ManualFocus()
-    def OnePushAF(self):   self._proto.OnePushAF()
-
-    # Exposición
-    def BrightnessUp(self):     self._proto.BrightnessUp()
-    def BrightnessDown(self):   self._proto.BrightnessDown()
-    def BacklightToggle(self):  self._proto.BacklightToggle()
-
-    # Presets
-    def go_to_preset(self, preset_number: int): self._proto.go_to_preset(preset_number)
+    def __getattr__(self, name):
+        return getattr(self._proto, name)
