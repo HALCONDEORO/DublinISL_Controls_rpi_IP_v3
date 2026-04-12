@@ -43,6 +43,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from PyQt5 import QtGui, QtCore
@@ -53,6 +54,8 @@ from PyQt5.QtWidgets import (
     QButtonGroup, QFrame, QLabel, QMainWindow,
     QPushButton, QToolButton, QVBoxLayout,
 )
+
+logger = logging.getLogger(__name__)
 
 from config import (
     CAM1, CAM2,
@@ -288,7 +291,7 @@ class MainWindow(QMainWindow):
         """Carga fondo. Falla silenciosamente si el archivo no existe."""
         bg_path = "Background_ISL_v3.jpg"
         if not os.path.exists(bg_path):
-            print(f"[WARNING] {bg_path} no encontrado — fondo vacío")
+            logger.warning("%s no encontrado — fondo vacío", bg_path)
             return
         pixmap = QPixmap(bg_path).scaled(
             1920, 1080, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
@@ -389,7 +392,7 @@ class MainWindow(QMainWindow):
         """
         preset_hex = PRESET_MAP.get(preset_num)
         if not preset_hex:
-            print(f"[CHAIRMAN] Preset {preset_num} no está en PRESET_MAP")
+            logger.warning("chairman_recall: preset %d no está en PRESET_MAP", preset_num)
             return
         if not self._visca._send_cmd(CAM1.ip, CAM1.cam_id, f"01043f02{preset_hex}ff"):
             self._visca.ErrorCapture()
@@ -413,13 +416,13 @@ class MainWindow(QMainWindow):
         else:
             preset_num = next_available_preset(self._chairman_presets)
             if preset_num is None:
-                print(f"[CHAIRMAN] Rango de presets agotado — no se puede guardar para '{name}'")
+                logger.error("Rango de presets agotado — no se puede guardar para '%s'", name)
                 return
             self._chairman_presets[name] = preset_num
 
         preset_hex = PRESET_MAP.get(preset_num)
         if not preset_hex:
-            print(f"[CHAIRMAN] Preset {preset_num} no está en PRESET_MAP")
+            logger.warning("save_chairman_preset: preset %d no está en PRESET_MAP", preset_num)
             return
 
         if not self._visca._send_cmd(CAM1.ip, CAM1.cam_id, f"01043f01{preset_hex}ff"):
@@ -427,7 +430,7 @@ class MainWindow(QMainWindow):
             return
 
         save_chairman_presets(self._chairman_presets)
-        print(f"[CHAIRMAN] Preset {preset_num} guardado para '{name}'")
+        logger.info("Preset %d guardado para '%s'", preset_num, name)
         # ChairmanButton ya actualiza sus botones en _on_save_clicked,
         # pero refresh garantiza consistencia si el dict cambió externamente.
         self._chairman_btn.refresh_preset_state()

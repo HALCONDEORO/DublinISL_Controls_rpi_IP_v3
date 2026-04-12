@@ -25,15 +25,38 @@ from __future__ import annotations  # type hints modernos sin romper Python 3.9 
 import logging
 import queue
 import socket
-import binascii
 import threading
-from typing import Optional  # reemplaza `socket.socket | None` (sintaxis 3.10+)
+from dataclasses import dataclass
+from typing import Callable, Optional  # reemplaza `socket.socket | None` (sintaxis 3.10+)
 
 from PyQt5.QtCore import QObject, pyqtSignal
 
 logger = logging.getLogger(__name__)
 
 from config import SOCKET_TIMEOUT, VISCA_PORT
+
+
+@dataclass
+class ViscaCommand:
+    """
+    Representa un comando VISCA listo para ejecutar.
+
+    camera:     1 = CAM1 (Platform), 2 = CAM2 (Comments). Usado por ViscaController
+                para enrutar al worker correcto antes de encolar.
+    payload:    bytes completos del frame VISCA (cam_id + cuerpo del comando).
+    priority:   si True, vacía la cola antes de encolar. Usar exclusivamente en STOP.
+    on_success: callback invocado desde el thread del worker tras envío exitoso.
+    on_failure: callback invocado desde el thread del worker tras todos los reintentos fallidos.
+
+    IMPORTANTE: los callbacks se ejecutan en el thread del worker, no en el hilo Qt.
+    Para actualizar widgets desde ellos usa QTimer.singleShot(0, fn) o el helper
+    ViscaController._ui(fn).
+    """
+    camera:     int
+    payload:    bytes
+    priority:   bool                          = False
+    on_success: Optional[Callable[[], None]] = None
+    on_failure: Optional[Callable[[], None]] = None
 
 
 class CameraWorkerSignals(QObject):
@@ -78,9 +101,9 @@ class CameraWorker:
             target=self._run, daemon=True, name=f"CamWorker-{ip}")
         self._thread.start()
 
-    def send(self, hex_cmd: str) -> bool:
+    def send(self, cmd: ViscaCommand) -> bool:
         """
-        Encola un comando VISCA en formato hex string (ej. "81010604FF").
+        Encola un ViscaCommand para ejecución asíncrona.
         Devuelve True si se encoló, False si la cola estaba llena.
 
         MOTIVO: nunca bloquear el hilo de la UI. Si la cámara no responde
@@ -88,15 +111,16 @@ class CameraWorker:
         congelar la interfaz.
         """
         try:
-            self._queue.put_nowait(hex_cmd)
+            self._queue.put_nowait(cmd)
             return True
         except queue.Full:
-            logger.warning("CameraWorker %s: cola llena, descartado: %s", self.ip, hex_cmd)
+            logger.warning("CameraWorker %s: cola llena, descartado: %s",
+                           self.ip, cmd.payload.hex())
             return False
 
-    def send_priority(self, hex_cmd: str):
+    def send_priority(self, cmd: ViscaCommand):
         """
-        Vacía la cola de comandos pendientes y coloca hex_cmd en primer lugar.
+        Vacía la cola de comandos pendientes y coloca cmd en primer lugar.
 
         Usar para comandos críticos de parada: garantiza que el STOP se
         ejecute inmediatamente sin esperar a comandos de movimiento acumulados.
@@ -110,7 +134,7 @@ class CameraWorker:
                 break
         # Insertar el comando prioritario
         try:
-            self._queue.put_nowait(hex_cmd)
+            self._queue.put_nowait(cmd)
         except queue.Full:
             pass
 
@@ -201,6 +225,7 @@ class CameraWorker:
                 continue
 
             # Intentar hasta 2 veces: 1ª con socket existente, 2ª tras reconectar
+            _succeeded = False
             for attempt in range(2):
 
                 # --- Fase 1: obtener referencia del socket (con lock breve) ---
@@ -217,14 +242,21 @@ class CameraWorker:
                 # Hacerlo sin lock permite que _close_socket() funcione
                 # mientras tanto sin quedarse esperando.
                 try:
-                    raw = binascii.unhexlify(cmd)
-                    sock_ref.send(raw)
+                    sock_ref.send(cmd.payload)
                     sock_ref.recv(1024)  # Leer ACK de la cámara (sin lock)
                     self._set_connected(True)
+                    _succeeded = True
                     break  # Éxito: salir del bucle de reintentos
 
-                except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
+                except (socket.timeout, socket.error, OSError) as exc:
                     logger.warning("CameraWorker %s intento %d: %s", self.ip, attempt + 1, exc)
                     self._close_socket()
                     # Si era el primer intento → el bucle reconecta y reintenta.
-                    # Si era el segundo → el comando se descarta silenciosamente.
+                    # Si era el segundo → el comando se descarta e invoca on_failure.
+
+            if _succeeded:
+                if cmd.on_success:
+                    cmd.on_success()
+            else:
+                if cmd.on_failure:
+                    cmd.on_failure()

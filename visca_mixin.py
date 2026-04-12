@@ -20,13 +20,16 @@ import socket
 import binascii
 import threading
 
-from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
+from typing import Callable
+
+from PyQt5.QtCore import QMetaObject, Qt, Q_ARG, QTimer
 from PyQt5.QtWidgets import QMessageBox
 
 from config import (
     CAM1, CAM2,
     PRESET_MAP, SPEED_MIN, SPEED_MAX, SOCKET_TIMEOUT, VISCA_PORT
 )
+from camera_worker import ViscaCommand
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +52,8 @@ class ViscaController:
         sesión) donde importa saber si el comando llegó.
 
         NOTA: abre y cierra el socket en cada llamada (stateless).
-        Para comandos frecuentes (movimiento continuo) se usa _send_cmd_async
-        que delega en CameraWorker con socket persistente.
+        Para comandos frecuentes (movimiento continuo) usa _dispatch con ViscaCommand,
+        que delega en CameraWorker con socket persistente y callbacks.
         """
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -63,37 +66,48 @@ class ViscaController:
             logger.error("_send_cmd %s: %s", ip, exc)
             return False
 
-    def _send_cmd_async(self, ip: str, cam_id_hex: str, cmd_suffix: str):
+    def _ui(self, fn: Callable[[], None]):
         """
-        Envía un comando VISCA en background sin esperar respuesta.
-        Delega en CameraWorker (socket persistente, cola, reconexión automática).
+        Programa fn para ejecutarse en el hilo principal de Qt.
+        Seguro llamarlo desde cualquier thread (p.ej. callbacks de ViscaCommand).
         """
+        QTimer.singleShot(0, fn)
+
+    def _dispatch(self, cmd: ViscaCommand):
+        """
+        Enruta ViscaCommand al worker de la cámara indicada en cmd.camera.
+        Si cmd.priority=True vacía la cola antes de encolar (para STOP).
+        Fallback a thread directo si el worker no existe (no debería ocurrir).
+        """
+        ip = CAM1.ip if cmd.camera == 1 else CAM2.ip
         worker = self._w._cameras.worker(ip)
         if worker:
-            worker.send(cam_id_hex + cmd_suffix)
+            if cmd.priority:
+                worker.send_priority(cmd)
+            else:
+                worker.send(cmd)
         else:
-            # Fallback: thread puntual si el worker no existe (no debería ocurrir)
             threading.Thread(
-                target=self._send_cmd,
-                args=(ip, cam_id_hex, cmd_suffix),
-                daemon=True
+                target=self._fallback_send, args=(ip, cmd), daemon=True
             ).start()
 
-    def _send_cmd_priority(self, ip: str, cam_id_hex: str, cmd_suffix: str):
+    def _fallback_send(self, ip: str, cmd: ViscaCommand):
         """
-        Vacía la cola del worker y coloca este comando en primer lugar.
-        Usar exclusivamente para STOP: garantiza que ningún comando de
-        movimiento acumulado retrase la parada.
+        Envío directo (sin worker) usado solo cuando CameraManager no tiene
+        worker para esa IP. En la práctica no debería ejecutarse.
         """
-        worker = self._w._cameras.worker(ip)
-        if worker:
-            worker.send_priority(cam_id_hex + cmd_suffix)
-        else:
-            threading.Thread(
-                target=self._send_cmd,
-                args=(ip, cam_id_hex, cmd_suffix),
-                daemon=True
-            ).start()
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(SOCKET_TIMEOUT)
+                s.connect((ip, VISCA_PORT))
+                s.send(cmd.payload)
+                s.recv(64)
+            if cmd.on_success:
+                cmd.on_success()
+        except (socket.timeout, socket.error, OSError) as exc:
+            logger.error("_fallback_send %s: %s", ip, exc)
+            if cmd.on_failure:
+                cmd.on_failure()
 
     def _active_cam(self) -> tuple[str, str]:
         """
@@ -176,8 +190,12 @@ class ViscaController:
             pan_spd = tilt_spd = self._get_speed()
         pan_spd  = 0 if pan_dir  == 0x03 else pan_spd
         tilt_spd = 0 if tilt_dir == 0x03 else tilt_spd
-        self._send_cmd_async(ip, cam_id,
-            f"010601{pan_spd:02X}{tilt_spd:02X}{pan_dir:02X}{tilt_dir:02X}FF")
+        self._dispatch(ViscaCommand(
+            camera=self._cam_key(ip),
+            payload=bytes.fromhex(
+                cam_id + f"010601{pan_spd:02X}{tilt_spd:02X}{pan_dir:02X}{tilt_dir:02X}FF"
+            ),
+        ))
 
     # 8 direcciones: combinación de pan (01/02/03) y tilt (01/02/03)
     def UpLeft(self, pan_spd=None, tilt_spd=None):    self._move(0x01, 0x01, pan_spd, tilt_spd)
@@ -196,16 +214,26 @@ class ViscaController:
         garantizando que ningún comando de movimiento acumulado retrase la parada.
         """
         ip, cam_id = self._active_cam()
-        self._send_cmd_priority(ip, cam_id, "01060100000303FF")
+        self._dispatch(ViscaCommand(
+            camera=self._cam_key(ip),
+            payload=bytes.fromhex(cam_id + "01060100000303FF"),
+            priority=True,
+        ))
 
     def HomeButton(self):
         """Mueve la cámara activa a su posición Home."""
         ip, cam_id = self._active_cam()
-        self._send_cmd_async(ip, cam_id, "010604FF")
+        self._dispatch(ViscaCommand(
+            camera=self._cam_key(ip),
+            payload=bytes.fromhex(cam_id + "010604FF"),
+        ))
 
     def _send_comments_cam_home(self):
         """Manda la cámara Comments (Cam2) a Home. Llamado por el ATEMMonitor."""
-        self._send_cmd_async(CAM2.ip, CAM2.cam_id, "010604FF")
+        self._dispatch(ViscaCommand(
+            camera=2,
+            payload=bytes.fromhex(CAM2.cam_id + "010604FF"),
+        ))
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Zoom
@@ -224,7 +252,10 @@ class ViscaController:
         self._w._cameras.set_zoom(ip, pct)          # actualizar cache con valor enviado
         pos = round(pct * self._ZOOM_MAX / 100)
         p, q, r, s = (pos >> 12) & 0xF, (pos >> 8) & 0xF, (pos >> 4) & 0xF, pos & 0xF
-        self._send_cmd_async(ip, cam_id, f"010447{p:02X}{q:02X}{r:02X}{s:02X}FF")
+        self._dispatch(ViscaCommand(
+            camera=self._cam_key(ip),
+            payload=bytes.fromhex(cam_id + f"010447{p:02X}{q:02X}{r:02X}{s:02X}FF"),
+        ))
 
     def _query_zoom(self, ip: str, cam_id: str) -> int | None:
         """Consulta el zoom actual vía VISCA inquiry. Devuelve valor 0–0x4000 o None."""
@@ -279,31 +310,45 @@ class ViscaController:
 
     def AutoFocus(self):
         ip, cam_id = self._active_cam()
-        ok = self._send_cmd(ip, cam_id, "01043802FF")
-        if ok:
-            cam_key = self._cam_key(ip)
+        cam_key = self._cam_key(ip)
+        def _ok():
             self._w._cameras.focus_mode[cam_key] = 'auto'
-            self._w._update_focus_ui()
-        else:
-            self.ErrorCapture()
+            self._ui(self._w._update_focus_ui)
+        self._dispatch(ViscaCommand(
+            camera=cam_key,
+            payload=bytes.fromhex(cam_id + "01043802FF"),
+            on_success=_ok,
+            on_failure=lambda: self._ui(self.ErrorCapture),
+        ))
 
     def ManualFocus(self):
         ip, cam_id = self._active_cam()
-        ok = self._send_cmd(ip, cam_id, "01043803FF")
-        if ok:
-            cam_key = self._cam_key(ip)
+        cam_key = self._cam_key(ip)
+        def _ok():
             self._w._cameras.focus_mode[cam_key] = 'manual'
-            self._w._update_focus_ui()
-        else:
-            self.ErrorCapture()
+            self._ui(self._w._update_focus_ui)
+        self._dispatch(ViscaCommand(
+            camera=cam_key,
+            payload=bytes.fromhex(cam_id + "01043803FF"),
+            on_success=_ok,
+            on_failure=lambda: self._ui(self.ErrorCapture),
+        ))
 
     def OnePushAF(self):
         """Dispara un autofocus puntual y luego queda en modo manual."""
         ip, cam_id = self._active_cam()
-        ok = self._send_cmd(ip, cam_id, "01041801FF")
-        self._w._right_panel._flash_button(self._w._right_panel.btn_one_push_af, ok)
-        if not ok:
-            self.ErrorCapture()
+        btn = self._w._right_panel.btn_one_push_af
+        def _ok():
+            self._ui(lambda: self._w._right_panel._flash_button(btn, True))
+        def _fail():
+            self._ui(lambda: self._w._right_panel._flash_button(btn, False))
+            self._ui(self.ErrorCapture)
+        self._dispatch(ViscaCommand(
+            camera=self._cam_key(ip),
+            payload=bytes.fromhex(cam_id + "01041801FF"),
+            on_success=_ok,
+            on_failure=_fail,
+        ))
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Exposición
@@ -312,26 +357,42 @@ class ViscaController:
     def BrightnessUp(self):
         """Sube la exposición un paso (modo exposición manual)."""
         ip, cam_id = self._active_cam()
-        ok = self._send_cmd(ip, cam_id, "01040D02FF")
-        if ok:
-            cam_key = self._cam_key(ip)
-            self._w._cameras.exposure_level[cam_key] = min(7, self._w._cameras.exposure_level[cam_key] + 1)
-            self._w._update_exposure_ui()
-        self._w._right_panel._flash_button(self._w._right_panel.btn_brighter, ok)
-        if not ok:
-            self.ErrorCapture()
+        cam_key = self._cam_key(ip)
+        btn = self._w._right_panel.btn_brighter
+        def _ok():
+            self._w._cameras.exposure_level[cam_key] = min(
+                7, self._w._cameras.exposure_level[cam_key] + 1)
+            self._ui(self._w._update_exposure_ui)
+            self._ui(lambda: self._w._right_panel._flash_button(btn, True))
+        def _fail():
+            self._ui(lambda: self._w._right_panel._flash_button(btn, False))
+            self._ui(self.ErrorCapture)
+        self._dispatch(ViscaCommand(
+            camera=cam_key,
+            payload=bytes.fromhex(cam_id + "01040D02FF"),
+            on_success=_ok,
+            on_failure=_fail,
+        ))
 
     def BrightnessDown(self):
         """Baja la exposición un paso."""
         ip, cam_id = self._active_cam()
-        ok = self._send_cmd(ip, cam_id, "01040D03FF")
-        if ok:
-            cam_key = self._cam_key(ip)
-            self._w._cameras.exposure_level[cam_key] = max(-7, self._w._cameras.exposure_level[cam_key] - 1)
-            self._w._update_exposure_ui()
-        self._w._right_panel._flash_button(self._w._right_panel.btn_darker, ok)
-        if not ok:
-            self.ErrorCapture()
+        cam_key = self._cam_key(ip)
+        btn = self._w._right_panel.btn_darker
+        def _ok():
+            self._w._cameras.exposure_level[cam_key] = max(
+                -7, self._w._cameras.exposure_level[cam_key] - 1)
+            self._ui(self._w._update_exposure_ui)
+            self._ui(lambda: self._w._right_panel._flash_button(btn, True))
+        def _fail():
+            self._ui(lambda: self._w._right_panel._flash_button(btn, False))
+            self._ui(self.ErrorCapture)
+        self._dispatch(ViscaCommand(
+            camera=cam_key,
+            payload=bytes.fromhex(cam_id + "01040D03FF"),
+            on_success=_ok,
+            on_failure=_fail,
+        ))
 
     def BacklightToggle(self):
         """
@@ -341,17 +402,19 @@ class ViscaController:
         """
         ip, cam_id = self._active_cam()
         cam_key = self._cam_key(ip)
-
         if self._w._cameras.backlight_on[cam_key]:
-            # Desactivar backlight compensation
-            if self._send_cmd(ip, cam_id, "01043303FF"):
-                self._w._cameras.backlight_on[cam_key] = False
+            suffix, new_state = "01043303FF", False
         else:
-            # Activar backlight compensation
-            if self._send_cmd(ip, cam_id, "01043302FF"):
-                self._w._cameras.backlight_on[cam_key] = True
-
-        self._w._update_backlight_ui()
+            suffix, new_state = "01043302FF", True
+        def _ok():
+            self._w._cameras.backlight_on[cam_key] = new_state
+            self._ui(self._w._update_backlight_ui)
+        self._dispatch(ViscaCommand(
+            camera=cam_key,
+            payload=bytes.fromhex(cam_id + suffix),
+            on_success=_ok,
+            on_failure=lambda: self._ui(self._w._update_backlight_ui),
+        ))
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Presets
@@ -389,10 +452,12 @@ class ViscaController:
 
         if self._w.BtnCall.isChecked():
             # Modo Call: recall preset → 01 04 3F 02 <preset> FF
-            if not self._send_cmd(ip, cam_id, f"01043f02{preset_hex}ff"):
-                self.ErrorCapture()
-            else:
-                self._invalidate_zoom_cache(ip)  # el preset mueve el zoom: refrescar slider
+            self._dispatch(ViscaCommand(
+                camera=self._cam_key(ip),
+                payload=bytes.fromhex(cam_id + f"01043f02{preset_hex}ff"),
+                on_success=lambda: self._invalidate_zoom_cache(ip),
+                on_failure=lambda: self._ui(self.ErrorCapture),
+            ))
 
         elif self._w.BtnSet.isChecked():
             # Modo Set: confirmar antes de sobreescribir un preset
@@ -403,5 +468,8 @@ class ViscaController:
             )
             if reply == QMessageBox.Yes:
                 # Save preset → 01 04 3F 01 <preset> FF
-                if not self._send_cmd(ip, cam_id, f"01043f01{preset_hex}ff"):
-                    self.ErrorCapture()
+                self._dispatch(ViscaCommand(
+                    camera=self._cam_key(ip),
+                    payload=bytes.fromhex(cam_id + f"01043f01{preset_hex}ff"),
+                    on_failure=lambda: self._ui(self.ErrorCapture),
+                ))

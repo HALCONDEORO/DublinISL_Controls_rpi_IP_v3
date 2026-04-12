@@ -273,8 +273,8 @@ class ConfigDialog(QDialog):
                 btn_run_test.setText('▶  Run Test')
                 return
             cmd, idx = commands[step]
-            ip, cam_id = mw._active_cam()
-            ok = mw._send_cmd(ip, cam_id, cmd)
+            ip, cam_id = mw._visca._active_cam()
+            ok = mw._visca._send_cmd(ip, cam_id, cmd)
             color = '#3d9e3d' if ok else '#b33030'
             test_indicators[idx].setStyleSheet(f"color: {color}; font: 14px;")
             QTimer.singleShot(500, lambda: _run_test_step(step + 1, commands))

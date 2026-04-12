@@ -11,9 +11,13 @@
 # MainWindow inmediatamente después de recibir el botón.
 
 from __future__ import annotations
+
+import logging
 from typing import Optional
 
 from PyQt5 import QtCore, QtGui
+
+logger = logging.getLogger(__name__)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtSvg import QSvgRenderer
@@ -73,7 +77,7 @@ def _load_svg_pixmap(svg_data: Optional[str], svg_file: Optional[str],
     elif svg_file:
         renderer = QSvgRenderer(svg_file)
         if not renderer.isValid():
-            print(f"[WARNING] {svg_file} no encontrado o inválido")
+            logger.warning("%s no encontrado o inválido", svg_file)
             return None
     else:
         return None

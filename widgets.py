@@ -33,8 +33,11 @@
 #      La versión anterior fallaba silenciosamente si el estilo base no
 #      contenía exactamente 'border: 0px solid black;' o 'border: none;'.
 
+import logging
 import os
 from typing import Optional  # reemplaza `int | None` (sintaxis 3.10+)
+
+logger = logging.getLogger(__name__)
 
 from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import Qt, pyqtSignal
@@ -344,7 +347,7 @@ def make_arrow_btn(parent, x: int, y: int, degrees: int) -> QPushButton:
         btn.setIcon(QtGui.QIcon(pix))
         btn.setIconSize(QtCore.QSize(90, 90))
     else:
-        print(f"[WARNING] angle.png no encontrado — botón {degrees}° sin icono")
+        logger.warning("angle.png no encontrado — botón %d° sin icono", degrees)
 
     return btn
 
