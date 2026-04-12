@@ -355,12 +355,18 @@ class ViscaProtocol:
             self._ui_cb.update_zoom_slider(cached)
             return
 
+        if not self._cameras.zoom_query_try_acquire(ip):
+            return  # ya hay un thread consultando esta cámara, ignorar
+
         def _fetch():
-            val = self._query_zoom(ip, cam_id)
-            if val is not None:
-                pct = round(val * 100 / self._ZOOM_MAX)
-                self._cameras.set_zoom(ip, pct)  # poblar cache desde red
-                self._ui_cb.update_zoom_slider(pct)  # el callback es thread-safe
+            try:
+                val = self._query_zoom(ip, cam_id)
+                if val is not None:
+                    pct = round(val * 100 / self._ZOOM_MAX)
+                    self._cameras.set_zoom(ip, pct)  # poblar cache desde red
+                    self._ui_cb.update_zoom_slider(pct)  # el callback es thread-safe
+            finally:
+                self._cameras.zoom_query_release(ip)
 
         threading.Thread(target=_fetch, daemon=True).start()
 

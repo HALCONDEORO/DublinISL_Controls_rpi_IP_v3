@@ -42,6 +42,10 @@ class CameraManager:
         # Clave: cam_key (1 o 2). Valor: último porcentaje enviado a la cámara.
         self._zoom_cache: dict[int, Optional[int]] = {1: None, 2: None}
 
+        # Flag de query en vuelo: evita lanzar un segundo thread si ya hay uno
+        # consultando el zoom de esa cámara (race condition tras preset recall).
+        self._zoom_query_inflight: dict[int, bool] = {1: False, 2: False}
+
         # Estado por cámara. Clave: cam_key (1 o 2).
         self.backlight_on:   dict[int, bool] = {1: False, 2: False}
         self.focus_mode:     dict[int, str]  = {1: 'auto', 2: 'auto'}
@@ -88,3 +92,19 @@ class CameraManager:
         posición desconocida, así el slider se sincronizará con la red.
         """
         self._zoom_cache[self.cam_key(ip)] = None
+
+    def zoom_query_try_acquire(self, ip: str) -> bool:
+        """
+        Intenta reservar el slot de query de zoom para esta cámara.
+        Devuelve True (y marca inflight) si no había query en vuelo.
+        Devuelve False si ya hay uno activo: el llamador debe descartarse.
+        """
+        key = self.cam_key(ip)
+        if self._zoom_query_inflight[key]:
+            return False
+        self._zoom_query_inflight[key] = True
+        return True
+
+    def zoom_query_release(self, ip: str):
+        """Libera el slot de query de zoom tras completarse el thread."""
+        self._zoom_query_inflight[self.cam_key(ip)] = False
