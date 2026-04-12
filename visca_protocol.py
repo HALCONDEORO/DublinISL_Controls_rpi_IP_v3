@@ -184,33 +184,11 @@ class ViscaProtocol:
         """
         ip = CAM1.ip if cmd.camera == 1 else CAM2.ip
         worker = self._cameras.worker(ip)
-        if worker:
-            if cmd.priority:
-                worker.send_priority(cmd)
-            else:
-                worker.send(cmd)
+        if cmd.priority:
+            worker.send_priority(cmd)
         else:
-            threading.Thread(
-                target=self._fallback_send, args=(ip, cmd), daemon=True
-            ).start()
+            worker.send(cmd)
 
-    def _fallback_send(self, ip: str, cmd: ViscaCommand):
-        """
-        Envío directo (sin worker) usado solo cuando CameraManager no tiene
-        worker para esa IP. En la práctica no debería ejecutarse.
-        """
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(SOCKET_TIMEOUT)
-                s.connect((ip, VISCA_PORT))
-                s.send(cmd.payload)
-                s.recv(64)
-            if cmd.on_success:
-                cmd.on_success()
-        except (socket.timeout, socket.error, OSError) as exc:
-            logger.error("_fallback_send %s: %s", ip, exc)
-            if cmd.on_failure:
-                cmd.on_failure()
 
     def _active_cam(self) -> tuple[str, str]:
         """

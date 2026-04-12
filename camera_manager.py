@@ -34,10 +34,9 @@ class CameraManager:
         self._cam1_ip = cam1.ip
         self._cam2_ip = cam2.ip
 
-        self._workers: dict[str, CameraWorker] = {
-            cam1.ip: CameraWorker(cam1.ip),
-            cam2.ip: CameraWorker(cam2.ip),
-        }
+        # Workers creados bajo demanda: el thread TCP no arranca hasta el
+        # primer acceso, evitando conexiones con IPs aún no validadas.
+        self._workers: dict[str, CameraWorker] = {}
 
         # Cache de zoom: None = sin valor local, necesita query de red.
         # Clave: cam_key (1 o 2). Valor: último porcentaje enviado a la cámara.
@@ -60,9 +59,15 @@ class CameraManager:
     #  Workers
     # ─────────────────────────────────────────────────────────────────────────
 
-    def worker(self, ip: str) -> Optional[CameraWorker]:
-        """Devuelve el CameraWorker para la IP dada, o None si no existe."""
-        return self._workers.get(ip)
+    def worker(self, ip: str) -> CameraWorker:
+        """
+        Devuelve el CameraWorker para la IP dada, creándolo si aún no existe.
+        El thread TCP se inicia aquí, no en __init__, para diferir la conexión
+        hasta que se sabe que la IP es válida y necesaria.
+        """
+        if ip not in self._workers:
+            self._workers[ip] = CameraWorker(ip)
+        return self._workers[ip]
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Zoom cache
