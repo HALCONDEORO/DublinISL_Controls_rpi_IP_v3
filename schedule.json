@@ -10,7 +10,7 @@
     "end": "23:00"
   },
   "wednesday": {
-    "enabled": true,
+    "enabled": false,
     "start": "09:00",
     "end": "23:00"
   },

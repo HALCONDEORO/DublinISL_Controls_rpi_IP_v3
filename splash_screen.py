@@ -136,7 +136,7 @@ class SplashScreen(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setAutoFillBackground(True)
-        self.setStyleSheet("QWidget { background-color: #000000; }")
+        self.setStyleSheet("QWidget { background-color: #DCDCDC; }")
 
         self.tests_passed    = 0
         self.tests_total     = 0
@@ -163,13 +163,13 @@ class SplashScreen(QWidget):
 
         title = QLabel('DublinISL Controls')
         title.setFont(QFont('Arial', 48, QFont.Bold))
-        title.setStyleSheet("color: #00AA00;")
+        title.setStyleSheet("color: #1A3318;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
         subtitle = QLabel('Initializing system...')
         subtitle.setFont(QFont('Arial', 24))
-        subtitle.setStyleSheet("color: #CCCCCC;")
+        subtitle.setStyleSheet("color: #2E5229;")
         subtitle.setAlignment(Qt.AlignCenter)
         layout.addWidget(subtitle)
 
@@ -178,8 +178,8 @@ class SplashScreen(QWidget):
         self.log_label = QLabel('Starting tests...')
         self.log_label.setFont(QFont('Courier', 13))
         self.log_label.setStyleSheet(
-            "color: #00FF00; background-color: #000000;"
-            "padding: 20px; border: 2px solid #00AA00;"
+            "color: #1A3318; background-color: #EBEBEB;"
+            "padding: 20px; border: 2px solid #4A7A44;"
         )
         self.log_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.log_label.setMinimumHeight(380)
@@ -191,17 +191,17 @@ class SplashScreen(QWidget):
         self.progress_bar = QProgressBar()
         self.progress_bar.setStyleSheet("""
             QProgressBar {
-                border: 2px solid #00AA00; border-radius: 5px;
-                background-color: #000000; height: 30px;
+                border: 2px solid #4A7A44; border-radius: 5px;
+                background-color: #EBEBEB; height: 30px;
             }
-            QProgressBar::chunk { background-color: #00AA00; }
+            QProgressBar::chunk { background-color: #2E5229; }
         """)
         self.progress_bar.setValue(0)
         layout.addWidget(self.progress_bar)
 
         self.status_label = QLabel('Status: initializing...')
         self.status_label.setFont(QFont('Arial', 16, QFont.Bold))
-        self.status_label.setStyleSheet("color: #FFFF00;")
+        self.status_label.setStyleSheet("color: #2E5229;")
         self.status_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status_label)
 
@@ -222,7 +222,7 @@ class SplashScreen(QWidget):
 
     def _do_status(self, message: str, color: str):
         """Actualizar etiqueta de estado — llamado sólo desde el hilo principal."""
-        colors = {"green": "#00FF00", "yellow": "#FFFF00", "red": "#FF0000"}
+        colors = {"green": "#1A3318", "yellow": "#7A5C00", "red": "#8B0000"}
         self.status_label.setText(message)
         self.status_label.setStyleSheet(f"color: {colors.get(color, 'white')};")
 

@@ -141,7 +141,7 @@ class LoginScreen(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setAutoFillBackground(True)
-        self.setStyleSheet("QWidget { background-color: #1A1A2E; }")
+        self.setStyleSheet("QWidget { background-color: #DCDCDC; }")
         
         # Atributos
         self.attempts = 0
@@ -177,14 +177,15 @@ class LoginScreen(QWidget):
         # Título
         title = QLabel('DublinISL Controls')
         title.setFont(QFont('Segoe UI', 48, QFont.Bold))
-        title.setStyleSheet("color: #FFFFFF;")
+        title.setStyleSheet("color: #1A3318;")
         title.setAlignment(Qt.AlignCenter)
+        title.setMinimumHeight(80)
         layout.addWidget(title)
 
         # Subtítulo
         subtitle = QLabel('Restricted Access')
         subtitle.setFont(QFont('Segoe UI', 28))
-        subtitle.setStyleSheet("color: #AAAAAA;")
+        subtitle.setStyleSheet("color: #2E5229;")
         subtitle.setAlignment(Qt.AlignCenter)
         layout.addWidget(subtitle)
 
@@ -193,26 +194,27 @@ class LoginScreen(QWidget):
         # Etiqueta de contraseña
         pwd_label = QLabel('Password:')
         pwd_label.setFont(QFont('Segoe UI', 20, QFont.Bold))
-        pwd_label.setStyleSheet("color: #DDDDDD;")
+        pwd_label.setStyleSheet("color: #1A3318;")
         layout.addWidget(pwd_label)
 
         # Campo de contraseña
         self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText('Enter password')
         self.password_input.setEchoMode(QLineEdit.Password)
         self.password_input.setFont(QFont('Segoe UI', 18))
         self.password_input.setStyleSheet("""
             QLineEdit {
-                background-color: #2A2A3E;
-                color: #FFFFFF;
-                border: 2px solid #1976D2;
+                background-color: #EBEBEB;
+                color: #1A3318;
+                border: 2px solid #4A7A44;
                 border-radius: 5px;
                 padding: 10px;
             }
             QLineEdit:focus {
-                border: 2px solid #42A5F5;
+                border: 2px solid #2E5229;
             }
         """)
-        self.password_input.setMinimumHeight(50)
+        self.password_input.setMinimumHeight(60)
         # Ejecutar verificación al presionar Enter
         self.password_input.returnPressed.connect(self._verify_password)
         layout.addWidget(self.password_input)
@@ -222,20 +224,20 @@ class LoginScreen(QWidget):
         # Botón de login
         self.login_btn = QPushButton('ACCESS')
         self.login_btn.setFont(QFont('Segoe UI', 20, QFont.Bold))
-        self.login_btn.setMinimumHeight(50)
+        self.login_btn.setMinimumHeight(70)
         self.login_btn.setStyleSheet("""
             QPushButton {
-                background-color: #1976D2;
+                background-color: #2E5229;
                 color: #FFFFFF;
-                border: 2px solid #1976D2;
+                border: 2px solid #2E5229;
                 border-radius: 8px;
-                padding: 15px;
+                padding: 8px 15px;
             }
             QPushButton:hover {
-                background-color: #1565C0;
+                background-color: #1A3318;
             }
             QPushButton:pressed {
-                background-color: #0D47A1;
+                background-color: #0F1F0F;
             }
         """)
         self.login_btn.clicked.connect(self._verify_password)
@@ -248,13 +250,13 @@ class LoginScreen(QWidget):
         self.help_btn.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
-                color: #AAAAAA;
-                border: 1px solid #555;
+                color: #2E5229;
+                border: 1px solid #4A7A44;
                 border-radius: 5px;
                 padding: 4px 12px;
             }
-            QPushButton:hover { color: #FFFFFF; border-color: #888; }
-            QPushButton:pressed { color: #CCCCCC; }
+            QPushButton:hover { color: #1A3318; border-color: #2E5229; }
+            QPushButton:pressed { color: #0F1F0F; }
         """)
         self.help_btn.clicked.connect(self._show_help)
         layout.addWidget(self.help_btn, alignment=Qt.AlignRight)
@@ -264,7 +266,7 @@ class LoginScreen(QWidget):
         # Etiqueta de estado
         self.status_label = QLabel('Enter password')
         self.status_label.setFont(QFont('Segoe UI', 14))
-        self.status_label.setStyleSheet("color: #AAAAAA;")
+        self.status_label.setStyleSheet("color: #2E5229;")
         self.status_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status_label)
         
