@@ -79,8 +79,8 @@ class ViscaController:
         return CAM2.ip, CAM2.cam_id
 
     def _on_speed_changed(self, value: int):
-        """Callback del slider: actualiza la etiqueta de velocidad en tiempo real."""
-        self._w.SpeedValueLabel.setText(self._proto._speed_label_text(value))
+        """Callback del slider: actualiza el título con el valor numérico actual."""
+        self._w.SpeedTitleLabel.setText(f'Speed  <b>({value})</b>')
 
     def __getattr__(self, name):
         return getattr(self._proto, name)

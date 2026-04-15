@@ -10,6 +10,8 @@
 #   mw.SpeedSlider, mw.SpeedValueLabel
 #   mw.BtnBacklight, mw._backlight_style_off, mw._backlight_style_on
 # Nota: mw.BtnCall, mw.BtnSet y mw.PresetModeGroup se crean en main_window._build_mode_buttons()
+#   Los frames visuales call_frame/set_frame se crean aquí (_add_mode_buttons) y se exponen como
+#   self.call_frame y self.set_frame para que main_window los conecte con la lógica de estado.
 
 from __future__ import annotations
 
@@ -119,7 +121,7 @@ class RightPanel:
         self._container.setGeometry(1490, 10, 380, 1062)
         self._container.setStyleSheet(
             "QFrame#RightPanelContainer {"
-            "  background-color: #FFFFFF;"
+            "  background-color: #F4F4F6;"
             "  border-radius: 8px;"
             "  border: none;"
             "}"
@@ -127,27 +129,89 @@ class RightPanel:
         self._container.setObjectName("RightPanelContainer")
 
         layout = QVBoxLayout(self._container)
-        layout.setContentsMargins(14, 16, 14, 10)
-        layout.setSpacing(7)
+        layout.setContentsMargins(14, 16, 14, 16)
+        layout.setSpacing(4)
 
+        self._add_mode_buttons(layout)
+        self._add_separator(layout)
         self._add_camera_selector(layout)
+        self._add_separator(layout)
         self._add_ptz_block(layout)
         self._add_separator(layout)
         self._add_focus_exposure(layout)
+        layout.addSpacing(20)
         self._add_config_buttons(layout)
 
+        QtCore.QTimer.singleShot(0, self._fit_container_height)
+
+    def _fit_container_height(self):
+        """Ajusta la altura del container exactamente al contenido."""
+        h = self._container.sizeHint().height()
+        self._container.setGeometry(1490, 10, 380, h)
+
     # ── Secciones ─────────────────────────────────────────────────────────────
+
+    _MODE_STYLE_ACTIVE = (
+        "QFrame { background-color: white; border-radius: 8px; border: none; }"
+    )
+    _MODE_STYLE_INACTIVE = (
+        "QFrame { background-color: transparent; border-radius: 8px; border: none; }"
+    )
+    _MODE_LBL_STYLE       = "QLabel { font: 700 15px 'Segoe UI'; color: #222222; background: transparent; border: none; }"
+    _MODE_LBL_STYLE_INACT = "QLabel { font: 600 15px 'Segoe UI'; color: #888888; background: transparent; border: none; }"
+    _MODE_ICON_STYLE = "QLabel { font-size: 26px; background: transparent; border: none; }"
+
+    def _add_mode_buttons(self, layout: QVBoxLayout):
+        """Fila CALL / SET estilo tab segmented control."""
+        # Wrapper: fondo tenue que da contexto de "pestaña"
+        wrapper = QFrame(self._container)
+        wrapper.setStyleSheet(
+            "QFrame { background-color: #EBEBEB; border-radius: 10px; border: none; }"
+        )
+        row = QHBoxLayout(wrapper)
+        row.setContentsMargins(3, 3, 3, 3)
+        row.setSpacing(2)
+
+        def make_btn(label_text, icon_text, active):
+            frame = QFrame(wrapper)
+            frame.setFixedHeight(58)
+            frame.setStyleSheet(self._MODE_STYLE_ACTIVE if active else self._MODE_STYLE_INACTIVE)
+            frame.setCursor(Qt.PointingHandCursor)
+            hbox = QHBoxLayout(frame)
+            hbox.setContentsMargins(10, 6, 10, 6)
+            hbox.setSpacing(8)
+            hbox.addStretch()
+            icon = QLabel(icon_text, frame)
+            icon.setAlignment(Qt.AlignCenter)
+            icon.setStyleSheet(self._MODE_ICON_STYLE)
+            lbl = QLabel(label_text, frame)
+            lbl.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+            lbl.setStyleSheet(self._MODE_LBL_STYLE if active else self._MODE_LBL_STYLE_INACT)
+            hbox.addWidget(icon)
+            hbox.addWidget(lbl)
+            hbox.addStretch()
+            frame._label = lbl
+            frame._active_style   = self._MODE_STYLE_ACTIVE
+            frame._inactive_style = self._MODE_STYLE_INACTIVE
+            return frame
+
+        self.call_frame = make_btn("CALL", "📷", active=True)
+        self.set_frame  = make_btn("SET",  "✏",  active=False)
+        row.addWidget(self.call_frame)
+        row.addWidget(self.set_frame)
+        layout.addWidget(wrapper)
 
     def _add_camera_selector(self, layout: QVBoxLayout):
         mw = self._mw
         layout.addWidget(_section_label('Camera Selection', self._container))
 
-        toggle = _toggle_frame(self._container)
-        row = QHBoxLayout(toggle)
-        row.setContentsMargins(4, 4, 4, 4)
-        row.setSpacing(0)
+        cam_row = QFrame(self._container)
+        cam_row.setStyleSheet("QFrame { background: transparent; border: none; }")
+        row = QHBoxLayout(cam_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
 
-        mw.Cam1 = _IndicatorButton('Platform', toggle)
+        mw.Cam1 = _IndicatorButton('Platform', cam_row)
         mw.Cam1.setCheckable(True)
         mw.Cam1.setAutoExclusive(True)
         mw.Cam1.setChecked(True)
@@ -155,7 +219,7 @@ class RightPanel:
         mw.Cam1.setStyleSheet(self.TOGGLE_STYLE)
         mw.Cam1.setFixedHeight(62)
 
-        mw.Cam2 = _IndicatorButton('Comments', toggle)
+        mw.Cam2 = _IndicatorButton('Comments', cam_row)
         mw.Cam2.setCheckable(True)
         mw.Cam2.setAutoExclusive(True)
         mw.Cam2.setToolTip('Select Comments Camera')
@@ -164,7 +228,7 @@ class RightPanel:
 
         row.addWidget(mw.Cam1)
         row.addWidget(mw.Cam2)
-        layout.addWidget(toggle)
+        layout.addWidget(cam_row)
 
         mw.Camgroup = QButtonGroup(mw)
         mw.Camgroup.addButton(mw.Cam1)
@@ -190,8 +254,12 @@ class RightPanel:
         bl.setContentsMargins(12, 10, 12, 10)
         bl.setSpacing(6)
 
-        # ── Fila 1: PTZ Speed (ancho completo del bloque) ─────────────────────
-        bl.addWidget(_section_label('PTZ Speed', block))
+        # ── Fila 1: Speed label dinámico ──────────────────────────────────────
+        mw.SpeedTitleLabel = QLabel(f'Speed  <b>({SPEED_DEFAULT})</b>', block)
+        mw.SpeedTitleLabel.setTextFormat(Qt.RichText)
+        mw.SpeedTitleLabel.setAlignment(Qt.AlignCenter)
+        mw.SpeedTitleLabel.setStyleSheet("font: 15px 'Segoe UI'; color: #555555; padding-bottom: 10px;")
+        bl.addWidget(mw.SpeedTitleLabel)
 
         speed_row = QHBoxLayout()
         speed_row.setSpacing(6)
@@ -219,12 +287,6 @@ class RightPanel:
         speed_row.addWidget(mw.SpeedSlider)
         speed_row.addWidget(fast)
         bl.addLayout(speed_row)
-
-        mw.SpeedValueLabel = QLabel(
-            mw._visca._speed_label_text(SPEED_DEFAULT), block)
-        mw.SpeedValueLabel.setAlignment(Qt.AlignCenter)
-        mw.SpeedValueLabel.setStyleSheet("font: 12px; color: #555;")
-        bl.addWidget(mw.SpeedValueLabel)
 
         mw.SpeedSlider.valueChanged.connect(mw._visca._on_speed_changed)
         mw.Cam1.clicked.connect(
@@ -291,10 +353,12 @@ class RightPanel:
         layout.addWidget(block)
 
     def _add_separator(self, layout: QVBoxLayout):
+        layout.addSpacing(20)
         line = QFrame(self._container)
         line.setFrameShape(QFrame.HLine)
         line.setStyleSheet("color: #E0E0E0;")
         layout.addWidget(line)
+        layout.addSpacing(20)
 
     def _add_focus_exposure(self, layout: QVBoxLayout):
         mw = self._mw
@@ -393,26 +457,25 @@ class RightPanel:
     def _add_config_buttons(self, layout: QVBoxLayout):
         mw = self._mw
 
+        sep = QFrame(self._container)
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("color: #E0E0E0;")
+        layout.addWidget(sep)
+        layout.addSpacing(10)
+
         gear_row = QHBoxLayout()
-        gear_row.addStretch()
-        btn_gear = QPushButton('⚙', self._container)
-        btn_gear.setFixedSize(40, 40)
+        btn_gear = QPushButton('⚙  Settings', self._container)
+        btn_gear.setFixedHeight(36)
         btn_gear.setToolTip('Camera configuration')
         btn_gear.setStyleSheet(
-            "QPushButton { background: rgba(80,80,80,60); border: 1px solid #999;"
-            " border-radius: 6px; font: 18px; color: #444; }"
-            "QPushButton:pressed { background: rgba(80,80,80,140); }"
+            "QPushButton { background: rgba(80,80,80,50); border: 1px solid #B8B8B8;"
+            " border-radius: 8px; font: 600 13px 'Segoe UI'; color: #444; padding: 0 14px; }"
+            "QPushButton:pressed { background: rgba(80,80,80,120); }"
         )
         btn_gear.clicked.connect(mw._open_config_dialog)
         gear_row.addWidget(btn_gear)
+        gear_row.addStretch()
         layout.addLayout(gear_row)
-
-        btn_close = QPushButton('Close window', self._container)
-        btn_close.setFixedHeight(24)
-        btn_close.setStyleSheet(
-            "background-color: lightgrey; font: 15px; color: black; border: none;")
-        btn_close.clicked.connect(mw._dialogs.Quit)
-        layout.addWidget(btn_close)
 
 
 # ── Widgets personalizados ────────────────────────────────────────────────────
@@ -463,7 +526,7 @@ class _IndicatorButton(QPushButton):
 def _section_label(text: str, parent: QWidget) -> QLabel:
     lbl = QLabel(text, parent)
     lbl.setAlignment(Qt.AlignCenter)
-    lbl.setStyleSheet("font: 600 15px 'Segoe UI'; color: #555555;")
+    lbl.setStyleSheet("font: 600 15px 'Segoe UI'; color: #555555; padding-bottom: 10px;")
     return lbl
 
 

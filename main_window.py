@@ -191,51 +191,19 @@ class MainWindow(QMainWindow):
 
     def _build_mode_buttons(self):
         """
-        Crea BtnCall y BtnSet como botones flotantes a la izquierda del panel derecho.
-        Cada botón muestra la etiqueta (CALL/SET) arriba y el icono (📷/✏) abajo.
+        Conecta los frames CALL/SET creados en el right_panel con la lógica de estado.
+        Los frames visuales ya viven dentro del layout del panel derecho (parte superior).
         """
-        STYLE_ACTIVE = (
-            "QFrame { background-color: rgba(255,255,255,230); border-radius: 12px;"
-            "  border: 2px solid rgba(0,0,0,120); }"
-        )
-        STYLE_INACTIVE = (
-            "QFrame { background-color: rgba(0,0,0,130); border-radius: 12px;"
-            "  border: 1px solid rgba(255,255,255,25); }"
-        )
-        LBL_STYLE  = "QLabel { font: 700 11px 'Segoe UI'; color: #222222; background: transparent; border: none; }"
-        ICON_STYLE = "QLabel { font-size: 32px; background: transparent; border: none; }"
+        call_frame = self._right_panel.call_frame
+        set_frame  = self._right_panel.set_frame
 
-        def make_frame(label_text, icon_text, x, y, active):
-            frame = QFrame(self)
-            frame.setGeometry(x, y, 82, 72)
-            frame.setStyleSheet(STYLE_ACTIVE if active else STYLE_INACTIVE)
-            frame.setCursor(Qt.PointingHandCursor)
-            vbox = QVBoxLayout(frame)
-            vbox.setContentsMargins(4, 5, 4, 5)
-            vbox.setSpacing(2)
-            lbl = QLabel(label_text, frame)
-            lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet(LBL_STYLE)
-            if not active:
-                lbl.hide()
-            icon = QLabel(icon_text, frame)
-            icon.setAlignment(Qt.AlignCenter)
-            icon.setStyleSheet(ICON_STYLE)
-            vbox.addWidget(lbl)
-            vbox.addWidget(icon)
-            frame._label = lbl
-            frame._active_style   = STYLE_ACTIVE
-            frame._inactive_style = STYLE_INACTIVE
-            return frame
-
-        call_frame = make_frame("CALL", "📷", 1400, 28,  active=True)
-        set_frame  = make_frame("SET",  "✏",  1400, 108, active=False)
+        rp = self._right_panel
 
         def activate(frame, other):
             frame.setStyleSheet(frame._active_style)
-            frame._label.show()
+            frame._label.setStyleSheet(rp._MODE_LBL_STYLE)
             other.setStyleSheet(other._inactive_style)
-            other._label.hide()
+            other._label.setStyleSheet(rp._MODE_LBL_STYLE_INACT)
 
         # Botones lógicos invisibles — mantienen estado y conectan con el resto del código
         self.BtnCall = QPushButton(self)
@@ -266,9 +234,6 @@ class MainWindow(QMainWindow):
 
         self.BtnCall.clicked.connect(self._on_preset_mode_changed)
         self.BtnSet.clicked.connect(self._on_preset_mode_changed)
-
-        call_frame.raise_()
-        set_frame.raise_()
 
     def _update_mode_indicator(self, mode: str):
         """Actualiza el overlay y los estilos de GoButton según el modo activo."""
@@ -468,7 +433,7 @@ class MainWindow(QMainWindow):
         self.SessionStatus.setVisible(False)
 
         self.BtnNames = QPushButton('\U0001f465', self)
-        self.BtnNames.setGeometry(1500, 15, 40, 40)
+        self.BtnNames.setGeometry(1392, 15, 50, 40)
         self.BtnNames.setCheckable(True)
         self.BtnNames.setToolTip('Attendees panel')
         self.BtnNames.setStyleSheet(

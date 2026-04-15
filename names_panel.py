@@ -144,7 +144,7 @@ class NamesListWidget(QListWidget):
 
 class NamesPanel(QWidget):
     """
-    Panel semitransparente: x=1325, y=55, w=160, h=960.
+    Panel semitransparente: x=1255, y=65, w=220, h=430. Arrastrable por toda la ventana.
 
     on_changed_cb — Callable de MainWindow:
       Firma: on_changed_cb(old_name=None, new_name=None)
@@ -152,13 +152,14 @@ class NamesPanel(QWidget):
       con args → renombrado; MainWindow actualiza botones afectados
     """
 
-    PX, PY, PW, PH = 1325, 55, 160, 960
+    PX, PY, PW, PH = 1255, 65, 220, 730
 
     def __init__(self, names_list: list, on_changed_cb, clear_all_cb, parent=None):
         super().__init__(parent)
         self.names         = names_list
         self._on_changed   = on_changed_cb
         self._clear_all_cb = clear_all_cb
+        self._drag_pos     = None
 
         self.setGeometry(self.PX, self.PY, self.PW, self.PH)
         self.setAttribute(Qt.WA_StyledBackground, True)
@@ -338,6 +339,22 @@ class NamesPanel(QWidget):
             self.names.remove(name)
             self._on_changed()
             self._rebuild()
+
+    # ── Arrastre del panel ────────────────────────────────────────────────────
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton and self._drag_pos is not None:
+            self.move(event.globalPos() - self._drag_pos)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None
+        super().mouseReleaseEvent(event)
 
     def _clear_all(self):
         """
