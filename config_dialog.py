@@ -357,8 +357,6 @@ class ConfigDialog(QDialog):
         layout.addLayout(bottom)
 
         # ── Sección: Test Focus & Exposure ────────────────────────────────
-        _sim_active = sim_active  # usa el valor calculado al inicio de _build_ui
-
         line5 = QFrame()
         line5.setFrameShape(QFrame.HLine)
         line5.setStyleSheet("color: #ccc;")
@@ -401,7 +399,7 @@ class ConfigDialog(QDialog):
         layout.addWidget(btn_run_test)
 
         def _test_atem_connection():
-            if _sim_active:
+            if sim_active:
                 import hardware_simulator as _hw
                 _hw.atem_event_queue.put("switch_to_input2")
                 color = '#3d9e3d'

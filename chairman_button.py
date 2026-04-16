@@ -16,21 +16,17 @@
 #   2. Operador ajusta cámara manualmente
 #   3. Pulsa "Save position" → se guarda el preset VISCA y se oculta Save
 #
-# SEÑALES:
-#   recall_preset_requested(int)  → MainWindow ejecuta go_to_preset(n)
-#   save_preset_requested(int)    → MainWindow ejecuta _save_chairman_preset(n)
-#
 # MOTIVO DE ARCHIVO SEPARADO:
 #   ChairmanButton tiene estado y lógica propios (presets, botones auxiliares)
 #   que no pertenecen a widgets.py (widgets genéricos sin lógica de negocio).
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtWidgets import QPushButton, QLabel, QWidget
+from PyQt5.QtWidgets import QPushButton
 
 from widgets import SpecialDragButton
 from chairman_presets import get_preset_for_name, CHAIRMAN_GENERIC_PRESET
@@ -58,9 +54,6 @@ class ChairmanButton(SpecialDragButton):
       El Chairman está centrado en x=744. Los botones auxiliares se posicionan
       debajo (y=130), centrados en el mismo eje x.
     """
-
-    recall_preset_requested = pyqtSignal(int)
-    save_preset_requested   = pyqtSignal(int)
 
     # Posición del botón Chairman en main_window: cx=744, y=10, w=110, h=115
     # Los botones auxiliares van justo debajo: y=130

@@ -249,10 +249,6 @@ class DialogsController:
                 QMessageBox.Ok,
             )
 
-    def Quit(self):
-        """Cierra la aplicación limpiamente (pasa por closeEvent)."""
-        self._w.close()
-
     def HelpMsg(self):
         """Muestra el mensaje de contacto de soporte técnico."""
         QMessageBox.information(self._w, 'For Technical Assistance', Contact, QMessageBox.Ok)

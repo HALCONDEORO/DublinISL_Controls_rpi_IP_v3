@@ -6,7 +6,7 @@ from __future__ import annotations
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
 from pathlib import Path
 

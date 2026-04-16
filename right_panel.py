@@ -24,7 +24,6 @@ from PyQt5.QtWidgets import (
 )
 
 from config import SPEED_MIN, SPEED_MAX, SPEED_DEFAULT
-from config_dialog import ConfigDialog
 
 
 class RightPanel:
@@ -590,11 +589,3 @@ def _section_label(text: str, parent: QWidget) -> QLabel:
     lbl.setAlignment(Qt.AlignCenter)
     lbl.setStyleSheet("font: 600 15px 'Segoe UI'; color: #555555; padding-bottom: 10px;")
     return lbl
-
-
-def _toggle_frame(parent: QWidget) -> QFrame:
-    frame = QFrame(parent)
-    frame.setStyleSheet(
-        "QFrame { background-color: #E8E8E8; border-radius: 12px; border: none; }"
-    )
-    return frame
