@@ -12,5 +12,7 @@
     "Eddie",
     "Becky Mc"
   ],
-  "seats": {}
+  "seats": {
+    "58": "Marco"
+  }
 }

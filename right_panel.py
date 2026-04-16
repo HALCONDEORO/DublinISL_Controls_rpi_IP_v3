@@ -102,6 +102,11 @@ class RightPanel:
         if hasattr(self, '_joystick'):
             self._joystick.set_mode(mode)
 
+    def show_camera_controls(self, visible: bool):
+        """Muestra u oculta los controles PTZ/Focus según si la cámara está conectada."""
+        self._controls_widget.setVisible(visible)
+        self._no_camera_label.setVisible(not visible)
+
     # ── Fondo exterior oscuro ─────────────────────────────────────────────────
 
     def _build_outer_bg(self):
@@ -135,10 +140,27 @@ class RightPanel:
         self._add_mode_buttons(layout)
         self._add_separator(layout)
         self._add_camera_selector(layout)
-        self._add_separator(layout)
-        self._add_ptz_block(layout)
-        self._add_separator(layout)
-        self._add_focus_exposure(layout)
+
+        # ── Contenedor de controles PTZ + Focus/Exposure ──────────────────────
+        self._controls_widget = QWidget(self._container)
+        ctrl_layout = QVBoxLayout(self._controls_widget)
+        ctrl_layout.setContentsMargins(0, 0, 0, 0)
+        ctrl_layout.setSpacing(4)
+        self._add_separator(ctrl_layout)
+        self._add_ptz_block(ctrl_layout)
+        self._add_separator(ctrl_layout)
+        self._add_focus_exposure(ctrl_layout)
+        layout.addWidget(self._controls_widget)
+
+        # Label "Camera not found" — visible solo cuando no hay cámara conectada
+        self._no_camera_label = QLabel('Camera\nnot found', self._container)
+        self._no_camera_label.setAlignment(Qt.AlignCenter)
+        self._no_camera_label.setStyleSheet(
+            "QLabel { font: 700 22px 'Segoe UI'; color: #AAAAAA; padding: 40px 0px; }"
+        )
+        self._no_camera_label.hide()
+        layout.addWidget(self._no_camera_label)
+
         layout.addSpacing(20)
         self._add_config_buttons(layout)
 
@@ -241,6 +263,8 @@ class RightPanel:
         mw.Cam2.clicked.connect(mw._update_exposure_ui)
         mw.Cam1.clicked.connect(lambda: self.set_joystick_mode('platform'))
         mw.Cam2.clicked.connect(lambda: self.set_joystick_mode('comments'))
+        mw.Cam1.clicked.connect(mw._update_controls_visibility)
+        mw.Cam2.clicked.connect(mw._update_controls_visibility)
 
     def _add_ptz_block(self, layout: QVBoxLayout):
         """Bloque unificado: Speed (fila superior) · Joystick + Zoom (fila inferior)."""
@@ -349,6 +373,35 @@ class RightPanel:
         joy_zoom_row.addWidget(zoom_w, alignment=Qt.AlignTop)
         joy_zoom_row.addStretch()
         bl.addLayout(joy_zoom_row)
+
+        # ── Display de estado de cámara simulada (solo en modo sim) ──────────
+        import sim_mode as _sm
+        if _sm.is_active():
+            import hardware_simulator as _hw
+
+            sim_lbl = QLabel("", block)
+            sim_lbl.setAlignment(Qt.AlignCenter)
+            sim_lbl.setStyleSheet(
+                "font: 12px 'Consolas'; color: #444;"
+                " background: #E8E8E8; border-radius: 6px; padding: 4px 8px;"
+            )
+            bl.addWidget(sim_lbl)
+
+            def _refresh_sim_lbl():
+                cam = _hw.active_cam1 if mw.Cam1.isChecked() else _hw.active_cam2
+                if cam is None:
+                    return
+                with cam._lock:
+                    z    = int(cam.zoom / 0x4000 * 100)
+                    p    = int(cam.pan)
+                    t    = int(cam.tilt)
+                    last = (cam.last_cmd or "-")[:16]
+                sim_lbl.setText(f"zoom {z:3d}%  pan {p:+5d}  tilt {t:+5d}  {last}")
+
+            _sim_timer = QtCore.QTimer(block)
+            _sim_timer.setInterval(150)
+            _sim_timer.timeout.connect(_refresh_sim_lbl)
+            _sim_timer.start()
 
         layout.addWidget(block)
 

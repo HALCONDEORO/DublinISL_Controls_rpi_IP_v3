@@ -293,25 +293,25 @@ def check_camera(ip: str, cam_id: str, timeout: int = SOCKET_TIMEOUT) -> bool:
         return False
 
 
-# Ejecutar chequeos de cámaras en paralelo en startup
-_cam1_result = [False]
-_cam2_result = [False]
-
-
-try:
-    # Iniciar dos threads simultáneamente para chequear cámaras
-    def _run_cam1(): _cam1_result[0] = check_camera(CAM1.ip, CAM1.cam_id)
-    def _run_cam2(): _cam2_result[0] = check_camera(CAM2.ip, CAM2.cam_id)
-    t1 = threading.Thread(target=_run_cam1, daemon=True)
-    t2 = threading.Thread(target=_run_cam2, daemon=True)
-    t1.start()
-    t2.start()
-    # Esperar máximo 3 segundos para que terminen
-    t1.join(timeout=3)
-    t2.join(timeout=3)
-except Exception as exc:
-    logger.error("Error en threads de verificación de cámaras: %s", exc)
-
-# Almacenar resultado de conectividad en cada instancia
-CAM1.check = "Green" if _cam1_result[0] else "Red"
-CAM2.check = "Green" if _cam2_result[0] else "Red"
+# En modo simulación los servidores VISCA no han arrancado aún en este punto
+# (lo hacen en main_window.__init__), así que saltamos el check y marcamos Green
+# para que la UI no muestre las cámaras en rojo innecesariamente.
+if Path("sim_ip_backup.json").exists():
+    CAM1.check = "Green"
+    CAM2.check = "Green"
+else:
+    _cam1_result = [False]
+    _cam2_result = [False]
+    try:
+        def _run_cam1(): _cam1_result[0] = check_camera(CAM1.ip, CAM1.cam_id)
+        def _run_cam2(): _cam2_result[0] = check_camera(CAM2.ip, CAM2.cam_id)
+        t1 = threading.Thread(target=_run_cam1, daemon=True)
+        t2 = threading.Thread(target=_run_cam2, daemon=True)
+        t1.start()
+        t2.start()
+        t1.join(timeout=3)
+        t2.join(timeout=3)
+    except Exception as exc:
+        logger.error("Error en threads de verificacion de camaras: %s", exc)
+    CAM1.check = "Green" if _cam1_result[0] else "Red"
+    CAM2.check = "Green" if _cam2_result[0] else "Red"

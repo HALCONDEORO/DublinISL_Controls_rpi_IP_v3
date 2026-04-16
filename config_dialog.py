@@ -26,16 +26,19 @@
 #   dlg = ConfigDialog(self)
 #   dlg.exec_()   # modal — bloquea hasta que se cierre
 
+import os
+import sys
 import socket
 import threading
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QFrame,
+    QPushButton, QLabel, QFrame, QScrollArea, QWidget,
 )
 
 from schedule_dialog import ScheduleDialog
+import sim_mode as _sim_mode
 
 from config import CAM1, CAM2, ATEMAddress
 
@@ -58,7 +61,7 @@ class ConfigDialog(QDialog):
         # Modal: bloquea la ventana principal mientras está abierto.
         # Evita que el operador mueva cámaras mientras el técnico cambia IPs.
         self.setModal(True)
-        self.setFixedSize(400, 690)
+        self.setFixedSize(400, 940)
         # Sin barra de título del SO en pantalla táctil (RPi fullscreen)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
 
@@ -69,6 +72,9 @@ class ConfigDialog(QDialog):
         Construye el contenido del diálogo.
         mw — referencia a MainWindow para conectar los callbacks existentes.
         """
+        # Calculado una vez aquí y reutilizado en todas las secciones
+        sim_active = _sim_mode.is_active()
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
@@ -159,6 +165,121 @@ class ConfigDialog(QDialog):
         row2.addWidget(btn_id2)
         layout.addLayout(row2)
 
+        # ── Sección: Camera Discovery ─────────────────────────────────────
+        layout.addWidget(self._section_label('Camera Discovery'))
+
+        # Etiqueta de estado del escaneo
+        disc_status = QLabel('Press Scan to detect cameras on the network.')
+        disc_status.setStyleSheet(
+            "font: 11px 'Segoe UI'; color: #666; padding: 2px 0;"
+        )
+        disc_status.setWordWrap(True)
+        layout.addWidget(disc_status)
+
+        # Contenedor con scroll para los resultados (máx 110 px visible)
+        disc_inner = QWidget()
+        disc_inner.setStyleSheet("background: transparent;")
+        disc_layout = QVBoxLayout(disc_inner)
+        disc_layout.setContentsMargins(0, 0, 0, 0)
+        disc_layout.setSpacing(4)
+
+        disc_scroll = QScrollArea()
+        disc_scroll.setWidgetResizable(True)
+        disc_scroll.setFixedHeight(0)   # oculto hasta que haya resultados
+        disc_scroll.setFrameShape(QFrame.NoFrame)
+        disc_scroll.setStyleSheet("background: transparent;")
+        disc_scroll.setWidget(disc_inner)
+        layout.addWidget(disc_scroll)
+
+        btn_scan = QPushButton('🔍  Scan Network')
+        btn_scan.setFixedHeight(34)
+        btn_scan.setStyleSheet(
+            "QPushButton { background: #1565C0; border: none; border-radius: 6px;"
+            " font: 13px; color: white; }"
+            "QPushButton:pressed { background: #0D47A1; }"
+            "QPushButton:disabled { background: #90A4AE; }"
+        )
+        layout.addWidget(btn_scan)
+
+        # ── Helpers de asignación ─────────────────────────────────────────
+
+        def _apply_ip(ip: str, cam_num: int):
+            """Guarda la IP en el fichero correspondiente y reinicia la app."""
+            filename = 'PTZ1IP.txt' if cam_num == 1 else 'PTZ2IP.txt'
+            with open(filename, 'w') as fh:
+                fh.write(ip)
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
+        def _clear_results():
+            while disc_layout.count():
+                child = disc_layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+
+        def _show_results(found: list):
+            _clear_results()
+            if not found:
+                disc_status.setText('No VISCA devices found on the network.')
+                disc_scroll.setFixedHeight(0)
+            else:
+                disc_status.setText(f'{len(found)} device(s) found:')
+                for ip in found:
+                    row_w = QWidget()
+                    row_w.setStyleSheet("background: #f5f5f5; border-radius: 4px;")
+                    row_h = QHBoxLayout(row_w)
+                    row_h.setContentsMargins(6, 2, 6, 2)
+                    row_h.setSpacing(6)
+
+                    lbl = QLabel(ip)
+                    lbl.setStyleSheet("font: bold 12px; color: #222; background: transparent;")
+                    row_h.addWidget(lbl)
+                    row_h.addStretch()
+
+                    btn_p = QPushButton('→ Platform')
+                    btn_p.setFixedHeight(24)
+                    btn_p.setFixedWidth(86)
+                    btn_p.setStyleSheet(
+                        "QPushButton { background: #2e7d32; border: none; border-radius: 4px;"
+                        " font: 11px; color: white; }"
+                        "QPushButton:pressed { background: #1b5e20; }"
+                    )
+                    btn_p.clicked.connect(lambda _=False, _ip=ip: _apply_ip(_ip, 1))
+                    row_h.addWidget(btn_p)
+
+                    btn_c = QPushButton('→ Comments')
+                    btn_c.setFixedHeight(24)
+                    btn_c.setFixedWidth(86)
+                    btn_c.setStyleSheet(
+                        "QPushButton { background: #c62828; border: none; border-radius: 4px;"
+                        " font: 11px; color: white; }"
+                        "QPushButton:pressed { background: #8b1a1a; }"
+                    )
+                    btn_c.clicked.connect(lambda _=False, _ip=ip: _apply_ip(_ip, 2))
+                    row_h.addWidget(btn_c)
+
+                    disc_layout.addWidget(row_w)
+
+                # Altura: máx 4 filas × 32 px
+                disc_scroll.setFixedHeight(min(len(found), 4) * 32)
+
+            btn_scan.setEnabled(True)
+            btn_scan.setText('🔍  Scan Network')
+
+        def _run_scan():
+            from camera_discovery import discover_cameras
+            found = discover_cameras()
+            QTimer.singleShot(0, lambda: _show_results(found))
+
+        def _on_scan_clicked():
+            _clear_results()
+            disc_scroll.setFixedHeight(0)
+            disc_status.setText('Scanning…')
+            btn_scan.setEnabled(False)
+            btn_scan.setText('Scanning…')
+            threading.Thread(target=_run_scan, daemon=True).start()
+
+        btn_scan.clicked.connect(_on_scan_clicked)
+
         # Separador
         line2 = QFrame()
         line2.setFrameShape(QFrame.HLine)
@@ -205,6 +326,15 @@ class ConfigDialog(QDialog):
         line4.setStyleSheet("color: #ccc;")
         layout.addWidget(line4)
 
+        # ── Sección: Simulation Mode ──────────────────────────────────────
+        layout.addWidget(self._section_label('Simulation Mode'))
+        self._build_sim_section(layout, mw, sim_active)
+
+        line_sim = QFrame()
+        line_sim.setFrameShape(QFrame.HLine)
+        line_sim.setStyleSheet("color: #ccc;")
+        layout.addWidget(line_sim)
+
         # ── Versión y ayuda ───────────────────────────────────────────────
         bottom = QHBoxLayout()
 
@@ -227,6 +357,8 @@ class ConfigDialog(QDialog):
         layout.addLayout(bottom)
 
         # ── Sección: Test Focus & Exposure ────────────────────────────────
+        _sim_active = sim_active  # usa el valor calculado al inicio de _build_ui
+
         line5 = QFrame()
         line5.setFrameShape(QFrame.HLine)
         line5.setStyleSheet("color: #ccc;")
@@ -269,12 +401,19 @@ class ConfigDialog(QDialog):
         layout.addWidget(btn_run_test)
 
         def _test_atem_connection():
-            try:
-                with socket.create_connection((ATEMAddress, 9910), timeout=3):
-                    ok = True
-            except OSError:
-                ok = False
-            color = '#3d9e3d' if ok else '#b33030'
+            if _sim_active:
+                import hardware_simulator as _hw
+                _hw.atem_event_queue.put("switch_to_input2")
+                color = '#3d9e3d'
+            else:
+                try:
+                    with socket.create_connection((ATEMAddress, 9910), timeout=3):
+                        ok = True
+                except OSError as exc:
+                    import logging as _log
+                    _log.getLogger(__name__).warning("ATEM test failed: %s", exc)
+                    ok = False
+                color = '#3d9e3d' if ok else '#b33030'
             test_indicators[6].setStyleSheet(f"color: {color}; font: 14px;")
             btn_run_test.setEnabled(True)
             btn_run_test.setText('▶  Run Test')
@@ -354,6 +493,53 @@ class ConfigDialog(QDialog):
             f" border-radius: 4px; font: bold 12px; color: {text_color};{align} }}"
             f"QPushButton:pressed {{ background: #eeeeee; }}"
         )
+
+    def _build_sim_section(self, layout, mw, sim_active: bool):
+        """Sección de modo simulación: toggle ON/OFF."""
+
+        status_text  = "ACTIVE — cameras simulated locally" if sim_active else "INACTIVE — using real hardware"
+        status_color = "#1a7a1a" if sim_active else "#555"
+        status_bg    = "#e8f5e9" if sim_active else "#f5f5f5"
+        lbl_status = QLabel(status_text)
+        lbl_status.setAlignment(Qt.AlignCenter)
+        lbl_status.setStyleSheet(
+            f"font: bold 11px; color: {status_color};"
+            f" background: {status_bg}; border-radius: 5px; padding: 5px;"
+        )
+        layout.addWidget(lbl_status)
+
+        if sim_active:
+            btn_toggle = QPushButton("Disable Simulation Mode")
+            btn_toggle.setStyleSheet(
+                "QPushButton { background: #c62828; border: none; border-radius: 6px;"
+                " font: bold 13px; color: white; }"
+                "QPushButton:pressed { background: #8b1a1a; }"
+            )
+        else:
+            btn_toggle = QPushButton("Enable Simulation Mode")
+            btn_toggle.setStyleSheet(
+                "QPushButton { background: #1565C0; border: none; border-radius: 6px;"
+                " font: bold 13px; color: white; }"
+                "QPushButton:pressed { background: #0D47A1; }"
+            )
+        btn_toggle.setFixedHeight(38)
+
+        def _toggle_sim():
+            try:
+                if _sim_mode.is_active():
+                    _sim_mode.deactivate()
+                else:
+                    _sim_mode.activate()
+            except RuntimeError as exc:
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(None, "Simulation Mode",
+                                    str(exc) or "Unknown error toggling simulation mode.")
+                return
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
+        btn_toggle.clicked.connect(_toggle_sim)
+        layout.addWidget(btn_toggle)
+
 
     def _try_close(self):
         """

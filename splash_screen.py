@@ -13,6 +13,8 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
+from camera_discovery import get_camera_subnet, tcp_scan, arp_scan
+
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont
@@ -273,6 +275,8 @@ class SplashScreen(QWidget):
             ("Focus & Exposure Cam2",  self._test_focus_exposure_cam2),
             ("ATEM Switcher",          self._test_atem),
             ("Data Files",             self._test_data_files),
+            ("TCP Scan (cameras)",     self._test_tcp_scan),
+            ("ARP Table",              self._test_arp_table),
         ]
         self.tests_total = len(tests)
 
@@ -482,4 +486,37 @@ class SplashScreen(QWidget):
                 sock.recv(64)
         except Exception:
             pass
+
+    # ─────────────────────────────────────────────────────────────────────────
+    #  DESCUBRIMIENTO DE CÁMARAS  (lógica en camera_discovery.py)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _test_tcp_scan(self) -> bool:
+        """
+        Escanea toda la subred /24 de las cámaras en VISCA_PORT con 50 workers
+        paralelos y registra los hosts que responden.
+        Delega en camera_discovery.tcp_scan().
+        """
+        subnet = get_camera_subnet()
+        self._update_log(f"  Scanning {subnet}.1-254 port {VISCA_PORT}...")
+        found = tcp_scan(subnet)
+        if found:
+            self._update_log(f"  VISCA found: {', '.join(found)}")
+        else:
+            self._update_log(f"  No VISCA devices on {subnet}.x")
+        return bool(found)
+
+    def _test_arp_table(self) -> bool:
+        """
+        Lee la tabla ARP del sistema y registra las entradas que pertenecen
+        a la subred de las cámaras.
+        Delega en camera_discovery.arp_scan().
+        """
+        subnet = get_camera_subnet()
+        unique = arp_scan(subnet)
+        if unique:
+            self._update_log(f"  ARP ({subnet}.x): {', '.join(unique)}")
+        else:
+            self._update_log(f"  ARP: no entries for {subnet}.x")
+        return bool(unique)
 

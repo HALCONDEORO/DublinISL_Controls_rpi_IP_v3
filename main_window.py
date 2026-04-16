@@ -120,9 +120,24 @@ class MainWindow(QMainWindow):
 
         # Conectar señales de estado de conexión a los botones de cámara
         self._cameras.worker(CAM1.ip).signals.connection_changed.connect(
-            lambda ok: self.Cam1.set_connected(ok))
+            lambda ok: (self.Cam1.set_connected(ok), self._update_controls_visibility()))
         self._cameras.worker(CAM2.ip).signals.connection_changed.connect(
-            lambda ok: self.Cam2.set_connected(ok))
+            lambda ok: (self.Cam2.set_connected(ok), self._update_controls_visibility()))
+
+        # ── Modo simulación: arrancar servidores VISCA internos si está activo ──
+        from pathlib import Path as _Path
+        if _Path("sim_ip_backup.json").exists():
+            import hardware_simulator as _sim
+            _sim_c1 = _sim.SimCamera("CAM1-Platform")
+            _sim_c2 = _sim.SimCamera("CAM2-Comments")
+            ok1 = _sim.ViscaServer(CAM1.ip, _sim_c1).start()
+            ok2 = _sim.ViscaServer(CAM2.ip, _sim_c2).start()
+            if not ok1 or not ok2:
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    "SimVISCA: algún servidor no pudo arrancar (CAM1=%s CAM2=%s)", ok1, ok2)
+            _sim.active_cam1 = _sim_c1
+            _sim.active_cam2 = _sim_c2
 
         self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
         self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
@@ -515,6 +530,11 @@ class MainWindow(QMainWindow):
     def _update_exposure_ui(self):
         cam_key = 1 if self.Cam1.isChecked() else 2
         self._right_panel.set_exposure_level(self._cameras.exposure_level[cam_key])
+
+    def _update_controls_visibility(self):
+        """Muestra u oculta los controles PTZ según si la cámara activa está conectada."""
+        connected = self.Cam1._connected if self.Cam1.isChecked() else self.Cam2._connected
+        self._right_panel.show_camera_controls(connected)
 
     def _update_backlight_ui(self):
         cam_key = 1 if self.Cam1.isChecked() else 2
