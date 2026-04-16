@@ -57,6 +57,9 @@ class RightPanel:
     # Con invertedAppearance=True el handle sube al aumentar el valor;
     # add-page:vertical es la zona DEBAJO del handle → se llena de abajo hacia arriba.
     _ZOOM_VERTICAL_STYLE = (
+        "QSlider:vertical {{"
+        "  padding: 11px 0px;"
+        "}}"
         "QSlider::groove:vertical {{"
         "  background: #E0E0E0; width: 6px; border-radius: 3px;"
         "}}"
@@ -379,11 +382,13 @@ class RightPanel:
         if _sm.is_active():
             import hardware_simulator as _hw
 
+            bl.addSpacing(42)
             sim_lbl = QLabel("", block)
             sim_lbl.setAlignment(Qt.AlignCenter)
+            sim_lbl.setWordWrap(True)
             sim_lbl.setStyleSheet(
-                "font: 12px 'Consolas'; color: #444;"
-                " background: #E8E8E8; border-radius: 6px; padding: 4px 8px;"
+                "font: 14px 'Consolas'; color: #333;"
+                " background: #E8E8E8; border-radius: 6px; padding: 8px 10px;"
             )
             bl.addWidget(sim_lbl)
 
@@ -395,8 +400,12 @@ class RightPanel:
                     z    = int(cam.zoom / 0x4000 * 100)
                     p    = int(cam.pan)
                     t    = int(cam.tilt)
-                    last = (cam.last_cmd or "-")[:16]
-                sim_lbl.setText(f"zoom {z:3d}%  pan {p:+5d}  tilt {t:+5d}  {last}")
+                    last = (cam.last_cmd or "-")[:20]
+                sim_lbl.setText(
+                    f"zoom {z:3d}%\n"
+                    f"pan  {p:+6d}   tilt {t:+6d}\n"
+                    f"{last}"
+                )
 
             _sim_timer = QtCore.QTimer(block)
             _sim_timer.setInterval(150)
