@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# names_panel.py — Panel de asistentes y lista de consejeros
+# names_panel.py — Panel de asistentes y lista de asistentes
 #
 # Extraído de widgets.py para reducir el tamaño de ese módulo.
 #
 # Clases:
 #   NamesListWidget — QListWidget con reordenamiento interno + arrastre externo
-#   NamesPanel      — panel flotante compacto con lista editable de consejeros
+#   NamesPanel      — panel flotante compacto con lista editable de asistentes
 
 from typing import Optional
 
@@ -20,12 +20,12 @@ from widgets import DragDropButton
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# NamesListWidget — lista de consejeros con doble modo de arrastre
+# NamesListWidget — lista de asistentes con doble modo de arrastre
 # ─────────────────────────────────────────────────────────────────────────────
 
 class NamesListWidget(QListWidget):
     """
-    Lista de consejeros que soporta dos tipos de drag simultáneamente:
+    Lista de asistentes que soporta dos tipos de drag simultáneamente:
 
     1. REORDENAMIENTO INTERNO: arrastra un nombre arriba/abajo dentro del panel.
        Detectado porque event.source() == self.
@@ -139,7 +139,7 @@ class NamesListWidget(QListWidget):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# NamesPanel — panel flotante compacto con lista editable de consejeros
+# NamesPanel — panel flotante compacto con lista editable de asistentes
 # ─────────────────────────────────────────────────────────────────────────────
 
 class NamesPanel(QWidget):
@@ -305,7 +305,7 @@ class NamesPanel(QWidget):
         if not self.names:
             return
         old_name, ok = QInputDialog.getItem(
-            self, "Edit Name", "Select councillor:", self.names, 0, False)
+            self, "Edit Name", "Select asistente:", self.names, 0, False)
         if not ok:
             return
         new_name, ok2 = QInputDialog.getText(
@@ -326,7 +326,7 @@ class NamesPanel(QWidget):
         if not self.names:
             return
         name, ok = QInputDialog.getItem(
-            self, "Delete Name", "Select councillor to remove:", self.names, 0, False)
+            self, "Delete Name", "Select asistente to remove:", self.names, 0, False)
         if not ok:
             return
         reply = QMessageBox.question(
@@ -365,7 +365,7 @@ class NamesPanel(QWidget):
             return
         reply = QMessageBox.question(
             self, "Clear All Seats",
-            "Remove all councillor assignments from seats?",
+            "Remove all asistente assignments from seats?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if reply == QMessageBox.Yes:

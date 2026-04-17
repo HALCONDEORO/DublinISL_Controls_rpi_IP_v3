@@ -208,11 +208,11 @@ def is_valid_cam_id(text: str) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  PERSISTENCIA DE NOMBRES DE CONCEJALES
+#  PERSISTENCIA DE NOMBRES DE ASISTENTES
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def load_names_data() -> dict:
-    """Cargar nombres de concejales y asignaciones de asientos desde JSON."""
+    """Cargar nombres de asistentes y asignaciones de asientos desde JSON."""
     try:
         names_path = Path(NAMES_FILE)
         # Si el archivo no existe, retornar estructura vacía
@@ -244,7 +244,7 @@ def load_names_data() -> dict:
 
 
 def save_names_data(names_list: list, seat_assignments: dict) -> bool:
-    """Guardar nombres de concejales y asignaciones en JSON."""
+    """Guardar nombres de asistentes y asignaciones en JSON."""
     # Validar tipos de parámetros
     if not isinstance(names_list, list) or not isinstance(seat_assignments, dict):
         logger.warning("save_names_data: names must be list, seats must be dict")
@@ -293,18 +293,23 @@ def check_camera(ip: str, cam_id: str, timeout: int = SOCKET_TIMEOUT) -> bool:
         return False
 
 
-# En modo simulación los servidores VISCA no han arrancado aún en este punto
-# (lo hacen en main_window.__init__), así que saltamos el check y marcamos Green
-# para que la UI no muestre las cámaras en rojo innecesariamente.
-if Path("sim_ip_backup.json").exists():
-    CAM1.check = "Green"
-    CAM2.check = "Green"
-else:
-    _cam1_result = [False]
-    _cam2_result = [False]
+def check_all_cameras() -> None:
+    """Verificar conectividad de todas las cámaras en paralelo y actualizar su campo .check.
+
+    En modo simulación los servidores VISCA arrancan después de este punto,
+    así que se marcan directamente como Green.
+    Llamar explícitamente desde main_window.__init__ o equivalente.
+    """
+    if Path("sim_ip_backup.json").exists():
+        CAM1.check = "Green"
+        CAM2.check = "Green"
+        return
+
+    cam1_result = [False]
+    cam2_result = [False]
     try:
-        def _run_cam1(): _cam1_result[0] = check_camera(CAM1.ip, CAM1.cam_id)
-        def _run_cam2(): _cam2_result[0] = check_camera(CAM2.ip, CAM2.cam_id)
+        def _run_cam1(): cam1_result[0] = check_camera(CAM1.ip, CAM1.cam_id)
+        def _run_cam2(): cam2_result[0] = check_camera(CAM2.ip, CAM2.cam_id)
         t1 = threading.Thread(target=_run_cam1, daemon=True)
         t2 = threading.Thread(target=_run_cam2, daemon=True)
         t1.start()
@@ -313,5 +318,5 @@ else:
         t2.join(timeout=3)
     except Exception as exc:
         logger.error("Error en threads de verificacion de camaras: %s", exc)
-    CAM1.check = "Green" if _cam1_result[0] else "Red"
-    CAM2.check = "Green" if _cam2_result[0] else "Red"
+    CAM1.check = "Green" if cam1_result[0] else "Red"
+    CAM2.check = "Green" if cam2_result[0] else "Red"

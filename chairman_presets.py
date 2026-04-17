@@ -3,7 +3,7 @@
 from __future__ import annotations
 #
 # Responsabilidad única: cargar y guardar el archivo chairman_presets.json,
-# que mapea nombre de consejero → número de preset VISCA en Cam1 (Platform).
+# que mapea nombre de asistente → número de preset VISCA en Cam1 (Platform).
 #
 # ESTRUCTURA DEL ARCHIVO:
 #   {

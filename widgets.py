@@ -9,7 +9,7 @@
 #   GoButton          — botón de asiento numerado (hereda DragDropButton + QPushButton)
 #   SpecialDragButton — QToolButton especial (hereda DragDropButton + QToolButton)
 #   NamesListWidget   — QListWidget con reordenamiento interno + arrastre externo
-#   NamesPanel        — panel flotante compacto con lista editable de consejeros
+#   NamesPanel        — panel flotante compacto con lista editable de asistentes
 #   make_arrow_btn    — helper para crear botones de dirección con icono rotado
 #
 # CAMBIOS EN ESTE REFACTOR:

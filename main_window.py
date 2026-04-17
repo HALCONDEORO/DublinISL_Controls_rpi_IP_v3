@@ -28,7 +28,7 @@
 #       · Si no tiene preset → botón "Save position" visible directamente
 #   - _save_chairman_preset(name): asigna número de preset libre, envía
 #     Save Preset VISCA a Cam1, persiste en chairman_presets.json.
-#   - _on_names_list_changed: al renombrar un consejero, migra su entrada
+#   - _on_names_list_changed: al renombrar un asistente, migra su entrada
 #     en chairman_presets para no perder el preset guardado.
 #   MOTIVO: distintos oradores tienen estaturas y distancias distintas;
 #   guardar la posición por persona evita reajustar la cámara manualmente.
@@ -63,6 +63,7 @@ from config import (
     SEAT_POSITIONS,
     load_names_data,
     PRESET_MAP,
+    check_all_cameras,
 )
 from atem_monitor import ATEMMonitor
 from camera_manager import CameraManager
@@ -496,11 +497,12 @@ class MainWindow(QMainWindow):
 
     def _open_config_dialog(self):
         """Instancia y abre el diálogo de configuración técnica."""
+        check_all_cameras()
         dlg = ConfigDialog(parent=self)
         dlg.exec_()
 
     # ─────────────────────────────────────────────────────────────────────
-    # Panel de consejeros
+    # Panel de asistentes
     # ─────────────────────────────────────────────────────────────────────
 
     def _build_names_panel(self):
