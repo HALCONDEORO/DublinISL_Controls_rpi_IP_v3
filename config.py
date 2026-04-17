@@ -153,11 +153,11 @@ SEAT_POSITIONS: dict[int, tuple[int, int]] = {
     # Fila 9
     124: (140, 960), 125: (230, 960), 126: (530, 960), 127: (620, 960),
     # Silla de ruedas
-    128: (150, 111),
+    128: (150, 121),
     # Segunda sala
     129: (380, 961),
     # Silla de ruedas espejo (auditorio, lado derecho)
-    130: (1220, 111),
+    130: (1220, 121),
     # Library (espejo de Second Room)
     131: (1157, 961),
 }

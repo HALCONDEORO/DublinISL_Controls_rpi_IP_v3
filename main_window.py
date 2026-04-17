@@ -123,6 +123,7 @@ class MainWindow(QMainWindow):
             lambda ok: (self.Cam1.set_connected(ok), self._update_controls_visibility()))
         self._cameras.worker(CAM2.ip).signals.connection_changed.connect(
             lambda ok: (self.Cam2.set_connected(ok), self._update_controls_visibility()))
+        self._update_controls_visibility()  # estado inicial: ocultar controles hasta confirmar conexión
 
         # ── Modo simulación: arrancar servidores VISCA internos si está activo ──
         from pathlib import Path as _Path
@@ -277,7 +278,7 @@ class MainWindow(QMainWindow):
             1920, 1080, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
         background = QLabel(self)
         background.setPixmap(pixmap)
-        background.setGeometry(0, -30, 1920, 1080)
+        background.setGeometry(0, 0, 1920, 1080)
         background.lower()
 
     def _build_table_seats(self):
@@ -313,7 +314,7 @@ class MainWindow(QMainWindow):
         btn.setText('Left')
         btn.setIcon(QtGui.QIcon(pix)); btn.setIconSize(QtCore.QSize(70, 70))
         btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-        btn.setGeometry(cx - btn_w // 2, 10, btn_w, btn_h)
+        btn.setGeometry(cx - btn_w // 2, 30, btn_w, btn_h)
         btn.setStyleSheet(
             "QToolButton { background-color: transparent; border: none;"
             " font: bold 13px; color: black; }"
@@ -332,7 +333,7 @@ class MainWindow(QMainWindow):
             icon_w=90, icon_h=90,
             parent=self,
         )
-        self._chairman_btn.setGeometry(cx - btn_w // 2, 10, btn_w, btn_h)
+        self._chairman_btn.setGeometry(cx - btn_w // 2, 30, btn_w, btn_h)
         self._chairman_btn.name_assigned.connect(self._seat_names_ctrl._on_seat_name_assigned)
         # Click sin nombre asignado → preset genérico 1
         self._chairman_btn.clicked.connect(
@@ -350,7 +351,7 @@ class MainWindow(QMainWindow):
         btn.setText('Right')
         btn.setIcon(QtGui.QIcon(pix)); btn.setIconSize(QtCore.QSize(70, 70))
         btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-        btn.setGeometry(cx - btn_w // 2, 10, btn_w, btn_h)
+        btn.setGeometry(cx - btn_w // 2, 30, btn_w, btn_h)
         btn.setStyleSheet(
             "QToolButton { background-color: transparent; border: none;"
             " font: bold 13px; color: black; }"

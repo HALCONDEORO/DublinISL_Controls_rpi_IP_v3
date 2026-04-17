@@ -79,11 +79,26 @@ class ConfigDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
 
-        # ── Título ────────────────────────────────────────────────────────
+        # ── Título + botón cerrar (X roja) ───────────────────────────────
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+
         title = QLabel('⚙  Camera Configuration')
         title.setStyleSheet("font: bold 16px; color: #222;")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        header_row.addWidget(title)
+        header_row.addStretch()
+
+        btn_x = QPushButton('✕')
+        btn_x.setFixedSize(30, 30)
+        btn_x.setStyleSheet(
+            "QPushButton { background: #c62828; border: none; border-radius: 6px;"
+            " font: bold 14px; color: white; }"
+            "QPushButton:pressed { background: #8b1a1a; }"
+        )
+        btn_x.clicked.connect(self.accept)
+        header_row.addWidget(btn_x)
+
+        layout.addLayout(header_row)
 
         # Separador visual
         line = QFrame()
@@ -447,19 +462,6 @@ class ConfigDialog(QDialog):
             QTimer.singleShot(100, lambda: _run_with_atem(0))
 
         btn_run_test.clicked.connect(_on_test_clicked)
-
-        # ── Botón cerrar ──────────────────────────────────────────────────
-        # Siempre al final y centrado — el único modo de salir en táctil
-        # (no hay barra de título con X por FramelessWindowHint).
-        btn_close = QPushButton('Close')
-        btn_close.setFixedHeight(36)
-        btn_close.setStyleSheet(
-            "QPushButton { background: #424242; border: none; border-radius: 6px;"
-            " font: bold 13px; color: white; }"
-            "QPushButton:pressed { background: #212121; }"
-        )
-        btn_close.clicked.connect(self.accept)
-        layout.addWidget(btn_close)
 
         # Estilo del diálogo: fondo blanco, borde sutil, sombra si el SO lo soporta
         self.setStyleSheet(

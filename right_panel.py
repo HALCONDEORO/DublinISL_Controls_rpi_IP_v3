@@ -108,6 +108,7 @@ class RightPanel:
         """Muestra u oculta los controles PTZ/Focus según si la cámara está conectada."""
         self._controls_widget.setVisible(visible)
         self._no_camera_label.setVisible(not visible)
+        QtCore.QTimer.singleShot(0, self._fit_container_height)
 
     # ── Fondo exterior oscuro ─────────────────────────────────────────────────
 
@@ -525,6 +526,8 @@ class RightPanel:
         layout.addSpacing(10)
 
         gear_row = QHBoxLayout()
+        gear_row.setSpacing(8)
+
         btn_gear = QPushButton('⚙  Settings', self._container)
         btn_gear.setFixedHeight(36)
         btn_gear.setToolTip('Camera configuration')
@@ -534,8 +537,18 @@ class RightPanel:
             "QPushButton:pressed { background: rgba(80,80,80,120); }"
         )
         btn_gear.clicked.connect(mw._open_config_dialog)
-        gear_row.addWidget(btn_gear)
-        gear_row.addStretch()
+        gear_row.addWidget(btn_gear, stretch=1)
+
+        btn_close = QPushButton('Close', self._container)
+        btn_close.setFixedHeight(36)
+        btn_close.setStyleSheet(
+            "QPushButton { background: #c62828; border: none;"
+            " border-radius: 8px; font: 600 13px 'Segoe UI'; color: white; padding: 0 14px; }"
+            "QPushButton:pressed { background: #8b1a1a; }"
+        )
+        btn_close.clicked.connect(mw.close)
+        gear_row.addWidget(btn_close, stretch=1)
+
         layout.addLayout(gear_row)
 
 

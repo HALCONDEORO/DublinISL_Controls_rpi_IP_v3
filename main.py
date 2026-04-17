@@ -35,8 +35,6 @@ def main():
         app = QApplication(sys.argv)
 
         main_win = MainWindow()
-        # Para Raspberry Pi, descomentar:
-        # main_win.showFullScreen()
         main_win.show()
 
         logger.info("Application started")
