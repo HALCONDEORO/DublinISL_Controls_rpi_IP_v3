@@ -1,48 +1,48 @@
-# Documentación del Sistema de Controles DublinISL
+# DublinISL Controls for Raspberry Pi v3
 
-## Descripción del Proyecto
-DublinISL es un sistema innovador diseñado para el control y monitoreo de dispositivos en entornos industriales y de investigación. Este sistema busca proporcionar una plataforma robusta y fácil de usar para la gestión de dispositivos y flujos de trabajo.  
+## Overview
+This repository contains the implementation of controls for a Raspberry Pi to handle VISCA protocol PTZ (Pan-Tilt-Zoom) camera control. It includes necessary configuration files, architecture details, usage instructions, and troubleshooting tips.
 
-## Características
-- **Monitoreo en tiempo real:** Permite la supervisión de dispositivos y sus métricas actuales.
-- **Configuración flexible:** Opción para personalizar la configuración de los dispositivos conectados.
-- **Interfaz intuitiva:** Un dashboard fácil de usar para interactuar con el sistema.
-- **Soporte multiplataforma:** Funciona en diversas plataformas y sistemas operativos.
+## VISCA Protocol PTZ Camera Control
+The VISCA protocol allows for remote control of PTZ cameras. This project showcases how to interface and control such cameras using the Raspberry Pi.
 
-## Requisitos
-- **Hardware:**
-  - Mínimo de 1 GB de RAM.
-  - Procesador de al menos 1 GHz.
-- **Software:**
-  - Python 3.x.
-  - Bibliotecas necesarias como Flask y Requests.
+### Features
+- Control Pan, Tilt, and Zoom functionalities.
+- Send and receive VISCA commands.
+- Configure camera settings via the software.
 
-## Instrucciones de Instalación
-1. Clona el repositorio:
+## Architecture
+The architecture of the project is designed for modularity and scalability. Main components include:
+- **Interface Module**: Handles communication with the PTZ camera.
+- **Control Module**: Processes user commands and sends appropriate VISCA commands to the camera.
+- **Configuration Module**: Manages configuration files.
+
+## Configuration Files
+Configuration files are provided in the `config` directory. These files include:
+- **Camera Settings**: Basic camera configuration like resolution and frame rate.
+- **Network Settings**: Configuration for connecting the Raspberry Pi to local and wide area networks.
+
+## Usage Instructions
+1. **Clone the repository**:
    ```bash
    git clone https://github.com/HALCONDEORO/DublinISL_Controls_rpi_IP_v3.git
    cd DublinISL_Controls_rpi_IP_v3
    ```
-2. Instala las dependencias necesarias:
+2. **Install dependencies**:
+   Follow the installation instructions in the `requirements.txt` file.
+3. **Configure the camera settings** as per your requirements in the `config/camera.json` file.
+4. **Run the control script**:
    ```bash
-   pip install -r requirements.txt
+   python control_script.py
    ```
 
-## Configuración
-- Edita el archivo de configuración `config.yaml` para ajustar las preferencias de tu sistema y dispositivos.
+## Troubleshooting
+- **Cannot connect to camera**: Check that the camera is powered on and connected to the same network as the Raspberry Pi.
+- **Invalid command errors**: Ensure that the commands sent are valid VISCA commands as outlined in the camera documentation.
+- **Performance issues**: Check network connectivity and ensure that no other heavy processes are running on the Raspberry Pi.
 
-## Guía de Uso
-- Para iniciar el sistema, ejecuta el siguiente comando:
-   ```bash
-   python app.py
-   ```
-- Accede a la interfaz web a través de `http://localhost:5000`.
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Resolución de Problemas
-1. **El sistema no se inicia.** Asegúrate de que todas las dependencias están instaladas correctamente.
-2. **No se pueden conectar dispositivos.** Revisa la configuración de red y el archivo de configuración para asegurarte de que los dispositivos están correctamente configurados.
-
-## Información de Contacto
-Para más información, contacta al equipo de soporte de DublinISL:
-- Email: soporte@dublinisl.com
-- Página web: [dublinisl.com](http://dublinisl.com)
+## Acknowledgements
+Thanks to the open-source community for the tools and libraries that made this project possible.
