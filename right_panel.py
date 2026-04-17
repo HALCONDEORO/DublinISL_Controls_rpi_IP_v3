@@ -15,9 +15,12 @@
 
 from __future__ import annotations
 
+import os
+
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QPainter
+from PyQt5.QtSvg import QSvgWidget
 from PyQt5.QtWidgets import (
     QButtonGroup, QFrame, QHBoxLayout, QLabel,
     QPushButton, QSlider, QVBoxLayout, QWidget,
@@ -155,12 +158,21 @@ class RightPanel:
         self._add_focus_exposure(ctrl_layout)
         layout.addWidget(self._controls_widget)
 
-        # Label "Camera not found" — visible solo cuando no hay cámara conectada
-        self._no_camera_label = QLabel('Camera\nnot found', self._container)
-        self._no_camera_label.setAlignment(Qt.AlignCenter)
-        self._no_camera_label.setStyleSheet(
-            "QLabel { font: 700 22px 'Segoe UI'; color: #AAAAAA; padding: 40px 0px; }"
-        )
+        # Widget "Camera not found" — visible solo cuando no hay cámara conectada
+        no_cam_container = QWidget(self._container)
+        no_cam_layout = QVBoxLayout(no_cam_container)
+        no_cam_layout.setContentsMargins(0, 40, 0, 40)
+        no_cam_layout.setSpacing(12)
+        no_cam_layout.setAlignment(Qt.AlignCenter)
+        _base_dir = os.path.dirname(os.path.abspath(__file__))
+        no_cam_icon = QSvgWidget(os.path.join(_base_dir, 'no-camera.svg'), no_cam_container)
+        no_cam_icon.setFixedSize(64, 64)
+        no_cam_text = QLabel('Camera\nnot found', no_cam_container)
+        no_cam_text.setAlignment(Qt.AlignCenter)
+        no_cam_text.setStyleSheet("QLabel { font: 700 22px 'Segoe UI'; color: #AAAAAA; }")
+        no_cam_layout.addWidget(no_cam_icon, 0, Qt.AlignCenter)
+        no_cam_layout.addWidget(no_cam_text, 0, Qt.AlignCenter)
+        self._no_camera_label = no_cam_container
         self._no_camera_label.hide()
         layout.addWidget(self._no_camera_label)
 
@@ -197,7 +209,9 @@ class RightPanel:
         row.setContentsMargins(3, 3, 3, 3)
         row.setSpacing(2)
 
-        def make_btn(label_text, icon_text, active):
+        _base_dir = os.path.dirname(os.path.abspath(__file__))
+
+        def make_btn(label_text, icon_name, active):
             frame = QFrame(wrapper)
             frame.setFixedHeight(58)
             frame.setStyleSheet(self._MODE_STYLE_ACTIVE if active else self._MODE_STYLE_INACTIVE)
@@ -206,9 +220,8 @@ class RightPanel:
             hbox.setContentsMargins(10, 6, 10, 6)
             hbox.setSpacing(8)
             hbox.addStretch()
-            icon = QLabel(icon_text, frame)
-            icon.setAlignment(Qt.AlignCenter)
-            icon.setStyleSheet(self._MODE_ICON_STYLE)
+            icon = QSvgWidget(os.path.join(_base_dir, icon_name), frame)
+            icon.setFixedSize(26, 26)
             lbl = QLabel(label_text, frame)
             lbl.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
             lbl.setStyleSheet(self._MODE_LBL_STYLE if active else self._MODE_LBL_STYLE_INACT)
@@ -220,10 +233,10 @@ class RightPanel:
             frame._inactive_style = self._MODE_STYLE_INACTIVE
             return frame
 
-        self.call_frame = make_btn("CALL", "📷", active=True)
-        self.set_frame  = make_btn("SET",  "✏",  active=False)
-        row.addWidget(self.call_frame)
+        self.call_frame = make_btn("CALL", "camera.svg",  active=True)
+        self.set_frame  = make_btn("SET",  "edit.svg",    active=False)
         row.addWidget(self.set_frame)
+        row.addWidget(self.call_frame)
         layout.addWidget(wrapper)
 
     def _add_camera_selector(self, layout: QVBoxLayout):
@@ -538,16 +551,6 @@ class RightPanel:
         )
         btn_gear.clicked.connect(mw._open_config_dialog)
         gear_row.addWidget(btn_gear, stretch=1)
-
-        btn_close = QPushButton('Close', self._container)
-        btn_close.setFixedHeight(36)
-        btn_close.setStyleSheet(
-            "QPushButton { background: #c62828; border: none;"
-            " border-radius: 8px; font: 600 13px 'Segoe UI'; color: white; padding: 0 14px; }"
-            "QPushButton:pressed { background: #8b1a1a; }"
-        )
-        btn_close.clicked.connect(mw.close)
-        gear_row.addWidget(btn_close, stretch=1)
 
         layout.addLayout(gear_row)
 

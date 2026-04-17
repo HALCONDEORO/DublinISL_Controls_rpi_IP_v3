@@ -448,16 +448,24 @@ class MainWindow(QMainWindow):
         self.SessionStatus.setStyleSheet("font: bold 12px; color: #8b1a1a")
         self.SessionStatus.setVisible(False)
 
-        self.BtnNames = QPushButton('\U0001f465', self)
+        self.BtnNames = QPushButton(self)
         self.BtnNames.setGeometry(1392, 15, 50, 40)
         self.BtnNames.setCheckable(True)
         self.BtnNames.setToolTip('Attendees panel')
         self.BtnNames.setStyleSheet(
             "QPushButton { background: white; border: 2px solid #1976D2;"
-            " font: 22px; border-radius: 6px; }"
-            "QPushButton:checked { background: #1976D2; color: white; }"
+            " border-radius: 6px; }"
+            "QPushButton:checked { background: #1976D2; }"
             "QPushButton:pressed  { background: #e3f2fd; }"
         )
+        _pe_svg = QSvgRenderer(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'person-edit.svg'))
+        _pe_pix = QPixmap(26, 26)
+        _pe_pix.fill(Qt.transparent)
+        _p = QtGui.QPainter(_pe_pix)
+        _pe_svg.render(_p)
+        _p.end()
+        self.BtnNames.setIcon(QtGui.QIcon(_pe_pix))
+        self.BtnNames.setIconSize(_pe_pix.size())
         self.BtnNames.clicked.connect(self._toggle_names_panel)
 
     def _build_right_panel(self):

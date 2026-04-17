@@ -29,30 +29,192 @@
 import os
 import sys
 import socket
+import subprocess
+import platform
 import threading
 
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QSize, QTimer
+from PyQt5.QtGui import QIcon, QPixmap, QPainter as _QPainter
+from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QFrame, QScrollArea, QWidget,
+    QPushButton, QLabel, QFrame, QScrollArea, QWidget, QLineEdit,
 )
 
 from schedule_dialog import ScheduleDialog
 import sim_mode as _sim_mode
 
-from config import CAM1, CAM2, ATEMAddress
+from config import CAM1, CAM2, ATEMAddress, is_valid_ip, is_valid_cam_id
+
+
+def _make_pencil_icon(size=18):
+    """Renderiza edit.svg a un QIcon del tamaño dado."""
+    svg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'edit.svg')
+    renderer = QSvgRenderer(svg_path)
+    pix = QPixmap(size, size)
+    pix.fill(Qt.transparent)
+    p = _QPainter(pix)
+    renderer.render(p)
+    p.end()
+    return QIcon(pix), size
+
+
+class _CamEditDialog(QDialog):
+    """
+    Diálogo de edición directa para IP o VISCA ID de una cámara.
+    - Sin diálogo de confirmación previo.
+    - Lanza teclado virtual al abrirse.
+    - OK → valida, actualiza en memoria, persiste al archivo y cierra solo este diálogo.
+    - Cancel → cierra solo este diálogo; ConfigDialog queda abierto.
+    """
+
+    def __init__(self, parent, mw, cam_num: int, config_type: str):
+        super().__init__(parent)
+        self._kb_proc    = None
+        self._mw         = mw
+        self._cam_num    = cam_num
+        self._config_type = config_type
+
+        cam_name = 'Platform' if cam_num == 1 else 'Comments'
+        if config_type == 'ip':
+            current   = CAM1.ip     if cam_num == 1 else CAM2.ip
+            self._filename = 'PTZ1IP.txt' if cam_num == 1 else 'PTZ2IP.txt'
+            self._validate = is_valid_ip
+            field     = 'IP address'
+            hint      = 'e.g. 172.16.1.11'
+        else:
+            current   = CAM1.cam_id if cam_num == 1 else CAM2.cam_id
+            self._filename = 'Cam1ID.txt' if cam_num == 1 else 'Cam2ID.txt'
+            self._validate = is_valid_cam_id
+            field     = 'VISCA ID'
+            hint      = 'e.g. 81'
+
+        self.setWindowTitle(f'Edit {cam_name} {field}')
+        self.setModal(True)
+        self.setFixedSize(360, 170)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(10)
+
+        title_lbl = QLabel(f'{cam_name}  —  {field}')
+        title_lbl.setStyleSheet("font: bold 14px 'Segoe UI'; color: #222;")
+        layout.addWidget(title_lbl)
+
+        self._input = QLineEdit(current)
+        self._input.setPlaceholderText(hint)
+        self._input.setStyleSheet(
+            "QLineEdit { border: 2px solid #1976D2; border-radius: 6px;"
+            " padding: 6px 10px; font: 14px 'Segoe UI'; }"
+            "QLineEdit:focus { border-color: #0d47a1; }"
+        )
+        self._input.selectAll()
+        layout.addWidget(self._input)
+
+        self._err = QLabel('')
+        self._err.setStyleSheet("color: #c62828; font: 11px 'Segoe UI';")
+        layout.addWidget(self._err)
+
+        btn_row = QHBoxLayout()
+        btn_ok = QPushButton('OK')
+        btn_ok.setFixedHeight(34)
+        btn_ok.setStyleSheet(
+            "QPushButton { background: #1976D2; border: none; border-radius: 6px;"
+            " font: bold 13px 'Segoe UI'; color: white; }"
+            "QPushButton:pressed { background: #1251a0; }"
+        )
+        btn_ok.clicked.connect(self._apply)
+
+        btn_cancel = QPushButton('Cancel')
+        btn_cancel.setFixedHeight(34)
+        btn_cancel.setStyleSheet(
+            "QPushButton { background: #e0e0e0; border: none; border-radius: 6px;"
+            " font: 13px 'Segoe UI'; color: #333; }"
+            "QPushButton:pressed { background: #bdbdbd; }"
+        )
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_row.addWidget(btn_ok)
+        btn_row.addWidget(btn_cancel)
+        layout.addLayout(btn_row)
+
+        self.setStyleSheet(
+            "QDialog { background: white; border: 2px solid #9e9e9e; border-radius: 10px; }"
+        )
+
+        self._launch_keyboard()
+        QTimer.singleShot(0, self._input.setFocus)
+
+    def _launch_keyboard(self):
+        if platform.system() != 'Linux':
+            return
+        for kb in ('onboard', 'matchbox-keyboard', 'florence'):
+            try:
+                self._kb_proc = subprocess.Popen(
+                    [kb], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+                break
+            except FileNotFoundError:
+                continue
+
+    def _close_keyboard(self):
+        if self._kb_proc is not None:
+            try:
+                self._kb_proc.terminate()
+            except Exception:
+                pass
+            self._kb_proc = None
+
+    def closeEvent(self, event):
+        self._close_keyboard()
+        super().closeEvent(event)
+
+    def _apply(self):
+        text = self._input.text().strip()
+        if not text:
+            self._err.setText('Value cannot be empty.')
+            return
+        if not self._validate(text):
+            self._err.setText(f'Invalid value. Expected format: {self._input.placeholderText()}')
+            return
+
+        import config as _cfg
+
+        if self._config_type == 'ip':
+            if self._cam_num == 1:
+                old_ip = _cfg.CAM1.ip
+                _cfg.CAM1.ip = text
+            else:
+                old_ip = _cfg.CAM2.ip
+                _cfg.CAM2.ip = text
+            # Actualizar CameraManager y limpiar worker TCP de la IP antigua
+            cameras = getattr(self._mw, '_cameras', None)
+            if cameras is not None:
+                if self._cam_num == 1:
+                    cameras._cam1_ip = text
+                else:
+                    cameras._cam2_ip = text
+                cameras._workers.pop(old_ip, None)
+        else:
+            if self._cam_num == 1:
+                _cfg.CAM1.cam_id = text
+            else:
+                _cfg.CAM2.cam_id = text
+
+        with open(self._filename, 'w') as f:
+            f.write(text)
+
+        self._close_keyboard()
+        self.accept()
 
 
 class ConfigDialog(QDialog):
     """
     Diálogo modal de configuración técnica de cámaras.
 
-    Recibe la MainWindow como parent para heredar posición y para poder
-    llamar a sus métodos PTZ1Address, PTZ2Address, PTZ1IDchange,
-    PTZ2IDchange y HelpMsg directamente — los mismos callbacks que antes
-    conectaban los botones del panel derecho.
-    MOTIVO: no duplicar lógica; el diálogo es solo una nueva superficie
-    de acceso a los mismos métodos ya existentes.
+    Recibe la MainWindow como parent para heredar posición y acceder
+    a sus métodos (_session, _dialogs, _visca, _cameras).
     """
 
     def __init__(self, parent=None):
@@ -142,43 +304,68 @@ class ConfigDialog(QDialog):
         line_s.setStyleSheet("color: #ccc;")
         layout.addWidget(line_s)
 
-        # ── Sección: Platform camera ──────────────────────────────────────
-        layout.addWidget(self._section_label('Platform Camera'))
+        # ── Sección: Camera ───────────────────────────────────────────────
+        layout.addWidget(self._section_label('Camera'))
 
-        row1 = QHBoxLayout()
-        # Botón IP: muestra la IP actual, color según conectividad
-        btn_ip1 = QPushButton('Platform  ' + CAM1.ip)
-        btn_ip1.setStyleSheet(self._cam_btn_style(CAM1.check, align_left=True))
-        btn_ip1.setToolTip('Change Platform camera IP address')
-        btn_ip1.clicked.connect(lambda: (mw._dialogs.PTZ1Address(), self._try_close()))
-        row1.addWidget(btn_ip1)
+        _icon, _icon_sz = _make_pencil_icon(16)
 
-        # Botón ID: más pequeño, a la derecha
-        btn_id1 = QPushButton('ID  ' + CAM1.cam_id)
-        btn_id1.setFixedWidth(80)
-        btn_id1.setStyleSheet(self._cam_btn_style(CAM1.check))
-        btn_id1.setToolTip('Change Platform camera VISCA ID')
-        btn_id1.clicked.connect(lambda: (mw._dialogs.PTZ1IDchange(), self._try_close()))
-        row1.addWidget(btn_id1)
-        layout.addLayout(row1)
+        def _pencil_btn():
+            b = QPushButton()
+            b.setIcon(_icon)
+            b.setIconSize(QSize(_icon_sz, _icon_sz))
+            b.setFixedSize(30, 30)
+            b.setToolTip('Edit')
+            b.setStyleSheet(
+                "QPushButton { background: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; }"
+                "QPushButton:pressed { background: #ddd; }"
+            )
+            return b
 
-        # ── Sección: Comments camera ──────────────────────────────────────
-        layout.addWidget(self._section_label('Comments Camera'))
+        def _value_lbl(text, ok):
+            color = '#2e7d32' if ok else '#c62828'
+            lbl = QLabel(text)
+            lbl.setStyleSheet(
+                f"font: 13px 'Segoe UI'; color: {color};"
+                " background: #f5f5f5; border-radius: 6px; padding: 4px 8px;"
+            )
+            return lbl
 
-        row2 = QHBoxLayout()
-        btn_ip2 = QPushButton('Comments  ' + CAM2.ip)
-        btn_ip2.setStyleSheet(self._cam_btn_style(CAM2.check, align_left=True))
-        btn_ip2.setToolTip('Change Comments camera IP address')
-        btn_ip2.clicked.connect(lambda: (mw._dialogs.PTZ2Address(), self._try_close()))
-        row2.addWidget(btn_ip2)
+        for cam_label, cam_obj, cam_num in (('Platform', CAM1, 1), ('Comments', CAM2, 2)):
+            sub = QLabel(cam_label + ':')
+            sub.setStyleSheet("font: 600 13px 'Segoe UI'; color: #444; margin-top: 2px;")
+            layout.addWidget(sub)
 
-        btn_id2 = QPushButton('ID  ' + CAM2.cam_id)
-        btn_id2.setFixedWidth(80)
-        btn_id2.setStyleSheet(self._cam_btn_style(CAM2.check))
-        btn_id2.setToolTip('Change Comments camera VISCA ID')
-        btn_id2.clicked.connect(lambda: (mw._dialogs.PTZ2IDchange(), self._try_close()))
-        row2.addWidget(btn_id2)
-        layout.addLayout(row2)
+            cam_row = QHBoxLayout()
+            cam_row.setSpacing(6)
+
+            ip_lbl = _value_lbl(f'IP:  {cam_obj.ip}', cam_obj.check)
+            btn_ip = _pencil_btn()
+
+            def _edit_ip(_, n=cam_num, lbl=ip_lbl):
+                _CamEditDialog(self, mw, n, 'ip').exec_()
+                import config as _cfg
+                cam = _cfg.CAM1 if n == 1 else _cfg.CAM2
+                lbl.setText(f'IP:  {cam.ip}')
+
+            btn_ip.clicked.connect(_edit_ip)
+
+            id_lbl = _value_lbl(f'ID:  {cam_obj.cam_id}', cam_obj.check)
+            btn_id = _pencil_btn()
+
+            def _edit_id(_, n=cam_num, lbl=id_lbl):
+                _CamEditDialog(self, mw, n, 'id').exec_()
+                import config as _cfg
+                cam = _cfg.CAM1 if n == 1 else _cfg.CAM2
+                lbl.setText(f'ID:  {cam.cam_id}')
+
+            btn_id.clicked.connect(_edit_id)
+
+            cam_row.addWidget(ip_lbl, stretch=3)
+            cam_row.addWidget(btn_ip)
+            cam_row.addSpacing(6)
+            cam_row.addWidget(id_lbl, stretch=1)
+            cam_row.addWidget(btn_id)
+            layout.addLayout(cam_row)
 
         # ── Sección: Camera Discovery ─────────────────────────────────────
         layout.addWidget(self._section_label('Camera Discovery'))
@@ -463,6 +650,22 @@ class ConfigDialog(QDialog):
 
         btn_run_test.clicked.connect(_on_test_clicked)
 
+        # ── Botón Close ───────────────────────────────────────────────────────
+        line_close = QFrame()
+        line_close.setFrameShape(QFrame.HLine)
+        line_close.setStyleSheet("color: #ccc;")
+        layout.addWidget(line_close)
+
+        btn_close = QPushButton('Close Program')
+        btn_close.setFixedHeight(40)
+        btn_close.setStyleSheet(
+            "QPushButton { background: #c62828; border: none;"
+            " border-radius: 8px; font: 600 14px 'Segoe UI'; color: white; }"
+            "QPushButton:pressed { background: #8b1a1a; }"
+        )
+        btn_close.clicked.connect(mw.close)
+        layout.addWidget(btn_close)
+
         # Estilo del diálogo: fondo blanco, borde sutil, sombra si el SO lo soporta
         self.setStyleSheet(
             "ConfigDialog {"
@@ -479,20 +682,6 @@ class ConfigDialog(QDialog):
         lbl = QLabel(text)
         lbl.setStyleSheet("font: bold 12px; color: #555; padding-top: 4px;")
         return lbl
-
-    def _cam_btn_style(self, check_color: str, *, align_left: bool = False) -> str:
-        """
-        Estilo unificado para botones IP e ID.
-        check_color: 'Green' → texto verde, otro valor → texto rojo.
-        align_left=True añade text-align: left; padding-left: 8px (botones IP).
-        """
-        text_color = '#2e7d32' if check_color == 'Green' else '#c62828'
-        align = " text-align: left; padding-left: 8px;" if align_left else ""
-        return (
-            f"QPushButton {{ background: #fafafa; border: 1px solid #ccc;"
-            f" border-radius: 4px; font: bold 12px; color: {text_color};{align} }}"
-            f"QPushButton:pressed {{ background: #eeeeee; }}"
-        )
 
     def _build_sim_section(self, layout, mw, sim_active: bool):
         """Sección de modo simulación: toggle ON/OFF."""
@@ -542,12 +731,5 @@ class ConfigDialog(QDialog):
 
 
     def _try_close(self):
-        """
-        Cierra el diálogo después de que el usuario confirma un cambio de IP/ID.
-        PTZ1Address y PTZ2Address hacen os.execv para reiniciar la app,
-        así que este close solo aplica si el usuario cancela el diálogo de cambio.
-        MOTIVO: si el usuario cancela el cambio de IP, el diálogo de config
-        queda abierto en lugar de cerrarse automáticamente — comportamiento
-        más consistente que dejarlo abierto.
-        """
+        """Cierra ConfigDialog tras cambio de contraseña."""
         self.accept()
