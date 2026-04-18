@@ -86,7 +86,8 @@ CAM2 = CameraConfig(
 )
 ATEMAddress = _read_config('ATEMIP.txt', '192.168.1.240')
 Contact = _read_config('Contact.txt', 'No contact information available.')
-LOGIN_PASSWORD = _read_config('password.txt', 'dublin2024')
+from secret_manager import decrypt_password as _decrypt_password
+LOGIN_PASSWORD = _decrypt_password()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

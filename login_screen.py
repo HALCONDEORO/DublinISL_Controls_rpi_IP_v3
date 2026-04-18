@@ -10,7 +10,8 @@ from datetime import datetime
 import json
 from pathlib import Path
 
-from config import LOGIN_PASSWORD, Contact
+from config import Contact
+from secret_manager import decrypt_password as _get_password
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -292,7 +293,7 @@ class LoginScreen(QWidget):
             return
         
         # Comparar con contraseña correcta
-        if pwd == LOGIN_PASSWORD:
+        if pwd == _get_password():
             self._on_login_success()
         else:
             self._on_login_failure(pwd)

@@ -1,0 +1,7 @@
+password.enc
+password.txt
+__pycache__/
+*.pyc
+venv/
+audit_log.json
+boot_stats.json

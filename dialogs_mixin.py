@@ -31,9 +31,10 @@ from PyQt5.QtWidgets import (
 )
 
 from config import (
-    CAM1, CAM2, Contact, LOGIN_PASSWORD,
+    CAM1, CAM2, Contact,
     is_valid_ip, is_valid_cam_id,
 )
+from secret_manager import decrypt_password as _get_password, encrypt_password as _save_password
 
 
 class ChangePasswordDialog(QDialog):
@@ -134,7 +135,7 @@ class ChangePasswordDialog(QDialog):
         if not cur or not new or not confirm:
             self._err.setText('All fields are required.')
             return
-        if cur != LOGIN_PASSWORD:
+        if cur != _get_password():
             self._err.setText('Current password is incorrect.')
             self._cur.clear()
             self._cur.setFocus()
@@ -241,7 +242,7 @@ class DialogsController:
         """Diálogo para cambiar la contraseña de acceso."""
         dlg = ChangePasswordDialog(self._w)
         if dlg.exec_() == QDialog.Accepted:
-            Path('password.txt').write_text(dlg.new_password, encoding='utf-8')
+            _save_password(dlg.new_password)
             QMessageBox.information(
                 self._w, 'Password Changed',
                 'Password updated successfully.\n'
