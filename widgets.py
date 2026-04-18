@@ -81,6 +81,7 @@ class DragDropButton:
             return
         if event.mimeData().hasText():
             event.acceptProposedAction()
+            self._on_drag_enter()
 
     def dragMoveEvent(self, event):
         if self._call_mode:
@@ -89,8 +90,12 @@ class DragDropButton:
         if event.mimeData().hasText():
             event.acceptProposedAction()
 
+    def dragLeaveEvent(self, event):
+        self._on_drag_leave()
+
     def dropEvent(self, event):
         """Al soltar un nombre sobre el botón, lo asigna al asiento (solo en modo SET)."""
+        self._on_drag_leave()
         if self._call_mode:
             event.ignore()
             return
@@ -98,6 +103,12 @@ class DragDropButton:
         if name:
             self.set_name(name)
             event.acceptProposedAction()
+
+    def _on_drag_enter(self):
+        """Hook: el botón se convierte en target válido. Subclase sobreescribe para resaltar."""
+
+    def _on_drag_leave(self):
+        """Hook: el drag salió o terminó. Subclase sobreescribe para restaurar estilo."""
 
     def mouseDoubleClickEvent(self, event):
         """
@@ -132,6 +143,7 @@ class DragDropButton:
         dist = (event.pos() - self._drag_start_pos).manhattanLength()
         if dist < QApplication.startDragDistance():
             return
+        self._on_drag_start()
         drag = QtGui.QDrag(self)
         mime = QtCore.QMimeData()
         mime.setText(self.assigned_name)
@@ -139,6 +151,14 @@ class DragDropButton:
         result = drag.exec_(Qt.MoveAction | Qt.CopyAction)
         if result == Qt.MoveAction:
             self.set_name("")
+        else:
+            self._on_drag_end()
+
+    def _on_drag_start(self):
+        """Hook: empieza arrastre desde este botón. Subclase sobreescribe para feedback visual."""
+
+    def _on_drag_end(self):
+        """Hook: arrastre cancelado (no MoveAction). Subclase restaura el estilo normal."""
 
     def _clear_confirm_msg(self) -> str:
         """
@@ -223,6 +243,33 @@ class GoButton(DragDropButton, QPushButton):
             f"QPushButton {{ {bg} {border} font: 12px; font-weight: bold; color: {text_color}; }}"
             f"QPushButton:pressed {{ background-color: rgba(0,0,0,70); }}"
         )
+
+    def _on_drag_enter(self):
+        """Resalta este botón como destino válido de drop preservando el SVG."""
+        bg_img = (
+            "background-image: url(seat.svg); background-repeat: no-repeat; background-position: center;"
+            if os.path.exists("seat.svg") else ""
+        )
+        self.setStyleSheet(
+            f"QPushButton {{ {bg_img} background-color: rgba(25,118,210,40);"
+            f" border: 2px solid #1976D2; border-radius: 4px;"
+            f" font: 12px; font-weight: bold; color: {BUTTON_COLOR}; }}"
+            f"QPushButton:pressed {{ background-color: rgba(0,0,0,70); }}"
+        )
+
+    def _on_drag_leave(self):
+        self._apply_style()
+
+    def _on_drag_start(self):
+        """Atenúa el botón fuente durante el arrastre."""
+        self.setStyleSheet(
+            "QPushButton { background-color: rgba(180,180,180,60);"
+            " border: 1px dashed #AAAAAA; border-radius: 4px;"
+            " font: 12px; font-weight: bold; color: rgba(80,80,80,160); }"
+        )
+
+    def _on_drag_end(self):
+        self._apply_style()
 
     def set_name(self, name: str, emit_signal: bool = True):
         """

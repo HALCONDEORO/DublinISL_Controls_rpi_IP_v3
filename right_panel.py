@@ -188,13 +188,16 @@ class RightPanel:
 
     # ── Secciones ─────────────────────────────────────────────────────────────
 
-    _MODE_STYLE_ACTIVE = (
-        "QFrame { background-color: white; border-radius: 8px; border: none; }"
+    _MODE_STYLE_ACTIVE_CALL = (
+        "QFrame { background-color: #9B3A3A; border-radius: 8px; border: none; }"
+    )
+    _MODE_STYLE_ACTIVE_SET = (
+        "QFrame { background-color: #4A8C4A; border-radius: 8px; border: none; }"
     )
     _MODE_STYLE_INACTIVE = (
         "QFrame { background-color: transparent; border-radius: 8px; border: none; }"
     )
-    _MODE_LBL_STYLE       = "QLabel { font: 700 15px 'Segoe UI'; color: #222222; background: transparent; border: none; }"
+    _MODE_LBL_STYLE_ACT   = "QLabel { font: 700 15px 'Segoe UI'; color: #FFFFFF; background: transparent; border: none; }"
     _MODE_LBL_STYLE_INACT = "QLabel { font: 600 15px 'Segoe UI'; color: #888888; background: transparent; border: none; }"
     _MODE_ICON_STYLE = "QLabel { font-size: 26px; background: transparent; border: none; }"
 
@@ -211,10 +214,10 @@ class RightPanel:
 
         _base_dir = os.path.dirname(os.path.abspath(__file__))
 
-        def make_btn(label_text, icon_name, active):
+        def make_btn(label_text, icon_name):
             frame = QFrame(wrapper)
             frame.setFixedHeight(58)
-            frame.setStyleSheet(self._MODE_STYLE_ACTIVE if active else self._MODE_STYLE_INACTIVE)
+            frame.setStyleSheet(self._MODE_STYLE_INACTIVE)
             frame.setCursor(Qt.PointingHandCursor)
             hbox = QHBoxLayout(frame)
             hbox.setContentsMargins(10, 6, 10, 6)
@@ -224,17 +227,28 @@ class RightPanel:
             icon.setFixedSize(26, 26)
             lbl = QLabel(label_text, frame)
             lbl.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-            lbl.setStyleSheet(self._MODE_LBL_STYLE if active else self._MODE_LBL_STYLE_INACT)
+            lbl.setStyleSheet(self._MODE_LBL_STYLE_INACT)
             hbox.addWidget(icon)
             hbox.addWidget(lbl)
             hbox.addStretch()
             frame._label = lbl
-            frame._active_style   = self._MODE_STYLE_ACTIVE
             frame._inactive_style = self._MODE_STYLE_INACTIVE
             return frame
 
-        self.call_frame = make_btn("CALL", "camera.svg",  active=True)
-        self.set_frame  = make_btn("SET",  "edit.svg",    active=False)
+        self.call_frame = make_btn("CALL", "camera.svg")
+        self.set_frame  = make_btn("SET",  "edit.svg")
+
+        self.call_frame._active_style = self._MODE_STYLE_ACTIVE_CALL
+        self.call_frame._active_lbl_style = self._MODE_LBL_STYLE_ACT
+        self.set_frame._active_style  = self._MODE_STYLE_ACTIVE_SET
+        self.set_frame._active_lbl_style = self._MODE_LBL_STYLE_ACT
+
+        # Aplicar estilo inicial: CALL activo por defecto
+        self.call_frame.setStyleSheet(self._MODE_STYLE_ACTIVE_CALL)
+        self.call_frame._label.setStyleSheet(self._MODE_LBL_STYLE_ACT)
+        self.set_frame.setStyleSheet(self._MODE_STYLE_INACTIVE)
+        self.set_frame._label.setStyleSheet(self._MODE_LBL_STYLE_INACT)
+
         row.addWidget(self.set_frame)
         row.addWidget(self.call_frame)
         layout.addWidget(wrapper)

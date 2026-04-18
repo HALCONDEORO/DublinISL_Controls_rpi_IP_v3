@@ -218,7 +218,7 @@ class MainWindow(QMainWindow):
 
         def activate(frame, other):
             frame.setStyleSheet(frame._active_style)
-            frame._label.setStyleSheet(rp._MODE_LBL_STYLE)
+            frame._label.setStyleSheet(frame._active_lbl_style)
             other.setStyleSheet(other._inactive_style)
             other._label.setStyleSheet(rp._MODE_LBL_STYLE_INACT)
 
