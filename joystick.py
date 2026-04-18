@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 # joystick.py — Widget DigitalJoystick
-#
-# Extraído de widgets.py para reducir el tamaño de ese módulo.
 
 import math
 
@@ -10,6 +8,12 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import QWidget
 
 from config import SPEED_MAX
+
+
+def _with_alpha(color: QtGui.QColor, alpha: int) -> QtGui.QColor:
+    c = QtGui.QColor(color)
+    c.setAlpha(alpha)
+    return c
 
 
 class DigitalJoystick(QWidget):
@@ -25,12 +29,11 @@ class DigitalJoystick(QWidget):
         4: 'down', 5: 'downleft', 6: 'left', 7: 'upleft',
     }
 
-    _SECTOR_HALF = 22.5   # grados por medio sector
-    _HYSTERESIS  = 10.0   # banda de histéresis en grados
+    _SECTOR_HALF = 22.5
+    _HYSTERESIS  = 10.0
 
-    # Paleta modo "set" — verde azulado
     _COLORS_SET = {
-        'accent':   QtGui.QColor( 34, 197, 150),   # verde menta
+        'accent':   QtGui.QColor( 34, 197, 150),
         'tick':     QtGui.QColor(130, 200, 170, 180),
         'tick_act': QtGui.QColor( 34, 197, 150),
         'knob_hi':  QtGui.QColor(220, 255, 245),
@@ -40,7 +43,6 @@ class DigitalJoystick(QWidget):
         'glow':     QtGui.QColor( 34, 197, 150,  60),
     }
 
-    # Paleta modo "call" — rojo oscuro
     _COLORS_CALL = {
         'accent':   QtGui.QColor(200,  45,  45),
         'tick':     QtGui.QColor(190,  90,  90, 180),
@@ -50,6 +52,13 @@ class DigitalJoystick(QWidget):
         'knob_lo':  QtGui.QColor(110,  18,  18),
         'knob_brd': QtGui.QColor( 80,  10,  10),
         'glow':     QtGui.QColor(200,  45,  45,  60),
+    }
+
+    _COLORS_INACTIVE = {
+        'knob_hi':  QtGui.QColor(255, 255, 255),
+        'knob_mid': QtGui.QColor(200, 200, 205),
+        'knob_lo':  QtGui.QColor(150, 150, 158),
+        'knob_brd': QtGui.QColor(120, 120, 128),
     }
 
     def __init__(self, parent, x: int, y: int, size: int,
@@ -75,11 +84,16 @@ class DigitalJoystick(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setCursor(Qt.CrossCursor)
 
-        r = size / 2.0
+        r  = size / 2.0
+        cx = cy = r
         self._r       = r
         self._outer_r = r * 0.90
         self._knob_r  = r * 0.28
         self._dead_r  = r * 0.22
+        R = self._outer_r
+
+        # Centro fijo (widget de tamaño fijo — nunca cambia)
+        self._center = QtCore.QPointF(r, r)
 
         self._knob_pos     = QtCore.QPointF(r, r)
         self._tracking     = False
@@ -92,136 +106,131 @@ class DigitalJoystick(QWidget):
         self._timer.setInterval(150)
         self._timer.timeout.connect(self._on_timer_tick)
 
+        # ── Objetos gráficos estáticos pre-calculados ─────────────────────────
+        self._shadow_grad = QtGui.QRadialGradient(cx + R * 0.05, cy + R * 0.08, R * 1.05)
+        self._shadow_grad.setColorAt(0.82, QtGui.QColor(0, 0, 0,  0))
+        self._shadow_grad.setColorAt(1.00, QtGui.QColor(0, 0, 0, 60))
+
+        self._base_grad = QtGui.QRadialGradient(cx - R * 0.25, cy - R * 0.25, R * 1.2)
+        self._base_grad.setColorAt(0.00, QtGui.QColor(245, 245, 248))
+        self._base_grad.setColorAt(0.55, QtGui.QColor(215, 215, 220))
+        self._base_grad.setColorAt(1.00, QtGui.QColor(175, 175, 182))
+
+        self._base_pen = QtGui.QPen(QtGui.QColor(140, 140, 148), 1.5)
+        self._dead_pen = QtGui.QPen(QtGui.QColor(180, 180, 188, 120), 0.8, Qt.DashLine)
+
+        # Glow pre-calculado por paleta; _glow_grad apunta al activo
+        self._glow_grads = {}
+        for pal in (self._COLORS_SET, self._COLORS_CALL):
+            g    = pal['glow']
+            grad = QtGui.QRadialGradient(cx, cy, R)
+            grad.setColorAt(0.70, _with_alpha(g,  0))
+            grad.setColorAt(0.88, _with_alpha(g, 80))
+            grad.setColorAt(1.00, _with_alpha(g,  0))
+            self._glow_grads[id(pal)] = grad
+        self._glow_grad = self._glow_grads[id(self._palette)]
+
+        # Triángulos de dirección y centros de halo (geometría fija)
+        tick_r    = R * 0.71
+        arrow_len = R * 0.115
+        arrow_w   = R * 0.055
+        self._arrow_triangles = []
+        self._arrow_halo_pts  = []
+        for angle_deg in range(0, 360, 45):
+            rad    = math.radians(angle_deg)
+            sin_r  = math.sin(rad)
+            cos_r  = math.cos(rad)
+            tip_x  = cx + (tick_r + arrow_len * 0.6) * sin_r
+            tip_y  = cy - (tick_r + arrow_len * 0.6) * cos_r
+            base_x = cx + (tick_r - arrow_len * 0.6) * sin_r
+            base_y = cy - (tick_r - arrow_len * 0.6) * cos_r
+            self._arrow_triangles.append(QtGui.QPolygonF([
+                QtCore.QPointF(tip_x,             tip_y),
+                QtCore.QPointF(base_x - cos_r * arrow_w, base_y - sin_r * arrow_w),
+                QtCore.QPointF(base_x + cos_r * arrow_w, base_y + sin_r * arrow_w),
+            ]))
+            self._arrow_halo_pts.append(QtCore.QPointF(
+                cx + tick_r * sin_r,
+                cy - tick_r * cos_r,
+            ))
+        self._arrow_halo_r = arrow_len * 1.4
+
     # ── modo de color ──────────────────────────────────────────────────────────
     def set_mode(self, mode: str):
         """'platform' → rojo  |  cualquier otro → verde."""
-        self._palette = self._COLORS_CALL if mode == 'platform' else self._COLORS_SET
+        self._palette   = self._COLORS_CALL if mode == 'platform' else self._COLORS_SET
+        self._glow_grad = self._glow_grads[id(self._palette)]
         self.update()
-
-    # ── helpers ────────────────────────────────────────────────────────────────
-    @property
-    def _center(self) -> QtCore.QPointF:
-        """Centro del widget — correcto aunque cambie el tamaño."""
-        return QtCore.QPointF(self.width() / 2.0, self.height() / 2.0)
 
     # ── paint ──────────────────────────────────────────────────────────────────
     def paintEvent(self, event):
         p = QtGui.QPainter(self)
         p.setRenderHint(QtGui.QPainter.Antialiasing)
         center = self._center
-        cx, cy = center.x(), center.y()
-        R  = self._outer_r
+        R   = self._outer_r
         pal = self._palette
         active = self._tracking and self._cur_dir is not None
 
-        # ── sombra exterior ──
-        shadow_grad = QtGui.QRadialGradient(cx + R * 0.05, cy + R * 0.08, R * 1.05)
-        shadow_grad.setColorAt(0.82, QtGui.QColor(0, 0, 0, 0))
-        shadow_grad.setColorAt(1.00, QtGui.QColor(0, 0, 0, 60))
+        # Sombra exterior
         p.setPen(Qt.NoPen)
-        p.setBrush(shadow_grad)
+        p.setBrush(self._shadow_grad)
         p.drawEllipse(center, R * 1.05, R * 1.05)
 
-        # ── plato base — gradiente radial biselado ──
-        base_grad = QtGui.QRadialGradient(cx - R * 0.25, cy - R * 0.25, R * 1.2)
-        base_grad.setColorAt(0.00, QtGui.QColor(245, 245, 248))
-        base_grad.setColorAt(0.55, QtGui.QColor(215, 215, 220))
-        base_grad.setColorAt(1.00, QtGui.QColor(175, 175, 182))
-        p.setBrush(base_grad)
-        p.setPen(QtGui.QPen(QtGui.QColor(140, 140, 148), 1.5))
+        # Plato base
+        p.setBrush(self._base_grad)
+        p.setPen(self._base_pen)
         p.drawEllipse(center, R, R)
 
-        # ── anillo interior de referencia (zona muerta) ──
-        dead_pen = QtGui.QPen(QtGui.QColor(180, 180, 188, 120), 0.8, Qt.DashLine)
-        p.setPen(dead_pen)
+        # Anillo de zona muerta
+        p.setPen(self._dead_pen)
         p.setBrush(Qt.NoBrush)
         p.drawEllipse(center, self._dead_r, self._dead_r)
 
-        # ── glow de activación alrededor del plato ──
+        # Glow de activación
         if active:
-            glow_grad = QtGui.QRadialGradient(cx, cy, R)
-            g = pal['glow']
-            glow_grad.setColorAt(0.70, QtGui.QColor(g.red(), g.green(), g.blue(), 0))
-            glow_grad.setColorAt(0.88, QtGui.QColor(g.red(), g.green(), g.blue(), 80))
-            glow_grad.setColorAt(1.00, QtGui.QColor(g.red(), g.green(), g.blue(), 0))
             p.setPen(Qt.NoPen)
-            p.setBrush(glow_grad)
+            p.setBrush(self._glow_grad)
             p.drawEllipse(center, R, R)
 
-        # ── flechas de dirección (8 triángulos) ──
-        tick_r    = R * 0.71
-        arrow_len = R * 0.115
-        arrow_w   = R * 0.055
+        # Flechas (8 triángulos pre-calculados)
         p.setPen(Qt.NoPen)
-        for i, angle_deg in enumerate(range(0, 360, 45)):
-            rad       = math.radians(angle_deg)
+        for i in range(8):
             is_active = (self._cur_dir == self._DIR_MAP[i])
             color     = pal['tick_act'] if is_active else pal['tick']
-
-            # si está activo, dibuja halo
             if is_active:
-                halo_x = cx + tick_r * math.sin(rad)
-                halo_y = cy - tick_r * math.cos(rad)
-                halo_c = QtGui.QColor(color.red(), color.green(), color.blue(), 70)
-                p.setBrush(halo_c)
-                p.drawEllipse(QtCore.QPointF(halo_x, halo_y), arrow_len * 1.4, arrow_len * 1.4)
-
-            # triángulo apuntando hacia afuera
-            tip_x  = cx + (tick_r + arrow_len * 0.6) * math.sin(rad)
-            tip_y  = cy - (tick_r + arrow_len * 0.6) * math.cos(rad)
-            base_x = cx + (tick_r - arrow_len * 0.6) * math.sin(rad)
-            base_y = cy - (tick_r - arrow_len * 0.6) * math.cos(rad)
-            perp_x = -math.cos(rad) * arrow_w
-            perp_y = -math.sin(rad) * arrow_w
-
-            triangle = QtGui.QPolygonF([
-                QtCore.QPointF(tip_x, tip_y),
-                QtCore.QPointF(base_x + perp_x, base_y + perp_y),
-                QtCore.QPointF(base_x - perp_x, base_y - perp_y),
-            ])
+                p.setBrush(_with_alpha(color, 70))
+                p.drawEllipse(self._arrow_halo_pts[i], self._arrow_halo_r, self._arrow_halo_r)
             p.setBrush(color)
-            p.drawPolygon(triangle)
+            p.drawPolygon(self._arrow_triangles[i])
 
-        # ── knob — esfera 3D ──
+        # Knob — esfera 3D
         kp = self._knob_pos
         kr = self._knob_r
 
-        # sombra del knob
         knob_shadow = QtGui.QRadialGradient(kp.x() + kr * 0.15, kp.y() + kr * 0.2, kr * 1.1)
-        knob_shadow.setColorAt(0.75, QtGui.QColor(0, 0, 0, 0))
+        knob_shadow.setColorAt(0.75, QtGui.QColor(0, 0, 0,  0))
         knob_shadow.setColorAt(1.00, QtGui.QColor(0, 0, 0, 50))
         p.setPen(Qt.NoPen)
         p.setBrush(knob_shadow)
         p.drawEllipse(kp, kr * 1.12, kr * 1.12)
 
-        if active:
-            hi  = pal['knob_hi']
-            mid = pal['knob_mid']
-            lo  = pal['knob_lo']
-            brd = pal['knob_brd']
-        else:
-            hi  = QtGui.QColor(255, 255, 255)
-            mid = QtGui.QColor(200, 200, 205)
-            lo  = QtGui.QColor(150, 150, 158)
-            brd = QtGui.QColor(120, 120, 128)
-
-        # cuerpo del knob — gradiente radial desplazado para efecto esférico
+        ik = pal if active else self._COLORS_INACTIVE
         sphere_grad = QtGui.QRadialGradient(kp.x() - kr * 0.3, kp.y() - kr * 0.35, kr * 1.1)
-        sphere_grad.setColorAt(0.00, hi)
-        sphere_grad.setColorAt(0.45, mid)
-        sphere_grad.setColorAt(1.00, lo)
-        p.setPen(QtGui.QPen(brd, 1.2))
+        sphere_grad.setColorAt(0.00, ik['knob_hi'])
+        sphere_grad.setColorAt(0.45, ik['knob_mid'])
+        sphere_grad.setColorAt(1.00, ik['knob_lo'])
+        p.setPen(QtGui.QPen(ik['knob_brd'], 1.2))
         p.setBrush(sphere_grad)
         p.drawEllipse(kp, kr, kr)
 
-        # reflejo especular (pequeño óvalo blanco en la esquina superior izquierda)
-        spec_x = kp.x() - kr * 0.30
-        spec_y = kp.y() - kr * 0.32
+        # Reflejo especular
+        spec_x  = kp.x() - kr * 0.30
+        spec_y  = kp.y() - kr * 0.32
         spec_rx = kr * 0.28
         spec_ry = kr * 0.18
         spec_grad = QtGui.QRadialGradient(spec_x, spec_y, spec_rx)
         spec_grad.setColorAt(0.0, QtGui.QColor(255, 255, 255, 200))
-        spec_grad.setColorAt(1.0, QtGui.QColor(255, 255, 255, 0))
+        spec_grad.setColorAt(1.0, QtGui.QColor(255, 255, 255,   0))
         p.setPen(Qt.NoPen)
         p.setBrush(spec_grad)
         p.drawEllipse(QtCore.QPointF(spec_x, spec_y), spec_rx, spec_ry)
@@ -248,7 +257,6 @@ class DigitalJoystick(QWidget):
 
     # ── timer de reenvío ───────────────────────────────────────────────────────
     def _on_timer_tick(self):
-        """Reenvía el comando activo cada 150 ms para robustez ante paquetes perdidos."""
         if self._cur_dir and self._tracking:
             self.handlers[self._cur_dir](self._cur_pan_spd, self._cur_tilt_spd)
 
@@ -259,14 +267,12 @@ class DigitalJoystick(QWidget):
         dy   = qpoint.y() - center.y()
         dist = math.hypot(dx, dy)
 
-        # Clamp al círculo exterior
         if dist > self._outer_r:
             scale = self._outer_r / dist
             dx, dy = dx * scale, dy * scale
             dist = self._outer_r
         self._knob_pos = center + QtCore.QPointF(dx, dy)
 
-        # Zona muerta
         if dist < self._dead_r:
             if self._cur_dir is not None:
                 self._timer.stop()
@@ -276,16 +282,13 @@ class DigitalJoystick(QWidget):
             self.update()
             return
 
-        # Velocidad proporcional: componente de cada eje escalada al máximo del slider
         max_spd  = self._speed_provider()
         pan_spd  = max(1, round((abs(dx) / self._outer_r) * max_spd))
         tilt_spd = max(1, round((abs(dy) / self._outer_r) * max_spd))
 
-        # Ángulo: 0=arriba, 90=derecha, 180=abajo, 270=izquierda
         angle      = math.degrees(math.atan2(dx, -dy)) % 360
         raw_sector = int((angle + self._SECTOR_HALF) / 45) % 8
 
-        # Histéresis: requiere ≥_HYSTERESIS grados dentro del nuevo sector para aceptarlo
         if self._cur_sector is None:
             accepted_sector = raw_sector
         elif raw_sector == self._cur_sector:

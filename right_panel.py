@@ -102,6 +102,19 @@ class RightPanel:
         self._joystick = DigitalJoystick(slot, None, None, slot.width(),
                                          handlers, stop_handler, speed_provider)
 
+    def set_active_mode(self, mode: str):
+        """'call' → activa call_frame rojo  |  'set' → activa set_frame verde."""
+        if mode == 'call':
+            active, inactive = self.call_frame, self.set_frame
+            active_style = self._MODE_STYLE_ACTIVE_CALL
+        else:
+            active, inactive = self.set_frame, self.call_frame
+            active_style = self._MODE_STYLE_ACTIVE_SET
+        active.setStyleSheet(active_style)
+        active._label.setStyleSheet(self._MODE_LBL_STYLE_ACT)
+        inactive.setStyleSheet(self._MODE_STYLE_INACTIVE)
+        inactive._label.setStyleSheet(self._MODE_LBL_STYLE_INACT)
+
     def set_joystick_mode(self, mode: str):
         """'platform' → burdeo  |  'comments' → verde."""
         if hasattr(self, '_joystick'):
@@ -164,8 +177,7 @@ class RightPanel:
         no_cam_layout.setContentsMargins(0, 40, 0, 40)
         no_cam_layout.setSpacing(12)
         no_cam_layout.setAlignment(Qt.AlignCenter)
-        _base_dir = os.path.dirname(os.path.abspath(__file__))
-        no_cam_icon = QSvgWidget(os.path.join(_base_dir, 'no-camera.svg'), no_cam_container)
+        no_cam_icon = QSvgWidget(os.path.join(self._BASE_DIR, 'no-camera.svg'), no_cam_container)
         no_cam_icon.setFixedSize(64, 64)
         no_cam_text = QLabel('Camera\nnot found', no_cam_container)
         no_cam_text.setAlignment(Qt.AlignCenter)
@@ -188,6 +200,8 @@ class RightPanel:
 
     # ── Secciones ─────────────────────────────────────────────────────────────
 
+    _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
     _MODE_STYLE_ACTIVE_CALL = (
         "QFrame { background-color: #9B3A3A; border-radius: 8px; border: none; }"
     )
@@ -199,7 +213,6 @@ class RightPanel:
     )
     _MODE_LBL_STYLE_ACT   = "QLabel { font: 700 15px 'Segoe UI'; color: #FFFFFF; background: transparent; border: none; }"
     _MODE_LBL_STYLE_INACT = "QLabel { font: 600 15px 'Segoe UI'; color: #888888; background: transparent; border: none; }"
-    _MODE_ICON_STYLE = "QLabel { font-size: 26px; background: transparent; border: none; }"
 
     def _add_mode_buttons(self, layout: QVBoxLayout):
         """Fila CALL / SET estilo tab segmented control."""
@@ -212,42 +225,29 @@ class RightPanel:
         row.setContentsMargins(3, 3, 3, 3)
         row.setSpacing(2)
 
-        _base_dir = os.path.dirname(os.path.abspath(__file__))
-
         def make_btn(label_text, icon_name):
             frame = QFrame(wrapper)
             frame.setFixedHeight(58)
-            frame.setStyleSheet(self._MODE_STYLE_INACTIVE)
             frame.setCursor(Qt.PointingHandCursor)
             hbox = QHBoxLayout(frame)
             hbox.setContentsMargins(10, 6, 10, 6)
             hbox.setSpacing(8)
             hbox.addStretch()
-            icon = QSvgWidget(os.path.join(_base_dir, icon_name), frame)
+            icon = QSvgWidget(os.path.join(self._BASE_DIR, icon_name), frame)
             icon.setFixedSize(26, 26)
             lbl = QLabel(label_text, frame)
             lbl.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-            lbl.setStyleSheet(self._MODE_LBL_STYLE_INACT)
             hbox.addWidget(icon)
             hbox.addWidget(lbl)
             hbox.addStretch()
             frame._label = lbl
-            frame._inactive_style = self._MODE_STYLE_INACTIVE
             return frame
 
         self.call_frame = make_btn("CALL", "camera.svg")
         self.set_frame  = make_btn("SET",  "edit.svg")
 
-        self.call_frame._active_style = self._MODE_STYLE_ACTIVE_CALL
-        self.call_frame._active_lbl_style = self._MODE_LBL_STYLE_ACT
-        self.set_frame._active_style  = self._MODE_STYLE_ACTIVE_SET
-        self.set_frame._active_lbl_style = self._MODE_LBL_STYLE_ACT
-
-        # Aplicar estilo inicial: CALL activo por defecto
-        self.call_frame.setStyleSheet(self._MODE_STYLE_ACTIVE_CALL)
-        self.call_frame._label.setStyleSheet(self._MODE_LBL_STYLE_ACT)
-        self.set_frame.setStyleSheet(self._MODE_STYLE_INACTIVE)
-        self.set_frame._label.setStyleSheet(self._MODE_LBL_STYLE_INACT)
+        # Estado inicial: CALL activo
+        self.set_active_mode('call')
 
         row.addWidget(self.set_frame)
         row.addWidget(self.call_frame)

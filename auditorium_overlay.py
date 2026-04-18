@@ -2,18 +2,24 @@
 # auditorium_overlay.py — Overlay semitransparente del panel izquierdo
 #
 # Dos modos visuales:
-#   'set'  → relleno blanco semitransparente (más claro)
+#   'set'  → relleno blanco semitransparente
 #   'call' → pequeños puntos blancos sobre fondo transparente
 #
 # El cambio de modo usa fundido cruzado de ~220 ms.
+# El grid de puntos se renderiza una sola vez en QPixmap (GPU blit en cada frame).
 
 from PyQt5.QtCore import Qt, QPointF, QTimer
-from PyQt5.QtGui import QColor, QPainter, QBrush
+from PyQt5.QtGui import QColor, QPainter, QBrush, QPixmap
 from PyQt5.QtWidgets import QWidget
 
-_ANIM_INTERVAL_MS = 16      # ~60 fps
-_ANIM_DURATION_MS = 220     # duración total del fundido
-_ANIM_STEP = _ANIM_INTERVAL_MS / _ANIM_DURATION_MS
+_ANIM_INTERVAL_MS = 16
+_ANIM_DURATION_MS = 220
+_ANIM_STEP        = _ANIM_INTERVAL_MS / _ANIM_DURATION_MS
+
+_DOT_COLOR   = QColor(255, 255, 255, 55)
+_FILL_COLOR  = QColor(255, 255, 255, 55)
+_DOT_RADIUS  = 2
+_DOT_SPACING = 24
 
 
 class AuditoriumOverlay(QWidget):
@@ -26,11 +32,13 @@ class AuditoriumOverlay(QWidget):
         super().__init__(parent)
         self._mode      = 'call'
         self._prev_mode = 'call'
-        self._blend     = 1.0       # 0.0 = prev_mode puro, 1.0 = mode puro
+        self._blend     = 1.0
 
         self.setGeometry(0, 0, 1490, 1080)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WA_TranslucentBackground)
+
+        self._dot_pixmap: QPixmap | None = None
 
         self._timer = QTimer(self)
         self._timer.setInterval(_ANIM_INTERVAL_MS)
@@ -51,6 +59,25 @@ class AuditoriumOverlay(QWidget):
         if self._blend >= 1.0:
             self._timer.stop()
 
+    def _ensure_dot_pixmap(self):
+        if self._dot_pixmap is not None:
+            return
+        px = QPixmap(self.size())
+        px.fill(Qt.transparent)
+        p = QPainter(px)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(_DOT_COLOR))
+        x = _DOT_SPACING // 2
+        while x < px.width():
+            y = _DOT_SPACING // 2
+            while y < px.height():
+                p.drawEllipse(QPointF(x, y), _DOT_RADIUS, _DOT_RADIUS)
+                y += _DOT_SPACING
+            x += _DOT_SPACING
+        p.end()
+        self._dot_pixmap = px
+
     # ── pintado ───────────────────────────────────────────────────────────────
 
     def paintEvent(self, event):
@@ -58,10 +85,8 @@ class AuditoriumOverlay(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
 
         if self._blend >= 1.0:
-            # Sin transición en curso — dibuja solo el modo actual
             self._draw_mode(painter, self._mode, 1.0)
         else:
-            # Fundido cruzado: fade-out del modo anterior, fade-in del nuevo
             self._draw_mode(painter, self._prev_mode, 1.0 - self._blend)
             self._draw_mode(painter, self._mode,      self._blend)
 
@@ -69,23 +94,8 @@ class AuditoriumOverlay(QWidget):
 
     def _draw_mode(self, painter: QPainter, mode: str, opacity: float):
         painter.setOpacity(opacity)
-
         if mode == 'set':
-            painter.fillRect(self.rect(), QColor(255, 255, 255, 55))
+            painter.fillRect(self.rect(), _FILL_COLOR)
         else:
-            dot_r   = 2
-            spacing = 24
-            color   = QColor(255, 255, 255, 55)
-
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QBrush(color))
-
-            x = spacing // 2
-            while x < self.width():
-                y = spacing // 2
-                while y < self.height():
-                    painter.drawEllipse(QPointF(x, y), dot_r, dot_r)
-                    y += spacing
-                x += spacing
-
-        painter.setOpacity(1.0)
+            self._ensure_dot_pixmap()
+            painter.drawPixmap(0, 0, self._dot_pixmap)

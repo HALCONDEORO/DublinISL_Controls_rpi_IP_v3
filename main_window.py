@@ -211,16 +211,9 @@ class MainWindow(QMainWindow):
         Conecta los frames CALL/SET creados en el right_panel con la lógica de estado.
         Los frames visuales ya viven dentro del layout del panel derecho (parte superior).
         """
-        call_frame = self._right_panel.call_frame
-        set_frame  = self._right_panel.set_frame
-
-        rp = self._right_panel
-
-        def activate(frame, other):
-            frame.setStyleSheet(frame._active_style)
-            frame._label.setStyleSheet(frame._active_lbl_style)
-            other.setStyleSheet(other._inactive_style)
-            other._label.setStyleSheet(rp._MODE_LBL_STYLE_INACT)
+        rp         = self._right_panel
+        call_frame = rp.call_frame
+        set_frame  = rp.set_frame
 
         # Botones lógicos invisibles — mantienen estado y conectan con el resto del código
         self.BtnCall = QPushButton(self)
@@ -240,11 +233,11 @@ class MainWindow(QMainWindow):
 
         def _call_press(e):
             self.BtnCall.click()
-            activate(call_frame, set_frame)
+            rp.set_active_mode('call')
 
         def _set_press(e):
             self.BtnSet.click()
-            activate(set_frame, call_frame)
+            rp.set_active_mode('set')
 
         call_frame.mousePressEvent = _call_press
         set_frame.mousePressEvent  = _set_press

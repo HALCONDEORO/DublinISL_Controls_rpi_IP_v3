@@ -48,6 +48,13 @@ from PyQt5.QtWidgets import (
 
 from config import BUTTON_COLOR
 
+# Comprobación única al arranque — seat.svg es un asset estático
+_SEAT_SVG_EXISTS = os.path.exists("seat.svg")
+_SEAT_SVG_BG     = (
+    "background-image: url(seat.svg); background-repeat: no-repeat; background-position: center;"
+    if _SEAT_SVG_EXISTS else ""
+)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DragDropButton — mixin de drag-drop y doble-tap compartido
@@ -225,8 +232,8 @@ class GoButton(DragDropButton, QPushButton):
             bg = f"background-image: url({svg}); background-repeat: no-repeat; background-position: center;"
             border = "border: none;"
             text_color = "white" if self.assigned_name else BUTTON_COLOR
-        elif os.path.exists("seat.svg"):
-            bg = "background-image: url(seat.svg); background-repeat: no-repeat; background-position: center;"
+        elif _SEAT_SVG_EXISTS:
+            bg = _SEAT_SVG_BG
             border = (
                 "border: 2px solid #2e7d32; border-radius: 4px; background-color: rgba(76,175,80,30);"
                 if self.assigned_name else "border: none;"
@@ -244,29 +251,26 @@ class GoButton(DragDropButton, QPushButton):
             f"QPushButton:pressed {{ background-color: rgba(0,0,0,70); }}"
         )
 
+    _DROP_TARGET_STYLE = (
+        f"QPushButton {{ {_SEAT_SVG_BG} background-color: rgba(25,118,210,40);"
+        f" border: 2px solid #1976D2; border-radius: 4px;"
+        f" font: 12px; font-weight: bold; color: {BUTTON_COLOR}; }}"
+        f"QPushButton:pressed {{ background-color: rgba(0,0,0,70); }}"
+    )
+    _DRAG_SOURCE_STYLE = (
+        "QPushButton { background-color: rgba(180,180,180,60);"
+        " border: 1px dashed #AAAAAA; border-radius: 4px;"
+        " font: 12px; font-weight: bold; color: rgba(80,80,80,160); }"
+    )
+
     def _on_drag_enter(self):
-        """Resalta este botón como destino válido de drop preservando el SVG."""
-        bg_img = (
-            "background-image: url(seat.svg); background-repeat: no-repeat; background-position: center;"
-            if os.path.exists("seat.svg") else ""
-        )
-        self.setStyleSheet(
-            f"QPushButton {{ {bg_img} background-color: rgba(25,118,210,40);"
-            f" border: 2px solid #1976D2; border-radius: 4px;"
-            f" font: 12px; font-weight: bold; color: {BUTTON_COLOR}; }}"
-            f"QPushButton:pressed {{ background-color: rgba(0,0,0,70); }}"
-        )
+        self.setStyleSheet(self._DROP_TARGET_STYLE)
 
     def _on_drag_leave(self):
         self._apply_style()
 
     def _on_drag_start(self):
-        """Atenúa el botón fuente durante el arrastre."""
-        self.setStyleSheet(
-            "QPushButton { background-color: rgba(180,180,180,60);"
-            " border: 1px dashed #AAAAAA; border-radius: 4px;"
-            " font: 12px; font-weight: bold; color: rgba(80,80,80,160); }"
-        )
+        self.setStyleSheet(self._DRAG_SOURCE_STYLE)
 
     def _on_drag_end(self):
         self._apply_style()
