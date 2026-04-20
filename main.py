@@ -8,6 +8,7 @@ import logging
 from PyQt5.QtWidgets import QApplication, QMessageBox
 
 from main_window import MainWindow
+from virtual_keyboard import install_virtual_keyboard
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -33,6 +34,7 @@ def main():
     """
     try:
         app = QApplication(sys.argv)
+        install_virtual_keyboard(app)
 
         main_win = MainWindow()
         main_win.show()

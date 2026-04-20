@@ -7,16 +7,72 @@
 #   NamesListWidget — QListWidget con reordenamiento interno + arrastre externo
 #   NamesPanel      — panel flotante compacto con lista editable de asistentes
 
+import os
 from typing import Optional
 
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, QSize, pyqtSignal
+from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
-    QAbstractItemView, QInputDialog, QLabel, QListWidget, QListWidgetItem,
-    QMessageBox, QPushButton, QVBoxLayout, QWidget,
+    QAbstractItemView, QHBoxLayout, QInputDialog, QLabel, QListWidget,
+    QListWidgetItem, QMessageBox, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from widgets import DragDropButton
+
+_EDIT_ICON = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'edit.svg')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# _NameRow — widget de fila con nombre + botón editar inline
+# ─────────────────────────────────────────────────────────────────────────────
+
+class _NameRow(QWidget):
+    """Fila de un asistente: nombre + botones ✏ y 🗑 a la derecha."""
+
+    _BTN_EDIT_SS = (
+        "QPushButton { background: #e8f5e9; border: 1px solid #a5d6a7;"
+        " border-radius: 3px; font: bold 11px; color: #2e7d32; padding: 1px 4px; }"
+        "QPushButton:pressed  { background: #c8e6c9; }"
+        "QPushButton:disabled { background: #f0f0f0; color: #aaa; border-color: #ddd; }"
+    )
+    _BTN_DEL_SS = (
+        "QPushButton { background: #ffebee; border: 1px solid #ef9a9a;"
+        " border-radius: 3px; font: bold 11px; color: #c62828; padding: 1px 4px; }"
+        "QPushButton:pressed  { background: #ffcdd2; }"
+        "QPushButton:disabled { background: #f0f0f0; color: #aaa; border-color: #ddd; }"
+    )
+
+    def __init__(self, name: str, edit_cb, delete_cb, parent=None):
+        super().__init__(parent)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(6, 1, 4, 1)
+        lay.setSpacing(3)
+
+        lbl = QLabel(name)
+        lbl.setStyleSheet("font: bold 12px; color: #222;")
+        lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        lay.addWidget(lbl)
+
+        self._edit_btn = QPushButton()
+        self._edit_btn.setIcon(QIcon(_EDIT_ICON))
+        self._edit_btn.setIconSize(QSize(15, 15))
+        self._edit_btn.setFixedSize(26, 22)
+        self._edit_btn.setFocusPolicy(Qt.NoFocus)
+        self._edit_btn.setStyleSheet(self._BTN_EDIT_SS)
+        self._edit_btn.clicked.connect(lambda: edit_cb(name))
+        lay.addWidget(self._edit_btn)
+
+        self._del_btn = QPushButton("🗑")
+        self._del_btn.setFixedSize(26, 22)
+        self._del_btn.setFocusPolicy(Qt.NoFocus)
+        self._del_btn.setStyleSheet(self._BTN_DEL_SS)
+        self._del_btn.clicked.connect(lambda: delete_cb(name))
+        lay.addWidget(self._del_btn)
+
+    def set_enabled(self, enabled: bool) -> None:
+        self._edit_btn.setEnabled(enabled)
+        self._del_btn.setEnabled(enabled)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -47,10 +103,11 @@ class NamesListWidget(QListWidget):
         self.setDropIndicatorShown(True)
         self.setDragDropMode(QAbstractItemView.DragDrop)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setUniformItemSizes(True)
 
         self._dragging_row: Optional[int] = None
         self._reorder_locked = False
+        self._edit_cb = None
+        self._delete_cb = None
 
         self.setStyleSheet("""
             QListWidget {
@@ -67,11 +124,24 @@ class NamesListWidget(QListWidget):
             QListWidget::item:hover:!selected { background: #f1f8e9; }
         """)
 
-    def populate(self, names: list):
-        """Recarga la lista completa. Llamar desde NamesPanel._rebuild()."""
+    def populate(self, names: list, edit_cb=None, delete_cb=None) -> None:
+        """Recarga la lista completa con botones ✏🗑 inline en cada fila."""
+        self._edit_cb = edit_cb
+        self._delete_cb = delete_cb
         self.clear()
         for name in names:
-            self.addItem(QListWidgetItem(name))
+            item = QListWidgetItem('')          # texto vacío: evita doble texto
+            item.setData(Qt.UserRole, name)     # nombre guardado en UserRole
+            item.setSizeHint(QSize(0, 34))
+            self.addItem(item)
+            row = _NameRow(name, edit_cb or (lambda n: None), delete_cb or (lambda n: None))
+            self.setItemWidget(item, row)
+
+    def set_rows_enabled(self, enabled: bool) -> None:
+        for i in range(self.count()):
+            w = self.itemWidget(self.item(i))
+            if isinstance(w, _NameRow):
+                w.set_enabled(enabled)
 
     def startDrag(self, supported_actions):
         """
@@ -89,7 +159,7 @@ class NamesListWidget(QListWidget):
 
         drag = QtGui.QDrag(self)
         mime = QtCore.QMimeData()
-        mime.setText(item.text())
+        mime.setText(item.data(Qt.UserRole) or '')
         drag.setMimeData(mime)
 
         rect = self.visualItemRect(item)
@@ -129,12 +199,17 @@ class NamesListWidget(QListWidget):
             event.ignore()
             return
 
-        text = self.item(src_row).text()
+        name = self.item(src_row).data(Qt.UserRole) or ''
         self.takeItem(src_row)
-        self.insertItem(target_row, QListWidgetItem(text))
+        new_item = QListWidgetItem('')
+        new_item.setData(Qt.UserRole, name)
+        new_item.setSizeHint(QSize(0, 34))
+        self.insertItem(target_row, new_item)
+        row_w = _NameRow(name, self._edit_cb or (lambda n: None), self._delete_cb or (lambda n: None))
+        self.setItemWidget(new_item, row_w)
         self.setCurrentRow(target_row)
 
-        self.order_changed.emit([self.item(i).text() for i in range(self.count())])
+        self.order_changed.emit([self.item(i).data(Qt.UserRole) for i in range(self.count())])
         event.acceptProposedAction()
 
 
@@ -198,9 +273,7 @@ class NamesPanel(QWidget):
 
         self._edit_buttons = []
         for label, slot in [
-            ("＋ Add",    self._add_name),
-            ("✏ Edit",   self._edit_name),
-            ("🗑 Delete", self._delete_name),
+            ("＋ Add", self._add_name),
         ]:
             b = QPushButton(label)
             b.setFixedHeight(26)
@@ -265,6 +338,7 @@ class NamesPanel(QWidget):
         self._list._reorder_locked = not enabled
         for btn in self._edit_buttons:
             btn.setEnabled(enabled)
+        self._list.set_rows_enabled(enabled)
 
     def set_assigned(self, assigned: set):
         """Actualiza nombres asignados y refresca la lista visible."""
@@ -274,7 +348,12 @@ class NamesPanel(QWidget):
     def _rebuild(self):
         """Muestra solo los nombres NO asignados a ningún asiento."""
         visible = [n for n in self.names if n not in self._assigned]
-        self._list.populate(visible)
+        self._list.populate(
+            visible,
+            edit_cb=self._edit_name_direct,
+            delete_cb=self._delete_name_direct,
+        )
+        self._list.set_rows_enabled(not self._list._reorder_locked)
 
     def _on_order_changed(self, new_order: list):
         """
@@ -301,16 +380,24 @@ class NamesPanel(QWidget):
         self._on_changed()
         self._rebuild()
 
-    def _edit_name(self):
-        if not self.names:
-            return
-        old_name, ok = QInputDialog.getItem(
-            self, "Edit Name", "Select asistente:", self.names, 0, False)
-        if not ok:
-            return
-        new_name, ok2 = QInputDialog.getText(
+    def _delete_name_direct(self, name: str):
+        """Elimina el nombre pasado directamente (llamado desde el botón 🗑 inline)."""
+        reply = QMessageBox.question(
+            self, "Confirm Delete",
+            f'Remove "{name}" from the list?\n'
+            "(Seats keep the assigned name until cleared with double-tap.)",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            self.names.remove(name)
+            self._on_changed()
+            self._rebuild()
+
+    def _edit_name_direct(self, old_name: str):
+        """Edita el nombre pasado directamente (llamado desde el botón ✏ inline)."""
+        new_name, ok = QInputDialog.getText(
             self, "Edit Name", "New name:", text=old_name)
-        if not (ok2 and new_name.strip()):
+        if not (ok and new_name.strip()):
             return
         new_name = new_name.strip()
         if new_name == old_name:
