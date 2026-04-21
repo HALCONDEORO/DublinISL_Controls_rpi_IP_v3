@@ -177,7 +177,7 @@ class LoginScreen(QWidget):
         
         # Título
         title = QLabel('DublinISL Controls')
-        title.setFont(QFont('Segoe UI', 48, QFont.Bold))
+        title.setFont(QFont('Inter Tight', 48, QFont.Bold))
         title.setStyleSheet("color: #1A3318;")
         title.setAlignment(Qt.AlignCenter)
         title.setMinimumHeight(80)
@@ -185,7 +185,7 @@ class LoginScreen(QWidget):
 
         # Subtítulo
         subtitle = QLabel('Restricted Access')
-        subtitle.setFont(QFont('Segoe UI', 28))
+        subtitle.setFont(QFont('Inter Tight', 28))
         subtitle.setStyleSheet("color: #2E5229;")
         subtitle.setAlignment(Qt.AlignCenter)
         layout.addWidget(subtitle)
@@ -194,7 +194,7 @@ class LoginScreen(QWidget):
 
         # Etiqueta de contraseña
         pwd_label = QLabel('Password:')
-        pwd_label.setFont(QFont('Segoe UI', 20, QFont.Bold))
+        pwd_label.setFont(QFont('Inter Tight', 20, QFont.Bold))
         pwd_label.setStyleSheet("color: #1A3318;")
         layout.addWidget(pwd_label)
 
@@ -202,7 +202,7 @@ class LoginScreen(QWidget):
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText('Enter password')
         self.password_input.setEchoMode(QLineEdit.Password)
-        self.password_input.setFont(QFont('Segoe UI', 18))
+        self.password_input.setFont(QFont('Inter Tight', 18))
         self.password_input.setStyleSheet("""
             QLineEdit {
                 background-color: #EBEBEB;
@@ -224,7 +224,7 @@ class LoginScreen(QWidget):
 
         # Botón de login
         self.login_btn = QPushButton('ACCESS')
-        self.login_btn.setFont(QFont('Segoe UI', 20, QFont.Bold))
+        self.login_btn.setFont(QFont('Inter Tight', 20, QFont.Bold))
         self.login_btn.setMinimumHeight(70)
         self.login_btn.setStyleSheet("""
             QPushButton {
@@ -246,7 +246,7 @@ class LoginScreen(QWidget):
 
         # Botón de ayuda / contacto
         self.help_btn = QPushButton('? HELP')
-        self.help_btn.setFont(QFont('Segoe UI', 11))
+        self.help_btn.setFont(QFont('Inter Tight', 11))
         self.help_btn.setFixedHeight(32)
         self.help_btn.setStyleSheet("""
             QPushButton {
@@ -266,8 +266,10 @@ class LoginScreen(QWidget):
 
         # Etiqueta de estado
         self.status_label = QLabel('Enter password')
-        self.status_label.setFont(QFont('Segoe UI', 14))
-        self.status_label.setStyleSheet("color: #2E5229;")
+        self.status_label.setFont(QFont('Inter Tight', 14))
+        self.status_label.setStyleSheet(
+            "QLabel { color: #2E5229; background: transparent; border-radius: 8px; padding: 8px 16px; }"
+        )
         self.status_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status_label)
         
@@ -289,7 +291,11 @@ class LoginScreen(QWidget):
         # Validar que no esté vacía
         if not pwd:
             self.status_label.setText('✗ Password required')
-            self.status_label.setStyleSheet("color: #FF6600;")
+            self.status_label.setStyleSheet(
+                "QLabel { color: #B84F00; background: #FFF3E6;"
+                " border: 1px solid rgba(184,79,0,0.30);"
+                " border-radius: 8px; padding: 8px 16px; }"
+            )
             return
         
         # Comparar con contraseña correcta
@@ -302,7 +308,11 @@ class LoginScreen(QWidget):
         """Manejar login exitoso."""
         self.password_input.clear()
         self.status_label.setText('✓ Access granted')
-        self.status_label.setStyleSheet("color: #42A5F5;")
+        self.status_label.setStyleSheet(
+            "QLabel { color: #1B7F3E; background: #EAF6EE;"
+            " border: 1px solid rgba(27,127,62,0.30);"
+            " border-radius: 8px; padding: 8px 16px; }"
+        )
         self.login_btn.setEnabled(False)
         self.password_input.setEnabled(False)
         
@@ -350,7 +360,11 @@ class LoginScreen(QWidget):
             self.status_label.setText(
                 f'⏱ Locked for {lockout_seconds}s ({self.attempts} attempts)'
             )
-            self.status_label.setStyleSheet("color: #FF0000;")
+            self.status_label.setStyleSheet(
+                "QLabel { color: #C0141F; background: #FCECEA;"
+                " border: 1px solid rgba(192,20,31,0.30);"
+                " border-radius: 8px; padding: 8px 16px; }"
+            )
             
             # Iniciar countdown
             self._start_lockout_timer(lockout_seconds)
@@ -360,7 +374,11 @@ class LoginScreen(QWidget):
             self.status_label.setText(
                 f'✗ Wrong password ({remaining} attempts left)'
             )
-            self.status_label.setStyleSheet("color: #FF6600;")
+            self.status_label.setStyleSheet(
+                "QLabel { color: #B84F00; background: #FFF3E6;"
+                " border: 1px solid rgba(184,79,0,0.30);"
+                " border-radius: 8px; padding: 8px 16px; }"
+            )
             self.password_input.setFocus()
     
     def _start_lockout_timer(self, seconds: int):
@@ -373,7 +391,6 @@ class LoginScreen(QWidget):
             self.remaining_seconds -= 1
             
             if self.remaining_seconds > 0:
-                # Mostrar segundos restantes
                 self.status_label.setText(f'⏱ Locked for {self.remaining_seconds}s')
             else:
                 # Desbloquear cuando termine
@@ -381,7 +398,11 @@ class LoginScreen(QWidget):
                 self.password_input.setEnabled(True)
                 self.login_btn.setEnabled(True)
                 self.status_label.setText('✓ Unlock complete - retry')
-                self.status_label.setStyleSheet("color: #42A5F5;")
+                self.status_label.setStyleSheet(
+                    "QLabel { color: #1B7F3E; background: #EAF6EE;"
+                    " border: 1px solid rgba(27,127,62,0.30);"
+                    " border-radius: 8px; padding: 8px 16px; }"
+                )
                 self.password_input.setFocus()
                 # Detener timer
                 self.lockout_timer.stop()

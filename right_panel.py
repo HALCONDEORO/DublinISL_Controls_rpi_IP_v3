@@ -81,7 +81,7 @@ class RightPanel:
     TOGGLE_STYLE = (
         "QPushButton {"
         "  background-color: #DCDCDC; border: none; border-radius: 10px;"
-        "  font: 600 18px 'Segoe UI'; color: #777777; padding: 6px 0px;"
+        "  font: 600 18px 'Inter Tight', 'Segoe UI'; color: #777777; padding: 6px 0px;"
         "}"
         "QPushButton:checked {"
         "  background-color: white; color: #111111;"
@@ -181,7 +181,7 @@ class RightPanel:
         no_cam_icon.setFixedSize(64, 64)
         no_cam_text = QLabel('Camera\nnot found', no_cam_container)
         no_cam_text.setAlignment(Qt.AlignCenter)
-        no_cam_text.setStyleSheet("QLabel { font: 700 22px 'Segoe UI'; color: #AAAAAA; }")
+        no_cam_text.setStyleSheet("QLabel { font: 700 22px 'Inter Tight', 'Segoe UI'; color: #AAAAAA; }")
         no_cam_layout.addWidget(no_cam_icon, 0, Qt.AlignCenter)
         no_cam_layout.addWidget(no_cam_text, 0, Qt.AlignCenter)
         self._no_camera_label = no_cam_container
@@ -203,16 +203,20 @@ class RightPanel:
     _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     _MODE_STYLE_ACTIVE_CALL = (
-        "QFrame { background-color: #9B3A3A; border-radius: 8px; border: none; }"
+        "QFrame { background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        " stop:0 #B84A4A, stop:1 #7A2020);"
+        " border-radius: 8px; border: none; }"
     )
     _MODE_STYLE_ACTIVE_SET = (
-        "QFrame { background-color: #4A8C4A; border-radius: 8px; border: none; }"
+        "QFrame { background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        " stop:0 #5EA85E, stop:1 #2E6B2E);"
+        " border-radius: 8px; border: none; }"
     )
     _MODE_STYLE_INACTIVE = (
         "QFrame { background-color: transparent; border-radius: 8px; border: none; }"
     )
-    _MODE_LBL_STYLE_ACT   = "QLabel { font: 700 15px 'Segoe UI'; color: #FFFFFF; background: transparent; border: none; }"
-    _MODE_LBL_STYLE_INACT = "QLabel { font: 600 15px 'Segoe UI'; color: #888888; background: transparent; border: none; }"
+    _MODE_LBL_STYLE_ACT   = "QLabel { font: 700 15px 'Inter Tight', 'Segoe UI'; color: #FFFFFF; background: transparent; border: none; }"
+    _MODE_LBL_STYLE_INACT = "QLabel { font: 600 15px 'Inter Tight', 'Segoe UI'; color: #888888; background: transparent; border: none; }"
 
     def _add_mode_buttons(self, layout: QVBoxLayout):
         """Fila CALL / SET estilo tab segmented control."""
@@ -312,7 +316,7 @@ class RightPanel:
         mw.SpeedTitleLabel = QLabel(f'Speed  <b>({SPEED_DEFAULT})</b>', block)
         mw.SpeedTitleLabel.setTextFormat(Qt.RichText)
         mw.SpeedTitleLabel.setAlignment(Qt.AlignCenter)
-        mw.SpeedTitleLabel.setStyleSheet("font: 15px 'Segoe UI'; color: #555555; padding-bottom: 10px;")
+        mw.SpeedTitleLabel.setStyleSheet("font: 15px 'Inter Tight', 'Segoe UI'; color: #555555; padding-bottom: 10px;")
         bl.addWidget(mw.SpeedTitleLabel)
 
         speed_row = QHBoxLayout()
@@ -372,7 +376,7 @@ class RightPanel:
 
         mw.ZoomValueLabel = QLabel("0%", zoom_w)
         mw.ZoomValueLabel.setAlignment(Qt.AlignCenter)
-        mw.ZoomValueLabel.setStyleSheet("font: 600 13px 'Segoe UI'; color: #444444;")
+        mw.ZoomValueLabel.setStyleSheet("font: 600 13px 'Inter Tight', 'Segoe UI'; color: #444444;")
         zoom_lay.addWidget(mw.ZoomValueLabel)
 
         zoom_title = _section_label('Zoom', zoom_w)
@@ -414,7 +418,7 @@ class RightPanel:
             sim_lbl.setAlignment(Qt.AlignCenter)
             sim_lbl.setWordWrap(True)
             sim_lbl.setStyleSheet(
-                "font: 14px 'Consolas'; color: #333;"
+                "font: 14px 'IBM Plex Mono', 'Consolas'; color: #333;"
                 " background: #E8E8E8; border-radius: 6px; padding: 8px 10px;"
             )
             bl.addWidget(sim_lbl)
@@ -456,7 +460,7 @@ class RightPanel:
         self._btn_focus_base_style = (
             "QPushButton {"
             "  background-color: #DCDCDC; border: none; border-radius: 10px;"
-            "  font: 600 13px 'Segoe UI'; color: #555555; padding: 4px 0px;"
+            "  font: 600 13px 'Inter Tight', 'Segoe UI'; color: #555555; padding: 4px 0px;"
             "}"
             "QPushButton:pressed { background-color: #B8B8B8; color: #111111; }"
         )
@@ -499,11 +503,13 @@ class RightPanel:
         mw.BtnBacklight.setToolTip('Toggle backlight compensation')
         mw._backlight_style_off = (
             "QPushButton { background-color: #DCDCDC; border: none; border-radius: 10px;"
-            " font: 600 13px 'Segoe UI'; color: #555555; padding: 4px 0px; }"
+            " font: 600 13px 'Inter Tight', 'Segoe UI'; color: #555555; padding: 4px 0px; }"
         )
         mw._backlight_style_on = (
-            "QPushButton { background-color: #e6a800; border: none; border-radius: 10px;"
-            " font: 600 13px 'Segoe UI'; color: white; padding: 4px 0px; }"
+            "QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+            " stop:0 #F5B820, stop:1 #B87800);"
+            " border: none; border-radius: 10px;"
+            " font: 600 13px 'Inter Tight', 'Segoe UI'; color: white; padding: 4px 0px; }"
         )
         mw.BtnBacklight.setStyleSheet(mw._backlight_style_off)
         mw.BtnBacklight.clicked.connect(mw._visca.BacklightToggle)
@@ -517,8 +523,8 @@ class RightPanel:
     def set_focus_mode(self, mode: str):
         """Destaca el botón de foco activo (auto/manual). One Push AF nunca persiste."""
         _ACTIVE = (
-            "QPushButton { background-color: #4a90d9; border: none; border-radius: 10px;"
-            " font: 600 13px 'Segoe UI'; color: white; padding: 4px 0px; }"
+            "QPushButton { background-color: #2979D9; border: none; border-radius: 10px;"
+            " font: 600 13px 'Inter Tight', 'Segoe UI'; color: white; padding: 4px 0px; }"
         )
         self.btn_auto_focus.setStyleSheet(
             _ACTIVE if mode == 'auto' else self._btn_focus_base_style)
@@ -537,7 +543,7 @@ class RightPanel:
         color = '#3d9e3d' if success else '#b33030'
         btn.setStyleSheet(
             f"QPushButton {{ background-color: {color}; border: none; border-radius: 10px;"
-            f" font: 600 13px 'Segoe UI'; color: white; padding: 4px 0px; }}"
+            f" font: 600 13px 'Inter Tight', 'Segoe UI'; color: white; padding: 4px 0px; }}"
         )
         QtCore.QTimer.singleShot(
             duration_ms, lambda: btn.setStyleSheet(self._btn_focus_base_style))
@@ -560,7 +566,7 @@ class RightPanel:
         btn_gear.setToolTip('Camera configuration')
         btn_gear.setStyleSheet(
             "QPushButton { background: rgba(80,80,80,50); border: 1px solid #B8B8B8;"
-            " border-radius: 8px; font: 600 13px 'Segoe UI'; color: #444; padding: 0 14px; }"
+            " border-radius: 8px; font: 600 13px 'Inter Tight', 'Segoe UI'; color: #444; padding: 0 14px; }"
             "QPushButton:pressed { background: rgba(80,80,80,120); }"
         )
         btn_gear.clicked.connect(mw._open_config_dialog)
@@ -598,15 +604,22 @@ class _IndicatorButton(QPushButton):
         lx = margin
         ly = margin
         if self._connected:
-            halo_color = QColor(40, 180, 80, 60)
-            led_color  = QColor(35, 170, 70, 210)
+            outer_halo = QColor(35, 170, 70, 46)   # outer glow ring
+            inner_halo = QColor(35, 170, 70, 102)  # inner glow ring
+            core_color = QColor(95, 217, 127, 230) # bright core
         else:
-            halo_color = QColor(200, 40, 40, 60)
-            led_color  = QColor(190, 35, 35, 210)
+            outer_halo = QColor(190, 35, 35, 46)
+            inner_halo = QColor(190, 35, 35, 115)
+            core_color = QColor(224, 80, 80, 230)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(halo_color)
+        # Outer glow ring (largest, most transparent)
+        painter.setBrush(outer_halo)
+        painter.drawEllipse(lx - 5, ly - 5, r * 2 + 10, r * 2 + 10)
+        # Inner glow ring
+        painter.setBrush(inner_halo)
         painter.drawEllipse(lx - 2, ly - 2, r * 2 + 4, r * 2 + 4)
-        painter.setBrush(led_color)
+        # Bright core
+        painter.setBrush(core_color)
         painter.drawEllipse(lx, ly, r * 2, r * 2)
 
         painter.end()
@@ -617,5 +630,5 @@ class _IndicatorButton(QPushButton):
 def _section_label(text: str, parent: QWidget) -> QLabel:
     lbl = QLabel(text, parent)
     lbl.setAlignment(Qt.AlignCenter)
-    lbl.setStyleSheet("font: 600 15px 'Segoe UI'; color: #555555; padding-bottom: 10px;")
+    lbl.setStyleSheet("font: 600 15px 'Inter Tight', 'Segoe UI'; color: #555555; padding-bottom: 10px;")
     return lbl

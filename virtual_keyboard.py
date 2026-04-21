@@ -32,7 +32,7 @@ QPushButton {
     border: 1px solid #bbb;
     border-radius: 6px;
     font-size: 20px;
-    font-family: 'Segoe UI';
+    font-family: 'Inter Tight', 'Segoe UI';
     color: #222;
 }
 QPushButton:pressed { background: #bdd3ff; border-color: #5588dd; }
@@ -44,7 +44,7 @@ QPushButton {
     border: 1px solid #99aabb;
     border-radius: 6px;
     font-size: 18px;
-    font-family: 'Segoe UI';
+    font-family: 'Inter Tight', 'Segoe UI';
     color: #333;
 }
 QPushButton:pressed { background: #99bbdd; }
@@ -56,7 +56,7 @@ QPushButton {
     border: 1px solid #2E5229;
     border-radius: 6px;
     font-size: 18px;
-    font-family: 'Segoe UI';
+    font-family: 'Inter Tight', 'Segoe UI';
     color: white;
 }
 QPushButton:pressed { background: #2E5229; }

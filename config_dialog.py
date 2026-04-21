@@ -99,21 +99,21 @@ class _CamEditDialog(QDialog):
         layout.setSpacing(10)
 
         title_lbl = QLabel(f'{cam_name}  —  {field}')
-        title_lbl.setStyleSheet("font: bold 14px 'Segoe UI'; color: #222;")
+        title_lbl.setStyleSheet("font: bold 14px 'Inter Tight', 'Segoe UI'; color: #222;")
         layout.addWidget(title_lbl)
 
         self._input = QLineEdit(current)
         self._input.setPlaceholderText(hint)
         self._input.setStyleSheet(
             "QLineEdit { border: 2px solid #1976D2; border-radius: 6px;"
-            " padding: 6px 10px; font: 14px 'Segoe UI'; }"
+            " padding: 6px 10px; font: 14px 'Inter Tight', 'Segoe UI'; }"
             "QLineEdit:focus { border-color: #0d47a1; }"
         )
         self._input.selectAll()
         layout.addWidget(self._input)
 
         self._err = QLabel('')
-        self._err.setStyleSheet("color: #c62828; font: 11px 'Segoe UI';")
+        self._err.setStyleSheet("color: #c62828; font: 11px 'Inter Tight', 'Segoe UI';")
         layout.addWidget(self._err)
 
         btn_row = QHBoxLayout()
@@ -121,7 +121,7 @@ class _CamEditDialog(QDialog):
         btn_ok.setFixedHeight(34)
         btn_ok.setStyleSheet(
             "QPushButton { background: #1976D2; border: none; border-radius: 6px;"
-            " font: bold 13px 'Segoe UI'; color: white; }"
+            " font: bold 13px 'Inter Tight', 'Segoe UI'; color: white; }"
             "QPushButton:pressed { background: #1251a0; }"
         )
         btn_ok.clicked.connect(self._apply)
@@ -130,7 +130,7 @@ class _CamEditDialog(QDialog):
         btn_cancel.setFixedHeight(34)
         btn_cancel.setStyleSheet(
             "QPushButton { background: #e0e0e0; border: none; border-radius: 6px;"
-            " font: 13px 'Segoe UI'; color: #333; }"
+            " font: 13px 'Inter Tight', 'Segoe UI'; color: #333; }"
             "QPushButton:pressed { background: #bdbdbd; }"
         )
         btn_cancel.clicked.connect(self.reject)
@@ -325,14 +325,14 @@ class ConfigDialog(QDialog):
             color = '#2e7d32' if ok else '#c62828'
             lbl = QLabel(text)
             lbl.setStyleSheet(
-                f"font: 13px 'Segoe UI'; color: {color};"
+                f"font: 13px 'Inter Tight', 'Segoe UI'; color: {color};"
                 " background: #f5f5f5; border-radius: 6px; padding: 4px 8px;"
             )
             return lbl
 
         for cam_label, cam_obj, cam_num in (('Platform', CAM1, 1), ('Comments', CAM2, 2)):
             sub = QLabel(cam_label + ':')
-            sub.setStyleSheet("font: 600 13px 'Segoe UI'; color: #444; margin-top: 2px;")
+            sub.setStyleSheet("font: 600 13px 'Inter Tight', 'Segoe UI'; color: #444; margin-top: 2px;")
             layout.addWidget(sub)
 
             cam_row = QHBoxLayout()
@@ -373,7 +373,7 @@ class ConfigDialog(QDialog):
         # Etiqueta de estado del escaneo
         disc_status = QLabel('Press Scan to detect cameras on the network.')
         disc_status.setStyleSheet(
-            "font: 11px 'Segoe UI'; color: #666; padding: 2px 0;"
+            "font: 11px 'Inter Tight', 'Segoe UI'; color: #666; padding: 2px 0;"
         )
         disc_status.setWordWrap(True)
         layout.addWidget(disc_status)
@@ -579,7 +579,7 @@ class ConfigDialog(QDialog):
 
             cap = QLabel(label_text)
             cap.setAlignment(Qt.AlignCenter)
-            cap.setStyleSheet("font: 9px 'Segoe UI'; color: #888;")
+            cap.setStyleSheet("font: 9px 'Inter Tight', 'Segoe UI'; color: #888;")
             cap.setFixedHeight(12)
 
             col = QVBoxLayout()
@@ -594,7 +594,7 @@ class ConfigDialog(QDialog):
         btn_run_test.setFixedHeight(28)
         btn_run_test.setStyleSheet(
             "QPushButton { background: #546E7A; border: none; border-radius: 6px;"
-            " font: 12px 'Segoe UI'; color: white; }"
+            " font: 12px 'Inter Tight', 'Segoe UI'; color: white; }"
             "QPushButton:pressed { background: #37474F; }"
             "QPushButton:disabled { background: #90A4AE; }"
         )
@@ -660,7 +660,7 @@ class ConfigDialog(QDialog):
         btn_close.setFixedHeight(40)
         btn_close.setStyleSheet(
             "QPushButton { background: #c62828; border: none;"
-            " border-radius: 8px; font: 600 14px 'Segoe UI'; color: white; }"
+            " border-radius: 8px; font: 600 14px 'Inter Tight', 'Segoe UI'; color: white; }"
             "QPushButton:pressed { background: #8b1a1a; }"
         )
         btn_close.clicked.connect(mw.close)

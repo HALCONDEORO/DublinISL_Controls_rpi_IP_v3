@@ -282,12 +282,12 @@ class NamesPanel(QWidget):
             layout.addWidget(b)
             self._edit_buttons.append(b)
 
-        btn_clear = QPushButton("✖ Clear All")
+        btn_clear = QPushButton("🤝 Traer todos")
         btn_clear.setFixedHeight(26)
         btn_clear.setStyleSheet(
-            "QPushButton { background: white; border: 1px solid #e57373;"
-            " border-radius: 3px; font: bold 11px; color: #c62828; padding: 3px 4px; text-align: left; }"
-            "QPushButton:pressed  { background: #ffebee; }"
+            "QPushButton { background: white; border: 1px solid #1976d2;"
+            " border-radius: 3px; font: bold 11px; color: #1565c0; padding: 3px 4px; text-align: left; }"
+            "QPushButton:pressed  { background: #e3f2fd; }"
             "QPushButton:disabled { background: #f0f0f0; color: #aaa; border-color: #ddd; }"
         )
         btn_clear.clicked.connect(self._clear_all)
@@ -451,8 +451,8 @@ class NamesPanel(QWidget):
         if not self._assigned:
             return
         reply = QMessageBox.question(
-            self, "Clear All Seats",
-            "Remove all asistente assignments from seats?",
+            self, "Traer todos",
+            "¿Traer a todos los asistentes de vuelta al panel?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if reply == QMessageBox.Yes:

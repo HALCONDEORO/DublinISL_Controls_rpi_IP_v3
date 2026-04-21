@@ -12,14 +12,5 @@
     "Eddie",
     "Becky Mc"
   ],
-  "seats": {
-    "126": "Eddie",
-    "76": "Tim",
-    "129": "Beatriz",
-    "115": "Becky Mc",
-    "85": "Marco",
-    "39": "Gary",
-    "73": "Christian",
-    "106": "Laura"
-  }
+  "seats": {}
 }
