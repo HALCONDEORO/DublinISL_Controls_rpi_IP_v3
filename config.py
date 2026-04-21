@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+from json_io import load_json, save_json
 import re
 import socket
 import binascii
@@ -216,13 +217,10 @@ def load_names_data() -> dict:
     """Cargar nombres de asistentes y asignaciones de asientos desde JSON."""
     try:
         names_path = Path(NAMES_FILE)
-        # Si el archivo no existe, retornar estructura vacía
-        if not names_path.exists():
+        data = load_json(names_path)
+        if data is None:
             return {"names": [], "seats": {}}
-        
-        # Parsear JSON
-        data = json.loads(names_path.read_text(encoding='utf-8'))
-        
+
         # Validar estructura del JSON
         if not isinstance(data, dict):
             raise ValueError("Root must be dict")
@@ -253,14 +251,8 @@ def save_names_data(names_list: list, seat_assignments: dict) -> bool:
     
     try:
         data = {"names": names_list, "seats": seat_assignments}
-        names_path = Path(NAMES_FILE)
-        # Guardar JSON con formato legible
-        names_path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding='utf-8'
-        )
-        return True
-    
+        return save_json(Path(NAMES_FILE), data)
+
     except (OSError, TypeError, ValueError) as exc:
         # Registrar error si hay problema guardando
         logger.error("Error saving %s: %s", NAMES_FILE, exc)

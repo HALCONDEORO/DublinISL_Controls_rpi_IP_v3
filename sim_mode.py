@@ -8,8 +8,8 @@
 #   python sim_mode.py show  -> muestra la configuracion actual
 
 import sys
-import json
 from pathlib import Path
+from json_io import load_json, save_json
 
 BACKUP = Path("sim_ip_backup.json")
 
@@ -33,10 +33,10 @@ def _write(path: str, value: str):
 
 
 def _load_backup() -> dict:
-    try:
-        return json.loads(BACKUP.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        raise RuntimeError(f"No se pudo leer sim_ip_backup.json: {exc}") from exc
+    data = load_json(BACKUP)
+    if data is None:
+        raise RuntimeError("No se pudo leer sim_ip_backup.json")
+    return data
 
 
 def activate() -> bool:
@@ -48,7 +48,7 @@ def activate() -> bool:
         return False  # ya activo
 
     backup = {f: _read(f) for f in BACKUP_FILES}
-    BACKUP.write_text(json.dumps(backup, indent=2), encoding="utf-8")
+    save_json(BACKUP, backup)
 
     for filename, sim_val in SIM_VALUES.items():
         _write(filename, sim_val)

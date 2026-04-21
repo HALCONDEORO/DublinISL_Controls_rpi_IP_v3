@@ -26,8 +26,8 @@ from __future__ import annotations
 #   MOTIVO del 89: límite antes del bloque reservado VISCA (0x5A en adelante
 #   según algunas cámaras; 89 = 0x59 es el último seguro del rango directo).
 
-import json
 import logging
+from json_io import load_json, save_json
 
 logger = logging.getLogger(__name__)
 
@@ -42,27 +42,21 @@ def load_chairman_presets() -> dict[str, int]:
     Carga el mapa nombre→número_de_preset desde chairman_presets.json.
     Devuelve dict vacío si el archivo no existe o está corrupto.
     """
-    try:
-        with open(CHAIRMAN_PRESETS_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        # Validar que los valores sean enteros en rango válido
-        return {
-            name: int(preset)
-            for name, preset in data.items()
-            if isinstance(preset, int) and CHAIRMAN_PRESET_START <= preset <= CHAIRMAN_PRESET_MAX
-        }
-    except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
-        logger.warning("%s: %s — iniciando sin presets personales", CHAIRMAN_PRESETS_FILE, exc)
+    data = load_json(CHAIRMAN_PRESETS_FILE, default={})
+    if not isinstance(data, dict):
+        logger.warning("%s: formato inesperado — iniciando sin presets personales", CHAIRMAN_PRESETS_FILE)
         return {}
+    return {
+        name: int(preset)
+        for name, preset in data.items()
+        if isinstance(preset, int) and CHAIRMAN_PRESET_START <= preset <= CHAIRMAN_PRESET_MAX
+    }
 
 
 def save_chairman_presets(presets: dict[str, int]) -> None:
     """Persiste el mapa nombre→preset en chairman_presets.json."""
-    try:
-        with open(CHAIRMAN_PRESETS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(presets, f, ensure_ascii=False, indent=2)
-    except IOError as exc:
-        logger.error("Error guardando %s: %s", CHAIRMAN_PRESETS_FILE, exc)
+    if not save_json(CHAIRMAN_PRESETS_FILE, presets):
+        logger.error("Error guardando %s", CHAIRMAN_PRESETS_FILE)
 
 
 def next_available_preset(presets: dict[str, int]) -> int | None:

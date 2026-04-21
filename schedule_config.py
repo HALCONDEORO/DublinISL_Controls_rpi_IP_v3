@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from pathlib import Path
+from json_io import load_json, save_json
 
 SCHEDULE_FILE = Path(__file__).parent / 'schedule.json'
 
@@ -19,11 +19,10 @@ DEFAULT_SCHEDULE: dict = {
 
 def load_schedule() -> dict:
     """Leer schedule.json. Devuelve DEFAULT_SCHEDULE si no existe o hay error."""
+    data = load_json(SCHEDULE_FILE)
+    if not isinstance(data, dict):
+        return {day: dict(DEFAULT_SCHEDULE[day]) for day in DAYS}
     try:
-        if not SCHEDULE_FILE.exists():
-            return {day: dict(DEFAULT_SCHEDULE[day]) for day in DAYS}
-        data = json.loads(SCHEDULE_FILE.read_text(encoding='utf-8'))
-        # Asegurar que todos los días existen con valores válidos
         result = {}
         for day in DAYS:
             entry = data.get(day, DEFAULT_SCHEDULE[day])
@@ -33,20 +32,13 @@ def load_schedule() -> dict:
                 "end":     str(entry.get("end",   "17:00")),
             }
         return result
-    except (OSError, json.JSONDecodeError, TypeError, AttributeError):
+    except (TypeError, AttributeError):
         return {day: dict(DEFAULT_SCHEDULE[day]) for day in DAYS}
 
 
 def save_schedule(data: dict) -> bool:
     """Guardar calendario en schedule.json. Devuelve True si tiene éxito."""
-    try:
-        SCHEDULE_FILE.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False),
-            encoding='utf-8'
-        )
-        return True
-    except OSError:
-        return False
+    return save_json(SCHEDULE_FILE, data)
 
 
 def is_within_schedule() -> bool:
