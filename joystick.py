@@ -87,9 +87,9 @@ class DigitalJoystick(QWidget):
         r  = size / 2.0
         cx = cy = r
         self._r       = r
-        self._outer_r = r * 0.90
-        self._knob_r  = r * 0.28
-        self._dead_r  = r * 0.22
+        self._outer_r = r * 0.72
+        self._knob_r  = r * 0.18
+        self._dead_r  = r * 0.10
         R = self._outer_r
 
         # Centro fijo (widget de tamaño fijo — nunca cambia)
@@ -282,9 +282,12 @@ class DigitalJoystick(QWidget):
             self.update()
             return
 
-        max_spd  = self._speed_provider()
-        pan_spd  = max(1, round((abs(dx) / self._outer_r) * max_spd))
-        tilt_spd = max(1, round((abs(dy) / self._outer_r) * max_spd))
+        max_spd   = self._speed_provider()
+        t         = (dist - self._dead_r) / (self._outer_r - self._dead_r)
+        t         = min(1.0, t)
+        total_spd = max(1, round(1 + t * (max_spd - 1)))
+        pan_spd   = max(1, round(total_spd * abs(dx) / dist))
+        tilt_spd  = max(1, round(total_spd * abs(dy) / dist))
 
         angle      = math.degrees(math.atan2(dx, -dy)) % 360
         raw_sector = int((angle + self._SECTOR_HALF) / 45) % 8

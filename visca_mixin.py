@@ -17,7 +17,7 @@ from __future__ import annotations
 from PyQt5.QtCore import QMetaObject, Qt, Q_ARG, QTimer
 from PyQt5.QtWidgets import QMessageBox
 
-from config import CAM1, CAM2
+from config import CAM1, CAM2, SPEED_MAX
 from visca_protocol import ViscaProtocol, ViscaUICallbacks
 
 
@@ -31,7 +31,7 @@ class ViscaController:
             ui=ViscaUICallbacks(
                 # ── Lectura de estado UI ──────────────────────────────────────
                 get_active_cam=self._active_cam,
-                get_speed=lambda: window.SpeedSlider.value(),
+                get_speed=lambda: SPEED_MAX,
                 get_zoom_value=lambda: window.ZoomSlider.value(),
                 is_call_mode=lambda: window.BtnCall.isChecked(),
                 is_set_mode=lambda: window.BtnSet.isChecked(),
@@ -77,10 +77,6 @@ class ViscaController:
         if self._w.Cam1.isChecked():
             return CAM1.ip, CAM1.cam_id
         return CAM2.ip, CAM2.cam_id
-
-    def _on_speed_changed(self, value: int):
-        """Callback del slider: actualiza el título con el valor numérico actual."""
-        self._w.SpeedTitleLabel.setText(f'Speed  <b>({value})</b>')
 
     def __getattr__(self, name):
         return getattr(self._proto, name)

@@ -282,7 +282,7 @@ class NamesPanel(QWidget):
             layout.addWidget(b)
             self._edit_buttons.append(b)
 
-        btn_clear = QPushButton("🤝 Traer todos")
+        btn_clear = QPushButton("🔄 Bring All Back")
         btn_clear.setFixedHeight(26)
         btn_clear.setStyleSheet(
             "QPushButton { background: white; border: 1px solid #1976d2;"
@@ -413,7 +413,7 @@ class NamesPanel(QWidget):
         if not self.names:
             return
         name, ok = QInputDialog.getItem(
-            self, "Delete Name", "Select asistente to remove:", self.names, 0, False)
+            self, "Delete Name", "Select attendee to remove:", self.names, 0, False)
         if not ok:
             return
         reply = QMessageBox.question(
@@ -451,8 +451,8 @@ class NamesPanel(QWidget):
         if not self._assigned:
             return
         reply = QMessageBox.question(
-            self, "Traer todos",
-            "¿Traer a todos los asistentes de vuelta al panel?",
+            self, "Bring All Back",
+            "Bring all attendees back to the panel?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if reply == QMessageBox.Yes:

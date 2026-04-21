@@ -7,7 +7,6 @@
 #
 # Atributos que crea en main_window:
 #   mw.Cam1, mw.Cam2, mw.Camgroup
-#   mw.SpeedSlider, mw.SpeedValueLabel
 #   mw.BtnBacklight, mw._backlight_style_off, mw._backlight_style_on
 # Nota: mw.BtnCall, mw.BtnSet y mw.PresetModeGroup se crean en main_window._build_mode_buttons()
 #   Los frames visuales call_frame/set_frame se crean aquí (_add_mode_buttons) y se exponen como
@@ -26,39 +25,17 @@ from PyQt5.QtWidgets import (
     QPushButton, QSlider, QVBoxLayout, QWidget,
 )
 
-from config import SPEED_MIN, SPEED_MAX, SPEED_DEFAULT
 
 
 class RightPanel:
     """
     Construye el panel derecho usando layouts (sin coordenadas absolutas).
-    El container blanco ocupa (1490, 10, 380, 1062) sobre el fondo gris.
+    El container blanco ocupa (1446, 0, 474, 1080) sobre el fondo gris.
     Todos los widgets son hijos del container, pero sus referencias
     se asignan como atributos de main_window para compatibilidad total.
     """
 
-    # Estilo base compartido para ambos sliders — handle 22 px, groove 6 px
-    _SLIDER_STYLE = (
-        "QSlider::groove:horizontal {{"
-        "  background: #E0E0E0; height: 6px; border-radius: 3px;"
-        "}}"
-        "QSlider::sub-page:horizontal {{"
-        "  background: {fill}; border-radius: 3px;"
-        "}}"
-        "QSlider::handle:horizontal {{"
-        "  background: {handle}; border: 2px solid {border};"
-        "  width: 22px; height: 22px; margin: -9px 0; border-radius: 11px;"
-        "}}"
-    )
-    _SLIDER_STYLE_PLATFORM = _SLIDER_STYLE.format(
-        fill='#9B3A3A', handle='#B41E1E', border='#6E1212')  # burdeo
-    _SLIDER_STYLE_COMMENTS = _SLIDER_STYLE.format(
-        fill='#64B464', handle='#7DC47D', border='#3A8A3A')  # verde
-
-    # Estilo vertical para el slider de zoom (a la derecha del joystick)
-    # Con invertedAppearance=True el handle sube al aumentar el valor;
-    # add-page:vertical es la zona DEBAJO del handle → se llena de abajo hacia arriba.
-    _ZOOM_VERTICAL_STYLE = (
+    _ZOOM_VERT_STYLE = (
         "QSlider:vertical {{"
         "  padding: 11px 0px;"
         "}}"
@@ -73,10 +50,10 @@ class RightPanel:
         "  width: 22px; height: 22px; margin: 0 -9px; border-radius: 11px;"
         "}}"
     )
-    _ZOOM_STYLE_PLATFORM = _ZOOM_VERTICAL_STYLE.format(
-        fill='#9B3A3A', handle='#B41E1E', border='#6E1212')  # burdeo
-    _ZOOM_STYLE_COMMENTS = _ZOOM_VERTICAL_STYLE.format(
-        fill='#64B464', handle='#7DC47D', border='#3A8A3A')  # verde
+    _ZOOM_STYLE_PLATFORM = _ZOOM_VERT_STYLE.format(
+        fill='#9B3A3A', handle='#B41E1E', border='#6E1212')
+    _ZOOM_STYLE_COMMENTS = _ZOOM_VERT_STYLE.format(
+        fill='#64B464', handle='#7DC47D', border='#3A8A3A')
 
     TOGGLE_STYLE = (
         "QPushButton {"
@@ -131,7 +108,7 @@ class RightPanel:
     def _build_outer_bg(self):
         mw = self._mw
         outer = QFrame(mw)
-        outer.setGeometry(1490, 0, 430, 1080)
+        outer.setGeometry(1446, 0, 474, 1080)
         outer.setStyleSheet("QFrame { background-color: #B0B0B0; border: none; }")
         outer.lower()
 
@@ -142,11 +119,14 @@ class RightPanel:
 
         # Container blanco — hijo directo de mw, posicionado absolutamente
         self._container = QFrame(mw)
-        self._container.setGeometry(1490, 10, 380, 1062)
+        self._container.setGeometry(1446, 0, 474, 1080)
         self._container.setStyleSheet(
             "QFrame#RightPanelContainer {"
             "  background-color: #F4F4F6;"
-            "  border-radius: 8px;"
+            "  border-top-left-radius: 0px;"
+            "  border-top-right-radius: 0px;"
+            "  border-bottom-left-radius: 8px;"
+            "  border-bottom-right-radius: 0px;"
             "  border: none;"
             "}"
         )
@@ -196,7 +176,7 @@ class RightPanel:
     def _fit_container_height(self):
         """Ajusta la altura del container exactamente al contenido."""
         h = self._container.sizeHint().height()
-        self._container.setGeometry(1490, 10, 380, h)
+        self._container.setGeometry(1446, 0, 474, h)
 
     # ── Secciones ─────────────────────────────────────────────────────────────
 
@@ -309,56 +289,15 @@ class RightPanel:
             "QFrame { background-color: #F2F2F2; border-radius: 12px; border: none; }"
         )
         bl = QVBoxLayout(block)
-        bl.setContentsMargins(12, 10, 12, 10)
+        bl.setContentsMargins(4, 8, 4, 8)
         bl.setSpacing(6)
 
-        # ── Fila 1: Speed label dinámico ──────────────────────────────────────
-        mw.SpeedTitleLabel = QLabel(f'Speed  <b>({SPEED_DEFAULT})</b>', block)
-        mw.SpeedTitleLabel.setTextFormat(Qt.RichText)
-        mw.SpeedTitleLabel.setAlignment(Qt.AlignCenter)
-        mw.SpeedTitleLabel.setStyleSheet("font: 15px 'Inter Tight', 'Segoe UI'; color: #555555; padding-bottom: 10px;")
-        bl.addWidget(mw.SpeedTitleLabel)
-
-        speed_row = QHBoxLayout()
-        speed_row.setSpacing(6)
-
-        slow = QLabel('SLOW', block)
-        slow.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        slow.setStyleSheet("font: bold 13px; color: #444;")
-        slow.setFixedWidth(38)
-
-        mw.SpeedSlider = QSlider(Qt.Horizontal, block)
-        mw.SpeedSlider.setMinimum(SPEED_MIN)
-        mw.SpeedSlider.setMaximum(SPEED_MAX)
-        mw.SpeedSlider.setValue(SPEED_DEFAULT)
-        mw.SpeedSlider.setTickPosition(QSlider.TicksBelow)
-        mw.SpeedSlider.setTickInterval(3)
-        mw.SpeedSlider.setFixedHeight(48)
-        mw.SpeedSlider.setStyleSheet(self._SLIDER_STYLE_PLATFORM)
-
-        fast = QLabel('FAST', block)
-        fast.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        fast.setStyleSheet("font: bold 13px; color: #444;")
-        fast.setFixedWidth(38)
-
-        speed_row.addWidget(slow)
-        speed_row.addWidget(mw.SpeedSlider)
-        speed_row.addWidget(fast)
-        bl.addLayout(speed_row)
-
-        mw.SpeedSlider.valueChanged.connect(mw._visca._on_speed_changed)
-        mw.Cam1.clicked.connect(
-            lambda: mw.SpeedSlider.setStyleSheet(self._SLIDER_STYLE_PLATFORM))
-        mw.Cam2.clicked.connect(
-            lambda: mw.SpeedSlider.setStyleSheet(self._SLIDER_STYLE_COMMENTS))
-
-        # ── Fila 2: Joystick (izquierda) + Zoom vertical (derecha) ───────────
-        joy_size = 248
+        # ── Joystick (izquierda) + Zoom vertical (derecha) ───────────────────
+        joy_size = 374
         slot = QWidget(block)
         slot.setFixedSize(joy_size, joy_size)
         self._joystick_slot = slot
 
-        # Contenedor zoom con altura fija = joystick → slider arriba, label abajo
         zoom_w = QWidget(block)
         zoom_w.setFixedSize(56, joy_size)
         zoom_lay = QVBoxLayout(zoom_w)
@@ -383,6 +322,12 @@ class RightPanel:
         zoom_title.setAlignment(Qt.AlignCenter)
         zoom_lay.addWidget(zoom_title)
 
+        joy_zoom_row = QHBoxLayout()
+        joy_zoom_row.setSpacing(8)
+        joy_zoom_row.addWidget(slot, alignment=Qt.AlignTop)
+        joy_zoom_row.addWidget(zoom_w, alignment=Qt.AlignTop)
+        bl.addLayout(joy_zoom_row)
+
         # Debounce: envía zoom cada 150 ms mientras se arrastra; al soltar, envío inmediato
         mw._zoom_timer = QtCore.QTimer(block)
         mw._zoom_timer.setSingleShot(True)
@@ -399,14 +344,6 @@ class RightPanel:
             lambda: mw.ZoomSlider.setStyleSheet(self._ZOOM_STYLE_PLATFORM))
         mw.Cam2.clicked.connect(
             lambda: mw.ZoomSlider.setStyleSheet(self._ZOOM_STYLE_COMMENTS))
-
-        joy_zoom_row = QHBoxLayout()
-        joy_zoom_row.setSpacing(8)
-        joy_zoom_row.addStretch()
-        joy_zoom_row.addWidget(slot, alignment=Qt.AlignTop)
-        joy_zoom_row.addWidget(zoom_w, alignment=Qt.AlignTop)
-        joy_zoom_row.addStretch()
-        bl.addLayout(joy_zoom_row)
 
         # ── Display de estado de cámara simulada (solo en modo sim) ──────────
         import sim_mode as _sm

@@ -477,7 +477,6 @@ class MainWindow(QMainWindow):
                 'downright': self._visca.DownRight,
             },
             stop_handler=self._visca.Stop,
-            speed_provider=self.SpeedSlider.value,
         )
         # Estado inicial: Cam1 (Platform) está seleccionada → joystick en burdeo
         self._right_panel.set_joystick_mode('platform')
