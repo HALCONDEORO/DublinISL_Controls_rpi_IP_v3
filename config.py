@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import socket
 import binascii
 import threading
@@ -246,6 +247,8 @@ def save_names_data(names_list: list, seat_assignments: dict) -> bool:
         logger.warning("save_names_data: names must be list, seats must be dict")
         return False
 
+    if NAMES_FILE.exists():
+        shutil.copy2(NAMES_FILE, NAMES_FILE.with_suffix('.bak'))
     tmp = NAMES_FILE.with_suffix('.tmp')
     try:
         data = {"names": names_list, "seats": seat_assignments}

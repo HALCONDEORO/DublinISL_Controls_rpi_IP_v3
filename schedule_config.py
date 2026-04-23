@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from datetime import datetime
 
 from data_paths import SCHEDULE_FILE
@@ -38,7 +39,9 @@ def load_schedule() -> dict:
 
 
 def save_schedule(data: dict) -> bool:
-    """Guardar calendario en schedule.json (escritura atómica). Devuelve True si tiene éxito."""
+    """Guardar calendario (escritura atómica, copia .bak previa). Devuelve True si tiene éxito."""
+    if SCHEDULE_FILE.exists():
+        shutil.copy2(SCHEDULE_FILE, SCHEDULE_FILE.with_suffix('.bak'))
     tmp = SCHEDULE_FILE.with_suffix('.tmp')
     try:
         tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')

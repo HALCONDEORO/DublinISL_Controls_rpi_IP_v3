@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 
 from data_paths import CHAIRMAN_PRESETS_FILE
 
@@ -58,7 +59,9 @@ def load_chairman_presets() -> dict[str, int]:
 
 
 def save_chairman_presets(presets: dict[str, int]) -> None:
-    """Persiste el mapa nombre→preset en chairman_presets.json (escritura atómica)."""
+    """Persiste el mapa nombre→preset (escritura atómica, copia .bak previa)."""
+    if CHAIRMAN_PRESETS_FILE.exists():
+        shutil.copy2(CHAIRMAN_PRESETS_FILE, CHAIRMAN_PRESETS_FILE.with_suffix('.bak'))
     tmp = CHAIRMAN_PRESETS_FILE.with_suffix('.tmp')
     try:
         tmp.write_text(json.dumps(presets, ensure_ascii=False, indent=2), encoding='utf-8')

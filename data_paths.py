@@ -19,9 +19,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
+import zipfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -38,17 +40,20 @@ CHAIRMAN_PRESETS_FILE = CONFIG_DIR / 'chairman_presets.json'
 SEAT_NAMES_FILE       = CONFIG_DIR / 'seat_names.json'
 SCHEDULE_FILE         = CONFIG_DIR / 'schedule.json'
 
+_DATA_FILES = (CHAIRMAN_PRESETS_FILE, SEAT_NAMES_FILE, SCHEDULE_FILE)
 _LEGACY_FILES = ('chairman_presets.json', 'seat_names.json', 'schedule.json')
 
 
-def migrate_legacy_files() -> None:
+def migrate_legacy_files(app_dir: Path | None = None) -> None:
     """
     Migra archivos desde el directorio de la app al CONFIG_DIR si no existen ya.
 
     Llamar una vez al arrancar la aplicación (desde main.py), antes de que
     cualquier módulo intente leer los archivos de datos.
+    app_dir se puede pasar explícitamente en tests para aislar la llamada.
     """
-    app_dir = Path(__file__).parent
+    if app_dir is None:
+        app_dir = Path(__file__).parent
     for filename in _LEGACY_FILES:
         src = app_dir / filename
         dst = CONFIG_DIR / filename
@@ -58,3 +63,57 @@ def migrate_legacy_files() -> None:
                 logger.info("Migrado %s → %s", src, dst)
             except OSError as exc:
                 logger.warning("No se pudo migrar %s: %s", src, exc)
+
+
+def export_backup(dest_zip: Path) -> list[str]:
+    """
+    Crea un archivo ZIP con todos los archivos de datos existentes.
+
+    Devuelve la lista de nombres de archivos incluidos en el ZIP.
+    Lanza OSError / zipfile.BadZipFile si la escritura falla.
+    """
+    included: list[str] = []
+    with zipfile.ZipFile(dest_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for f in _DATA_FILES:
+            if f.exists():
+                zf.write(f, f.name)
+                included.append(f.name)
+    logger.info("Backup exportado a %s (%d archivos)", dest_zip, len(included))
+    return included
+
+
+def import_backup(zip_path: Path) -> list[str]:
+    """
+    Restaura archivos de datos desde un ZIP de backup.
+
+    - Valida que cada entrada sea JSON válido antes de escribir.
+    - Guarda copia .bak del archivo existente antes de sobreescribir.
+    - Devuelve la lista de nombres restaurados.
+    - Lanza ValueError si el ZIP no contiene ningún archivo reconocido.
+    - Lanza json.JSONDecodeError si algún archivo no es JSON válido.
+    - Lanza zipfile.BadZipFile si el ZIP está corrupto.
+    """
+    valid_names = {f.name for f in _DATA_FILES}
+    restored: list[str] = []
+
+    with zipfile.ZipFile(zip_path, 'r') as zf:
+        found = [n for n in zf.namelist() if n in valid_names]
+        if not found:
+            raise ValueError(
+                "El ZIP no contiene archivos de datos reconocidos "
+                f"({', '.join(sorted(valid_names))})"
+            )
+
+        for name in found:
+            raw = zf.read(name).decode('utf-8')
+            json.loads(raw)  # valida JSON — lanza JSONDecodeError si está corrupto
+
+            dst = CONFIG_DIR / name
+            if dst.exists():
+                shutil.copy2(dst, dst.with_suffix('.bak'))
+
+            dst.write_text(raw, encoding='utf-8')
+            restored.append(name)
+            logger.info("Restaurado %s desde %s", name, zip_path)
+
+    return restored
