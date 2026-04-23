@@ -73,8 +73,15 @@ def is_within_schedule() -> bool:
     except (ValueError, KeyError):
         return False
 
+    if not (0 <= start_h <= 23 and 0 <= start_m <= 59
+            and 0 <= end_h <= 23 and 0 <= end_m <= 59):
+        return False
+
     current_minutes = now.hour * 60 + now.minute
     start_minutes   = start_h  * 60 + start_m
     end_minutes     = end_h    * 60 + end_m
 
+    if end_minutes <= start_minutes:
+        # Horario nocturno que cruza la medianoche (ej. 22:00 → 06:00)
+        return current_minutes >= start_minutes or current_minutes < end_minutes
     return start_minutes <= current_minutes < end_minutes

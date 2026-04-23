@@ -58,17 +58,20 @@ def load_chairman_presets() -> dict[str, int]:
         return {}
 
 
-def save_chairman_presets(presets: dict[str, int]) -> None:
-    """Persiste el mapa nombre→preset (escritura atómica, copia .bak previa)."""
+def save_chairman_presets(presets: dict[str, int]) -> bool:
+    """Persiste el mapa nombre→preset (escritura atómica, copia .bak previa).
+    Devuelve True si el guardado fue exitoso, False si hubo un error de I/O."""
     if CHAIRMAN_PRESETS_FILE.exists():
         shutil.copy2(CHAIRMAN_PRESETS_FILE, CHAIRMAN_PRESETS_FILE.with_suffix('.bak'))
     tmp = CHAIRMAN_PRESETS_FILE.with_suffix('.tmp')
     try:
         tmp.write_text(json.dumps(presets, ensure_ascii=False, indent=2), encoding='utf-8')
         os.replace(tmp, CHAIRMAN_PRESETS_FILE)
+        return True
     except OSError as exc:
         logger.error("Error guardando %s: %s", CHAIRMAN_PRESETS_FILE, exc)
         tmp.unlink(missing_ok=True)
+        return False
 
 
 def next_available_preset(presets: dict[str, int]) -> int | None:

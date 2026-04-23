@@ -422,15 +422,22 @@ class SplashScreen(QWidget):
             return False
 
     def _test_data_files(self) -> bool:
-        """Verifica que seat_names.json y schedule.json son legibles y válidos."""
-        from config import load_names_data
-        names_ok = bool(load_names_data().get("names") is not None)
+        """Verifica que seat_names.json y schedule.json son legibles y JSON válido."""
+        from config import NAMES_FILE
+        names_ok = True
+        try:
+            if NAMES_FILE.exists():
+                json.loads(NAMES_FILE.read_text(encoding='utf-8'))
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            names_ok = False
+
         sched_ok = True
         try:
             if SCHEDULE_FILE.exists():
                 json.loads(SCHEDULE_FILE.read_text(encoding='utf-8'))
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             sched_ok = False
+
         return names_ok and sched_ok
 
     def _test_os(self) -> bool:

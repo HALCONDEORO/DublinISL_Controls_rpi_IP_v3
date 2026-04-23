@@ -107,7 +107,7 @@ class TestChairmanPresets:
 
     def test_next_available_preset_skips_used(self, preset_file):
         from chairman_presets import next_available_preset
-        used = {str(i): i for i in range(10, 15)}
+        used = {f'Person{i}': i for i in range(10, 15)}  # nombres reales como claves
         assert next_available_preset(used) == 15
 
     def test_next_available_preset_returns_none_when_full(self, preset_file):
@@ -370,3 +370,148 @@ class TestDataPaths:
         restored = data_paths.import_backup(zip_path)
         assert len(restored) == 2
         assert json.loads((isolated / 'chairman_presets.json').read_text()) == {'Alice': 10, 'Bob': 11}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Nuevos tests de robustez (bugs corregidos)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestScheduleRobustness:
+    """Tests para los bugs de schedule_config corregidos."""
+
+    @pytest.fixture()
+    def sf(self, tmp_path, monkeypatch):
+        import schedule_config as sc
+        f = tmp_path / 'schedule.json'
+        monkeypatch.setattr(sc, 'SCHEDULE_FILE', f)
+        return f
+
+    def test_overnight_schedule_within(self, sf):
+        """22:00–06:00: una hora de madrugada debe quedar dentro del intervalo."""
+        from schedule_config import is_within_schedule, save_schedule
+        from unittest.mock import patch
+        from datetime import datetime as dt
+        save_schedule({'monday': {'enabled': True, 'start': '22:00', 'end': '06:00'},
+                       **{d: {'enabled': False, 'start': '09:00', 'end': '17:00'}
+                          for d in ['tuesday','wednesday','thursday','friday','saturday','sunday']}})
+        # Simular lunes a las 23:30
+        fake_now = dt(2024, 1, 1, 23, 30)  # lunes
+        with patch('schedule_config.datetime') as mock_dt:
+            mock_dt.now.return_value = fake_now
+            assert is_within_schedule() is True
+
+    def test_overnight_schedule_outside(self, sf):
+        """22:00–06:00: las 10:00 del mismo día NO debe quedar dentro."""
+        from schedule_config import is_within_schedule, save_schedule
+        from unittest.mock import patch
+        from datetime import datetime as dt
+        save_schedule({'monday': {'enabled': True, 'start': '22:00', 'end': '06:00'},
+                       **{d: {'enabled': False, 'start': '09:00', 'end': '17:00'}
+                          for d in ['tuesday','wednesday','thursday','friday','saturday','sunday']}})
+        fake_now = dt(2024, 1, 1, 10, 0)  # lunes a las 10:00
+        with patch('schedule_config.datetime') as mock_dt:
+            mock_dt.now.return_value = fake_now
+            assert is_within_schedule() is False
+
+    def test_invalid_hours_rejected(self, sf):
+        """Horas fuera de rango (25:00) deben devolver False sin excepción."""
+        from schedule_config import is_within_schedule, save_schedule
+        from unittest.mock import patch
+        from datetime import datetime as dt
+        save_schedule({'monday': {'enabled': True, 'start': '25:00', 'end': '30:00'},
+                       **{d: {'enabled': False, 'start': '09:00', 'end': '17:00'}
+                          for d in ['tuesday','wednesday','thursday','friday','saturday','sunday']}})
+        fake_now = dt(2024, 1, 1, 12, 0)
+        with patch('schedule_config.datetime') as mock_dt:
+            mock_dt.now.return_value = fake_now
+            assert is_within_schedule() is False
+
+    def test_normal_schedule_within(self, sf):
+        """Verificar que el horario normal sigue funcionando tras los cambios."""
+        from schedule_config import is_within_schedule, save_schedule
+        from unittest.mock import patch
+        from datetime import datetime as dt
+        save_schedule({'monday': {'enabled': True, 'start': '09:00', 'end': '17:00'},
+                       **{d: {'enabled': False, 'start': '09:00', 'end': '17:00'}
+                          for d in ['tuesday','wednesday','thursday','friday','saturday','sunday']}})
+        fake_now = dt(2024, 1, 1, 12, 0)
+        with patch('schedule_config.datetime') as mock_dt:
+            mock_dt.now.return_value = fake_now
+            assert is_within_schedule() is True
+
+    def test_normal_schedule_outside(self, sf):
+        from schedule_config import is_within_schedule, save_schedule
+        from unittest.mock import patch
+        from datetime import datetime as dt
+        save_schedule({'monday': {'enabled': True, 'start': '09:00', 'end': '17:00'},
+                       **{d: {'enabled': False, 'start': '09:00', 'end': '17:00'}
+                          for d in ['tuesday','wednesday','thursday','friday','saturday','sunday']}})
+        fake_now = dt(2024, 1, 1, 18, 0)
+        with patch('schedule_config.datetime') as mock_dt:
+            mock_dt.now.return_value = fake_now
+            assert is_within_schedule() is False
+
+
+class TestChairmanPresetsReturnValue:
+    """save_chairman_presets ahora devuelve bool."""
+
+    @pytest.fixture()
+    def preset_file(self, tmp_path, monkeypatch):
+        import chairman_presets as cp
+        f = tmp_path / 'chairman_presets.json'
+        monkeypatch.setattr(cp, 'CHAIRMAN_PRESETS_FILE', f)
+        return f
+
+    def test_save_returns_true_on_success(self, preset_file):
+        from chairman_presets import save_chairman_presets
+        assert save_chairman_presets({'Alice': 10}) is True
+
+    def test_save_returns_false_on_io_error(self, tmp_path, monkeypatch):
+        import chairman_presets as cp
+        # Apuntar a un directorio inexistente para forzar IOError
+        monkeypatch.setattr(cp, 'CHAIRMAN_PRESETS_FILE',
+                            tmp_path / 'nonexistent_dir' / 'chairman_presets.json')
+        assert cp.save_chairman_presets({'Alice': 10}) is False
+
+
+class TestImportBackupAtomic:
+    """import_backup usa escritura atómica (.tmp → replace)."""
+
+    @pytest.fixture()
+    def isolated(self, tmp_path, monkeypatch):
+        import data_paths
+        config_dir = tmp_path / 'config'
+        config_dir.mkdir()
+        monkeypatch.setattr(data_paths, 'CONFIG_DIR', config_dir)
+        monkeypatch.setattr(data_paths, 'CHAIRMAN_PRESETS_FILE', config_dir / 'chairman_presets.json')
+        monkeypatch.setattr(data_paths, 'SEAT_NAMES_FILE',       config_dir / 'seat_names.json')
+        monkeypatch.setattr(data_paths, 'SCHEDULE_FILE',         config_dir / 'schedule.json')
+        monkeypatch.setattr(data_paths, '_DATA_FILES', (
+            config_dir / 'chairman_presets.json',
+            config_dir / 'seat_names.json',
+            config_dir / 'schedule.json',
+        ))
+        return config_dir
+
+    def test_tmp_not_left_after_successful_import(self, tmp_path, isolated):
+        import data_paths, zipfile
+        zip_path = tmp_path / 'backup.zip'
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr('chairman_presets.json', '{"Alice": 10}')
+
+        data_paths.import_backup(zip_path)
+        assert not (isolated / 'chairman_presets.tmp').exists()
+
+    def test_import_does_not_corrupt_on_partial_zip(self, tmp_path, isolated):
+        """Si un archivo del ZIP es JSON inválido, los anteriores ya restaurados
+        quedan intactos pero la excepción se lanza para el archivo corrupto."""
+        import data_paths, zipfile
+        zip_path = tmp_path / 'partial.zip'
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr('chairman_presets.json', '{"Alice": 10}')  # válido
+            zf.writestr('seat_names.json', 'INVALID JSON')         # inválido
+
+        with pytest.raises(json.JSONDecodeError):
+            data_paths.import_backup(zip_path)
+        # El primer archivo debería haberse restaurado antes del error
+        assert (isolated / 'chairman_presets.json').exists()

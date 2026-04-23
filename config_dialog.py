@@ -204,7 +204,7 @@ class _CamEditDialog(QDialog):
             else:
                 _cfg.CAM2.cam_id = text
 
-        with open(self._filename, 'w') as f:
+        with open(self._filename, 'w', encoding='utf-8') as f:
             f.write(text)
 
         self._close_keyboard()

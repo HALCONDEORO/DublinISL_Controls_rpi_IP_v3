@@ -106,13 +106,22 @@ def import_backup(zip_path: Path) -> list[str]:
 
         for name in found:
             raw = zf.read(name).decode('utf-8')
-            json.loads(raw)  # valida JSON — lanza JSONDecodeError si está corrupto
+            json.loads(raw)  # valida JSON antes de tocar disco — lanza JSONDecodeError si corrupto
 
             dst = CONFIG_DIR / name
             if dst.exists():
                 shutil.copy2(dst, dst.with_suffix('.bak'))
 
-            dst.write_text(raw, encoding='utf-8')
+            # Escritura atómica: si el proceso muere a mitad, dst no queda corrupto
+            tmp = dst.with_suffix('.tmp')
+            try:
+                tmp.write_text(raw, encoding='utf-8')
+                os.replace(tmp, dst)
+            except OSError as exc:
+                tmp.unlink(missing_ok=True)
+                logger.error("No se pudo restaurar %s: %s", name, exc)
+                continue  # no añadir a restored si la escritura falló
+
             restored.append(name)
             logger.info("Restaurado %s desde %s", name, zip_path)
 
