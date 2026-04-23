@@ -28,10 +28,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
+
+from data_paths import CHAIRMAN_PRESETS_FILE
 
 logger = logging.getLogger(__name__)
-
-CHAIRMAN_PRESETS_FILE  = 'chairman_presets.json'
 CHAIRMAN_PRESET_START  = 10   # primer número de preset disponible para personas
 CHAIRMAN_PRESET_MAX    = 89   # último número de preset seguro (0x59 hex)
 CHAIRMAN_GENERIC_PRESET = 1   # preset genérico si la persona no tiene uno asignado
@@ -41,28 +43,61 @@ def load_chairman_presets() -> dict[str, int]:
     """
     Carga el mapa nombre→número_de_preset desde chairman_presets.json.
     Devuelve dict vacío si el archivo no existe o está corrupto.
+
+    Si el JSON contiene dos personas con el mismo número de preset (duplicado),
+    se mantiene la primera aparición y se descarta la segunda, registrando
+    un warning para que el administrador pueda corregirlo manualmente.
     """
     try:
         with open(CHAIRMAN_PRESETS_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        # Validar que los valores sean enteros en rango válido
-        return {
-            name: int(preset)
-            for name, preset in data.items()
-            if isinstance(preset, int) and CHAIRMAN_PRESET_START <= preset <= CHAIRMAN_PRESET_MAX
-        }
+
+        result: dict[str, int] = {}
+        seen: dict[int, str] = {}  # preset_num → primer nombre que lo reclamó
+
+        for name, preset in data.items():
+            if not isinstance(preset, int):
+                logger.warning("Preset de '%s' ignorado: valor no entero (%r)", name, preset)
+                continue
+            if not (CHAIRMAN_PRESET_START <= preset <= CHAIRMAN_PRESET_MAX):
+                logger.warning(
+                    "Preset de '%s' ignorado: %d fuera de rango [%d, %d]",
+                    name, preset, CHAIRMAN_PRESET_START, CHAIRMAN_PRESET_MAX,
+                )
+                continue
+            if preset in seen:
+                logger.warning(
+                    "Preset %d duplicado en chairman_presets.json: "
+                    "'%s' y '%s' comparten el mismo número. "
+                    "Se mantiene '%s', se descarta '%s'. "
+                    "Guarda de nuevo la posición de '%s' para resolverlo.",
+                    preset, seen[preset], name, seen[preset], name, name,
+                )
+                continue
+            seen[preset] = name
+            result[name] = preset
+
+        return result
+
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         logger.warning("%s: %s — iniciando sin presets personales", CHAIRMAN_PRESETS_FILE, exc)
         return {}
 
 
-def save_chairman_presets(presets: dict[str, int]) -> None:
-    """Persiste el mapa nombre→preset en chairman_presets.json."""
+def save_chairman_presets(presets: dict[str, int]) -> bool:
+    """Persiste el mapa nombre→preset (escritura atómica, copia .bak previa).
+    Devuelve True si el guardado fue exitoso, False si hubo un error de I/O."""
+    if CHAIRMAN_PRESETS_FILE.exists():
+        shutil.copy2(CHAIRMAN_PRESETS_FILE, CHAIRMAN_PRESETS_FILE.with_suffix('.bak'))
+    tmp = CHAIRMAN_PRESETS_FILE.with_suffix('.tmp')
     try:
-        with open(CHAIRMAN_PRESETS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(presets, f, ensure_ascii=False, indent=2)
-    except IOError as exc:
+        tmp.write_text(json.dumps(presets, ensure_ascii=False, indent=2), encoding='utf-8')
+        os.replace(tmp, CHAIRMAN_PRESETS_FILE)
+        return True
+    except OSError as exc:
         logger.error("Error guardando %s: %s", CHAIRMAN_PRESETS_FILE, exc)
+        tmp.unlink(missing_ok=True)
+        return False
 
 
 def next_available_preset(presets: dict[str, int]) -> int | None:
