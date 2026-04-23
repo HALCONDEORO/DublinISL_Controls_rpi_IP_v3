@@ -12,6 +12,8 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from data_paths import SEAT_NAMES_FILE as NAMES_FILE
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,7 +59,6 @@ CAMERA_QUEUE_MAXSIZE = 20
 # Segundos sin comando antes de enviar heartbeat (ping)
 HEARTBEAT_TIMEOUT = 5.0
 BUTTON_COLOR = "black"
-NAMES_FILE = 'seat_names.json'
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

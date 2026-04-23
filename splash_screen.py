@@ -426,9 +426,9 @@ class SplashScreen(QWidget):
         names_ok = bool(load_names_data().get("names") is not None)
         sched_ok = True
         try:
-            p = Path("schedule.json")
-            if p.exists():
-                json.loads(p.read_text(encoding='utf-8'))
+            from data_paths import SCHEDULE_FILE
+            if SCHEDULE_FILE.exists():
+                json.loads(SCHEDULE_FILE.read_text(encoding='utf-8'))
         except (json.JSONDecodeError, OSError):
             sched_ok = False
         return names_ok and sched_ok

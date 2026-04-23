@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-SCHEDULE_FILE = Path(__file__).parent / 'schedule.json'
+from data_paths import SCHEDULE_FILE
 
 DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 

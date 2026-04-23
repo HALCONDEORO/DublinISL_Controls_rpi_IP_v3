@@ -29,9 +29,9 @@ from __future__ import annotations
 import json
 import logging
 
-logger = logging.getLogger(__name__)
+from data_paths import CHAIRMAN_PRESETS_FILE
 
-CHAIRMAN_PRESETS_FILE  = 'chairman_presets.json'
+logger = logging.getLogger(__name__)
 CHAIRMAN_PRESET_START  = 10   # primer número de preset disponible para personas
 CHAIRMAN_PRESET_MAX    = 89   # último número de preset seguro (0x59 hex)
 CHAIRMAN_GENERIC_PRESET = 1   # preset genérico si la persona no tiene uno asignado
