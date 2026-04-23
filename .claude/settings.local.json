@@ -9,7 +9,9 @@
       "Bash(python -c \"import cryptography; print\\(cryptography.__version__\\)\")",
       "Bash(gh repo *)",
       "Bash(xargs -I {} basename {})",
-      "WebFetch(domain:api.anthropic.com)"
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(git fetch *)",
+      "Bash(grep -E \"\\\\.py$|^d\")"
     ]
   }
 }

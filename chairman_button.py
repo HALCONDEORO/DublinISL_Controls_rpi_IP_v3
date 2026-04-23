@@ -1,24 +1,17 @@
 #!/usr/bin/env python3
 # chairman_button.py — Widget del botón Chairman con preset por persona
 #
-# Responsabilidad única: gestionar la UI del botón Chairman incluyendo:
-#   - Asignación de nombre via drag-drop (hereda de SpecialDragButton)
-#   - Recall automático del preset personal al asignar un nombre
-#   - Botón "Save position" para guardar la posición actual de la cámara
-#   - Botón "Edit" para mostrar/ocultar el botón Save cuando ya hay preset
+# FLUJO CON EVENTBUS:
+#   Antes:  set_name() → on_recall_cb(preset_num)  [callback directo a MainWindow]
+#   Ahora:  set_name() → bus.emit(CHAIRMAN_ASSIGNED, name=name)
+#           Controller suscribe CHAIRMAN_ASSIGNED → PresetService → CameraService
 #
-# FLUJO DE USO:
-#   1. Operador arrastra nombre al Chairman
-#      → Si tiene preset guardado: cámara va a esa posición (recall)
-#      → Si no tiene preset:       cámara va al preset genérico 1
-#      → Botón "Save" NO se muestra si ya tiene preset
-#      → Botón "Edit" aparece para permitir sobreescribir
-#   2. Operador ajusta cámara manualmente
-#   3. Pulsa "Save position" → se guarda el preset VISCA y se oculta Save
+#   Antes:  _on_save_clicked() → on_save_cb(name)  [callback a MainWindow]
+#   Ahora:  _on_save_clicked() → bus.emit(PRESET_SAVE_REQUESTED, camera=1, name=name)
+#           Controller suscribe PRESET_SAVE_REQUESTED → PresetService.assign_slot() → CameraService
 #
-# MOTIVO DE ARCHIVO SEPARADO:
-#   ChairmanButton tiene estado y lógica propios (presets, botones auxiliares)
-#   que no pertenecen a widgets.py (widgets genéricos sin lógica de negocio).
+#   _update_aux_buttons() sigue leyendo _preset_svc.has_preset(name) para el display.
+#   NO hay dependencia de dict mutable compartido; PresetService es la única fuente.
 
 from __future__ import annotations
 
@@ -29,50 +22,34 @@ from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QPushButton
 
 from widgets import SpecialDragButton
-from chairman_presets import get_preset_for_name, CHAIRMAN_GENERIC_PRESET
+from core.events import EventBus, EventType
 
 
 class ChairmanButton(SpecialDragButton):
     """
     Botón Chairman con gestión de preset por persona.
 
-    Extiende SpecialDragButton añadiendo:
-      - Callback on_name_changed: notifica a MainWindow cuando cambia el nombre
-        para que ejecute el recall del preset correspondiente.
-      - Botones auxiliares "Save position" y "Edit" posicionados justo debajo
-        del botón Chairman, dentro de la misma zona de plataforma.
-      - Estado de visibilidad de los botones auxiliares según si la persona
-        tiene preset guardado o no.
-
-    PARÁMETROS:
-      presets_ref  — referencia al dict vivo de presets (el mismo objeto que
-                     MainWindow usa y persiste). Cambios aquí son visibles allá.
-      on_recall_cb — Callable(preset_num: int) → ejecuta recall en la cámara
-      on_save_cb   — Callable(name: str, preset_num: int) → guarda y persiste
-
-    POSICIÓN DE BOTONES AUXILIARES:
-      El Chairman está centrado en x=744. Los botones auxiliares se posicionan
-      debajo (y=130), centrados en el mismo eje x.
+    Parámetros:
+      bus          — EventBus del sistema (emite CHAIRMAN_ASSIGNED y PRESET_SAVE_REQUESTED)
+      preset_svc   — PresetService (solo lectura, para display de botones auxiliares)
+      svg_data     — datos SVG del icono
     """
 
-    # Posición del botón Chairman en main_window: cx=744, y=10, w=110, h=115
-    # Los botones auxiliares van justo debajo: y=130
-    _AUX_Y      = 130   # y de los botones auxiliares
-    _AUX_CX     = 744   # centro x (mismo que el botón Chairman)
-    _SAVE_W     = 110   # ancho del botón Save
-    _SAVE_H     = 28    # alto del botón Save
-    _EDIT_W     = 52    # ancho del botón Edit (más pequeño, a la derecha)
-    _EDIT_H     = 28
+    _AUX_Y   = 130
+    _AUX_CX  = 744
+    _SAVE_W  = 110
+    _SAVE_H  = 28
+    _EDIT_W  = 52
+    _EDIT_H  = 28
 
-    def __init__(self, presets_ref: dict, on_recall_cb, on_save_cb,
+    def __init__(self, bus: EventBus, preset_svc,
                  svg_data: str, icon_w: int, icon_h: int, parent=None):
         super().__init__(seat_id=1, default_label='Chairman', parent=parent)
 
-        self._presets    = presets_ref  # referencia viva al dict de presets
-        self._on_recall  = on_recall_cb
-        self._on_save    = on_save_cb
+        self._bus        = bus
+        self._preset_svc = preset_svc
+        self._bus.subscribe(EventType.PRESET_SAVED, self._on_preset_saved_event)
 
-        # Icono SVG del Chairman (atril)
         renderer = QSvgRenderer(QtCore.QByteArray(svg_data.encode('utf-8')))
         pix = QPixmap(icon_w, icon_h)
         pix.fill(Qt.transparent)
@@ -90,10 +67,6 @@ class ChairmanButton(SpecialDragButton):
             "QToolButton:pressed { background-color: rgba(0,0,0,40); }"
         )
 
-        # ── Botón "Save position" ──────────────────────────────────────────
-        # Visible solo cuando:
-        #   a) Hay persona asignada, Y
-        #   b) La persona no tiene preset aún, O el operador pulsó "Edit"
         self._btn_save = QPushButton('💾 Save position', parent)
         self._btn_save.setGeometry(
             self._AUX_CX - self._SAVE_W // 2, self._AUX_Y,
@@ -107,9 +80,6 @@ class ChairmanButton(SpecialDragButton):
         self._btn_save.clicked.connect(self._on_save_clicked)
         self._btn_save.hide()
 
-        # ── Botón "Edit" ───────────────────────────────────────────────────
-        # Visible solo cuando la persona ya tiene preset guardado.
-        # Al pulsarlo muestra "Save position" para permitir sobreescribir.
         self._btn_edit = QPushButton('✏ Edit', parent)
         self._btn_edit.setGeometry(
             self._AUX_CX - self._EDIT_W // 2, self._AUX_Y,
@@ -123,93 +93,51 @@ class ChairmanButton(SpecialDragButton):
         self._btn_edit.clicked.connect(self._on_edit_clicked)
         self._btn_edit.hide()
 
-    # ── Override de set_name: añade recall y actualiza botones ────────────────
+    # ── Override de set_name ──────────────────────────────────────────────
 
     def set_name(self, name: str, emit_signal: bool = True):
         """
-        Override de SpecialDragButton.set_name().
-
-        Al asignar un nombre:
-          - Ejecuta recall del preset personal (o genérico si no tiene).
-          - Actualiza visibilidad de botones auxiliares.
-
-        Al borrar el nombre (name=''):
-          - Oculta todos los botones auxiliares.
-
         emit_signal=False durante _restore_seat_names (arranque).
-        En ese caso no se hace recall — la cámara no se mueve al cargar.
-        MOTIVO: el operador no ha pedido mover la cámara, solo se está
-        restaurando el estado visual de la UI.
+        En ese caso no se emite CHAIRMAN_ASSIGNED → cámara no se mueve.
         """
-        # Llamar al padre para que actualice texto, estilo y emita señal
         super().set_name(name, emit_signal=emit_signal)
 
         if name and emit_signal:
-            # emit_signal=False → arranque → no mover la cámara
-            preset_num = get_preset_for_name(self._presets, name)
-            self._on_recall(preset_num)
+            self._bus.emit(EventType.CHAIRMAN_ASSIGNED, name=name)
 
         self._update_aux_buttons()
 
     def _update_aux_buttons(self):
-        """
-        Actualiza la visibilidad de Save y Edit según el estado actual.
-
-        Lógica:
-          Sin persona asignada → ambos ocultos
-          Con persona, sin preset → Save visible, Edit oculto
-          Con persona, con preset → Save oculto, Edit visible
-            (el operador puede pulsar Edit para mostrar Save y sobreescribir)
-        """
         name = self.assigned_name
         if not name:
-            # Sin persona: limpiar todo
             self._btn_save.hide()
             self._btn_edit.hide()
             return
 
-        has_preset = name in self._presets
+        has_preset = self._preset_svc.has_preset(name)
         if has_preset:
-            # Ya tiene preset: no mostrar Save por defecto, solo Edit
             self._btn_save.hide()
             self._btn_edit.show()
             self._btn_edit.raise_()
         else:
-            # Sin preset: mostrar Save directamente, sin Edit
             self._btn_save.show()
             self._btn_save.raise_()
             self._btn_edit.hide()
 
     def _on_edit_clicked(self):
-        """
-        El operador quiere sobreescribir el preset guardado.
-        Muestra Save y oculta Edit — el flujo de guardado es el mismo
-        que para una persona sin preset.
-        """
         self._btn_edit.hide()
         self._btn_save.show()
         self._btn_save.raise_()
 
     def _on_save_clicked(self):
-        """
-        Guarda la posición actual de la cámara como preset de esta persona.
-        Delega en MainWindow (on_save_cb) para enviar el comando VISCA y
-        persistir en chairman_presets.json.
-        Después actualiza los botones: Save → oculto, Edit → visible.
-        """
         name = self.assigned_name
         if not name:
-            return  # no debería ocurrir, pero defensa
-        self._on_save(name)
-        # Tras guardar, volver al estado "ya tiene preset"
-        self._btn_save.hide()
-        self._btn_edit.show()
-        self._btn_edit.raise_()
+            return
+        self._bus.emit(EventType.PRESET_SAVE_REQUESTED, camera=1, name=name)
+        # No actualizar UI aquí: esperamos el evento PRESET_SAVED.
+        # Si el Save VISCA falla, el evento no se emite y Save queda visible para reintentar.
 
-    def refresh_preset_state(self):
-        """
-        Fuerza actualización de botones auxiliares sin cambiar el nombre.
-        Llamar desde MainWindow después de persistir un preset nuevo para
-        asegurarse de que el estado visual es consistente con el dict.
-        """
-        self._update_aux_buttons()
+    def _on_preset_saved_event(self, event) -> None:
+        """Refresca botones solo cuando el preset guardado corresponde a la persona asignada."""
+        if event.payload.get("name") == self.assigned_name:
+            self._update_aux_buttons()

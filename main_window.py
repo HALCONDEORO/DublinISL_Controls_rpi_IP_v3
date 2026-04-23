@@ -1,45 +1,21 @@
 #!/usr/bin/env python3
-# main_window.py — Ventana principal: solo layout de UI
+# main_window.py — Ventana principal: layout de UI + wire-up de EventBus
 #
-# CAMBIOS v2→v3:
-#   - bg_path: Background_ISL_v2.jpg → Background_ISL_v3.jpg
-#   - Iconos Left/Chairman/Right: SVG embebido como QToolButton sobre el fondo.
+# ARQUITECTURA:
+#   MainWindow solo hace:
+#     1. Construir widgets y layout
+#     2. Instanciar las capas (SystemState, EventBus, servicios, Controller)
+#     3. Conectar señales Qt → EventBus.emit()
+#     4. Suscribirse a eventos del bus para actualizar display
 #
-# CAMBIOS EN REFACTORS ANTERIORES:
-#   - Imports movidos al nivel de módulo (PEP 8)
-#   - _build_platform_presets() eliminado (método vacío, código muerto)
-#   - `if seat_number < 4: continue` eliminado (SEAT_POSITIONS no tiene claves <4)
-#   - Cam1Address → self._cam1_addr_btn para consistencia con _cam2_addr_btn
+#   Nunca llama a VISCA directamente.
+#   Nunca llama a CameraManager directamente (excepto para workers de señales Qt).
 #
-# CAMBIOS ENGRANAJE DE CONFIGURACIÓN:
-#   - _build_config_buttons() reemplazado por un único botón ⚙ que abre
-#     ConfigDialog (modal) con IP, ID, versión y ayuda.
-#   - "Close window" permanece siempre visible en el panel (no requiere engranaje).
-#   MOTIVO: los controles técnicos los usa el administrador, no el operador.
-#   Esconderlos evita cambios accidentales durante una sesión en directo y
-#   reduce el ruido visual del panel derecho.
-#
-# CAMBIOS CHAIRMAN PRESET POR PERSONA:
-#   - Chairman usa ChairmanButton en lugar de SpecialDragButton genérico.
-#   - Al arrastrar un nombre al Chairman:
-#       · Si la persona tiene preset guardado → recall a esa posición
-#       · Si no tiene → recall al preset genérico 1
-#       · Si ya tiene preset → botón "Edit" visible (Save oculto)
-#       · Si no tiene preset → botón "Save position" visible directamente
-#   - _save_chairman_preset(name): asigna número de preset libre, envía
-#     Save Preset VISCA a Cam1, persiste en chairman_presets.json.
-#   - _on_names_list_changed: al renombrar un asistente, migra su entrada
-#     en chairman_presets para no perder el preset guardado.
-#   MOTIVO: distintos oradores tienen estaturas y distancias distintas;
-#   guardar la posición por persona evita reajustar la cámara manualmente.
-#
-# CAMBIOS COMPOSICIÓN:
-#   - Herencia múltiple de mixins eliminada. Cada mixin se convierte en un
-#     controlador inyectado como atributo: self._visca, self._session,
-#     self._dialogs, self._seat_names_ctrl.
-#   MOTIVO: el orden de MRO era frágil y los mixins eran difíciles de testear.
-#   Con composición, cada controlador es una clase independiente que recibe
-#   la ventana como argumento, facilitando los tests con mocks.
+# CAMBIOS RESPECTO A VERSIÓN ANTERIOR:
+#   - Eliminados _chairman_recall() y _save_chairman_preset(): Controller los gestiona.
+#   - ChairmanButton recibe bus + preset_svc en lugar de callbacks y presets_ref.
+#   - SessionController se actualiza para usar SessionService vía Controller.
+#   - EventBus conecta joystick, asientos, chairman → Controller → CameraService.
 
 from __future__ import annotations
 
@@ -78,13 +54,18 @@ from seat_names_mixin import SeatNamesController
 from platform_icons import SVG_LEFT, SVG_CHAIRMAN, SVG_RIGHT
 from seat_builder import build_special_seat_button
 
-from chairman_presets import (
-    load_chairman_presets, save_chairman_presets,
-    next_available_preset, CHAIRMAN_GENERIC_PRESET,
-)
 from chairman_button import ChairmanButton
 from camera_indicator import CameraIndicator
 from auditorium_overlay import AuditoriumOverlay
+
+# ── Nueva arquitectura ────────────────────────────────────────────────────────
+from core.state import SystemState
+from core.events import EventBus, EventType
+from core.controller import Controller
+from application.preset_service import PresetService
+from application.camera_service import CameraService
+from application.session_service import SessionService
+from domain.preset import PRESET_CHAIRMAN_GENERIC
 
 
 class MainWindow(QMainWindow):
@@ -103,14 +84,21 @@ class MainWindow(QMainWindow):
         self._names_list = _data["names"]
         self._seat_names = _data["seats"]
 
-        # Cargar presets personales del Chairman al arrancar.
-        # Se pasa como referencia viva a ChairmanButton para que ambos
-        # vean siempre el mismo dict sin necesidad de sincronizar copias.
-        self._chairman_presets = load_chairman_presets()
+        # ── Nueva arquitectura: instanciar capas ──────────────────────────
+        self._state      = SystemState()
+        self._bus        = EventBus()
+        self._preset_svc = PresetService()
+        self._camera_svc = CameraService(self._cameras)
+        self._session_svc = SessionService(self._camera_svc)
+        self._controller = Controller(
+            state=self._state,
+            bus=self._bus,
+            camera_svc=self._camera_svc,
+            preset_svc=self._preset_svc,
+            session_svc=self._session_svc,
+        )
 
-        # ── Controladores inyectados por composición ──────────────────────
-        # Se instancian antes de _build_ui para que las señales de la UI
-        # puedan conectarse directamente a sus métodos.
+        # ── Controladores Qt heredados (siguen activos durante la migración) ──
         self._visca           = ViscaController(self)
         self._session         = SessionController(self)
         self._dialogs         = DialogsController(self)
@@ -119,38 +107,28 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._build_overlays()
 
-        # Conectar señales de estado de conexión a los botones de cámara
+        # Señales de conexión a indicadores visuales
         self._cameras.worker(CAM1.ip).signals.connection_changed.connect(
             lambda ok: (self.Cam1.set_connected(ok), self._update_controls_visibility()))
         self._cameras.worker(CAM2.ip).signals.connection_changed.connect(
             lambda ok: (self.Cam2.set_connected(ok), self._update_controls_visibility()))
-        self._update_controls_visibility()  # estado inicial: ocultar controles hasta confirmar conexión
+        self._update_controls_visibility()
 
-        # ── Modo simulación: arrancar servidores VISCA internos si está activo ──
+        # ── Modo simulación ───────────────────────────────────────────────
         from pathlib import Path as _Path
         if _Path("sim_ip_backup.json").exists():
-            import hardware_simulator as _sim
-            _sim_c1 = _sim.SimCamera("CAM1-Platform")
-            _sim_c2 = _sim.SimCamera("CAM2-Comments")
-            ok1 = _sim.ViscaServer(CAM1.ip, _sim_c1).start()
-            ok2 = _sim.ViscaServer(CAM2.ip, _sim_c2).start()
-            if not ok1 or not ok2:
-                import logging as _log
-                _log.getLogger(__name__).warning(
-                    "SimVISCA: algún servidor no pudo arrancar (CAM1=%s CAM2=%s)", ok1, ok2)
-            _sim.active_cam1 = _sim_c1
-            _sim.active_cam2 = _sim_c2
+            from simulation.sim_worker import start_simulation
+            start_simulation(CAM1.ip, CAM2.ip)
 
         self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
         self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
         self._atem_monitor.start()
 
     # ─────────────────────────────────────────────────────────────────────
-    # Overlays de inicio (Login → Splash → Contenido principal)
+    # Overlays de inicio
     # ─────────────────────────────────────────────────────────────────────
 
     def _build_overlays(self):
-        """Crea el overlay de login encima de todo el contenido."""
         from login_screen import LoginScreen
         self._login_overlay = LoginScreen(parent=self)
         self._login_overlay.setGeometry(0, 0, 1920, 1080)
@@ -158,22 +136,18 @@ class MainWindow(QMainWindow):
         self._login_overlay.login_successful.connect(self._on_login_done)
 
     def _on_login_done(self):
-        """Login correcto: oculta login, muestra splash e inicia tests."""
         from splash_screen import SplashScreen
         self._login_overlay.hide()
-
         self._splash_overlay = SplashScreen(parent=self)
         self._splash_overlay.setGeometry(0, 0, 1920, 1080)
         self._splash_overlay.raise_()
         self._splash_overlay.show()
         self._splash_overlay.startup_complete.connect(self._on_startup_done)
-        # Arrancar tests ahora (no en __init__ de SplashScreen)
         self._splash_overlay._start_initialization()
 
     def _on_startup_done(self):
-        """Tests completados: oculta splash y deja visible el contenido principal."""
         self._splash_overlay.hide()
-        self._visca._refresh_zoom_slider()  # Sincroniza slider con el zoom real de la cámara activa
+        self._visca._refresh_zoom_slider()
 
     # ─────────────────────────────────────────────────────────────────────
     # Construcción de la UI
@@ -188,7 +162,7 @@ class MainWindow(QMainWindow):
         self._build_names_panel()
         self._seat_names_ctrl._restore_seat_names()
         self._build_table_seats()
-        self._build_platform_icons()   # AL FINAL: z-order
+        self._build_platform_icons()
         self._build_camera_indicator()
         self._build_mode_buttons()
 
@@ -201,21 +175,15 @@ class MainWindow(QMainWindow):
         self.BtnSet.clicked.connect(lambda:  self._update_mode_indicator('set'))
 
     def _build_camera_indicator(self):
-        """Crea el indicador visual de cámara activa (spotlight entre plataforma y asientos 11-12)."""
         self._cam_indicator = CameraIndicator(self)
-        self._cam_indicator.set_mode('platform')   # Cam1 está activa por defecto
+        self._cam_indicator.set_mode('platform')
         self._cam_indicator.raise_()
 
     def _build_mode_buttons(self):
-        """
-        Conecta los frames CALL/SET creados en el right_panel con la lógica de estado.
-        Los frames visuales ya viven dentro del layout del panel derecho (parte superior).
-        """
         rp         = self._right_panel
         call_frame = rp.call_frame
         set_frame  = rp.set_frame
 
-        # Botones lógicos invisibles — mantienen estado y conectan con el resto del código
         self.BtnCall = QPushButton(self)
         self.BtnCall.setCheckable(True)
         self.BtnCall.setAutoExclusive(True)
@@ -246,24 +214,16 @@ class MainWindow(QMainWindow):
         self.BtnSet.clicked.connect(self._on_preset_mode_changed)
 
     def _update_mode_indicator(self, mode: str):
-        """Actualiza el overlay y los estilos de GoButton según el modo activo."""
         self._set_overlay.set_mode(mode)
         GoButton.set_call_mode(mode == 'call')
         for btn in self.findChildren(GoButton):
             btn._apply_style()
 
     def _build_set_overlay(self):
-        """
-        Overlay del panel izquierdo con dos modos visuales:
-          call → puntitos blancos sutiles
-          set  → relleno blanco semitransparente
-        Creado entre background y seat_buttons para z-order correcto.
-        """
         self._set_overlay = AuditoriumOverlay(self)
         self._set_overlay.set_mode('call')
 
     def _build_background(self):
-        """Carga fondo. Falla silenciosamente si el archivo no existe."""
         bg_path = "Background_ISL_v3.jpg"
         if not os.path.exists(bg_path):
             logger.warning("%s no encontrado — fondo vacío", bg_path)
@@ -285,18 +245,6 @@ class MainWindow(QMainWindow):
         )
 
     def _build_platform_icons(self):
-        """
-        Crea los 3 botones de plataforma.
-
-        Left y Right: QToolButton estándar, sin cambios respecto a versiones anteriores.
-
-        Chairman: ChairmanButton (hereda SpecialDragButton) con preset por persona.
-          - Al soltar un nombre encima → recall automático al preset de esa persona
-          - Botón "Save position" visible si la persona no tiene preset aún
-          - Botón "Edit" visible si ya tiene preset (Save oculto por defecto)
-          Los botones auxiliares (Save/Edit) se crean como hijos de self (MainWindow),
-          posicionados justo debajo del icono Chairman (y=130).
-        """
         btn_w, btn_h = 110, 115
 
         # ── Left (preset 2) ───────────────────────────────────────────────
@@ -317,23 +265,20 @@ class MainWindow(QMainWindow):
         btn.clicked.connect(lambda checked=False: self._visca.go_to_preset(2))
         btn.raise_()
 
-        # ── Chairman (preset 1) — ChairmanButton ──────────────────────────
+        # ── Chairman (preset 1) — ChairmanButton con EventBus ─────────────
         cx = 744
         self._chairman_btn = ChairmanButton(
-            presets_ref  = self._chairman_presets,  # referencia viva al dict
-            on_recall_cb = self._chairman_recall,
-            on_save_cb   = self._save_chairman_preset,
-            svg_data     = SVG_CHAIRMAN,
+            bus        = self._bus,
+            preset_svc = self._preset_svc,
+            svg_data   = SVG_CHAIRMAN,
             icon_w=90, icon_h=90,
             parent=self,
         )
         self._chairman_btn.setGeometry(cx - btn_w // 2, 30, btn_w, btn_h)
         self._chairman_btn.name_assigned.connect(self._seat_names_ctrl._on_seat_name_assigned)
-        # Click sin nombre asignado → preset genérico 1
         self._chairman_btn.clicked.connect(
-            lambda checked=False: self._visca.go_to_preset(CHAIRMAN_GENERIC_PRESET))
+            lambda checked=False: self._visca.go_to_preset(PRESET_CHAIRMAN_GENERIC))
         self._chairman_btn.raise_()
-        # Clave "1" en seat_names.json y en _restore_seat_names
         setattr(self, "Seat1", self._chairman_btn)
 
         # ── Right (preset 3) ──────────────────────────────────────────────
@@ -355,62 +300,6 @@ class MainWindow(QMainWindow):
         btn.raise_()
 
     # ─────────────────────────────────────────────────────────────────────
-    # Callbacks Chairman preset
-    # ─────────────────────────────────────────────────────────────────────
-
-    def _chairman_recall(self, preset_num: int):
-        """
-        Recall del preset dado siempre en Cam1 (Platform).
-        MOTIVO: el Chairman controla siempre Cam1 independientemente de
-        qué cámara esté seleccionada en el panel PTZ.
-        Llamado por ChairmanButton al asignar un nombre.
-        """
-        preset_hex = PRESET_MAP.get(preset_num)
-        if not preset_hex:
-            logger.warning("chairman_recall: preset %d no está en PRESET_MAP", preset_num)
-            return
-        if not self._visca._send_cmd(CAM1.ip, CAM1.cam_id, f"01043f02{preset_hex}ff"):
-            self._visca.ErrorCapture()
-        else:
-            self._visca._invalidate_zoom_cache(CAM1.ip)  # preset mueve zoom de Cam1
-
-    def _save_chairman_preset(self, name: str):
-        """
-        Asigna un número de preset libre a 'name', envía Save Preset a Cam1,
-        y persiste en chairman_presets.json.
-
-        Si la persona ya tenía preset: lo reutiliza y sobreescribe la posición
-        guardada sin consumir un número nuevo.
-        Si no tenía: asigna el siguiente número libre en el rango 10-89.
-
-        Solo persiste si el comando VISCA tiene éxito.
-        Llamado por ChairmanButton._on_save_clicked().
-        """
-        if name in self._chairman_presets:
-            preset_num = self._chairman_presets[name]
-        else:
-            preset_num = next_available_preset(self._chairman_presets)
-            if preset_num is None:
-                logger.error("Rango de presets agotado — no se puede guardar para '%s'", name)
-                return
-            self._chairman_presets[name] = preset_num
-
-        preset_hex = PRESET_MAP.get(preset_num)
-        if not preset_hex:
-            logger.warning("save_chairman_preset: preset %d no está en PRESET_MAP", preset_num)
-            return
-
-        if not self._visca._send_cmd(CAM1.ip, CAM1.cam_id, f"01043f01{preset_hex}ff"):
-            self._visca.ErrorCapture()
-            return
-
-        save_chairman_presets(self._chairman_presets)
-        logger.info("Preset %d guardado para '%s'", preset_num, name)
-        # ChairmanButton ya actualiza sus botones en _on_save_clicked,
-        # pero refresh garantiza consistencia si el dict cambió externamente.
-        self._chairman_btn.refresh_preset_state()
-
-    # ─────────────────────────────────────────────────────────────────────
     # Seat buttons
     # ─────────────────────────────────────────────────────────────────────
 
@@ -427,9 +316,6 @@ class MainWindow(QMainWindow):
             setattr(self, f"Seat{seat_number}", button)
 
     def _build_session_controls(self):
-        # BtnSession y SessionStatus se mantienen como atributos de MainWindow
-        # para que SessionController pueda actualizarlos, pero están ocultos:
-        # el control de sesión se muestra en el modal del engranaje (ConfigDialog).
         self.BtnSession = QPushButton('\u23fb', self)
         self.BtnSession.setGeometry(10, 10, 50, 50)
         self.BtnSession.setToolTip('Start Session: Power ON both cameras and go Home')
@@ -478,17 +364,14 @@ class MainWindow(QMainWindow):
             },
             stop_handler=self._visca.Stop,
         )
-        # Estado inicial: Cam1 (Platform) está seleccionada → joystick en burdeo
         self._right_panel.set_joystick_mode('platform')
         self._update_focus_ui()
         self._update_exposure_ui()
 
-        # Conectar heartbeat de cada worker al LED de estado del botón correspondiente
         self._cameras.worker(CAM1.ip).signals.connection_changed.connect(self.Cam1.set_connected)
         self._cameras.worker(CAM2.ip).signals.connection_changed.connect(self.Cam2.set_connected)
 
     def _open_config_dialog(self):
-        """Instancia y abre el diálogo de configuración técnica."""
         check_all_cameras()
         dlg = ConfigDialog(parent=self)
         dlg.exec_()
@@ -521,7 +404,6 @@ class MainWindow(QMainWindow):
             self.BtnNames.raise_()
 
     def closeEvent(self, event):
-        """Para el hilo del ATEM antes de cerrar la ventana."""
         self._atem_monitor.requestInterruption()
         self._atem_monitor.wait(2000)
         event.accept()
@@ -535,7 +417,6 @@ class MainWindow(QMainWindow):
         self._right_panel.set_exposure_level(self._cameras.exposure_level[cam_key])
 
     def _update_controls_visibility(self):
-        """Muestra u oculta los controles PTZ según si la cámara activa está conectada."""
         connected = self.Cam1._connected if self.Cam1.isChecked() else self.Cam2._connected
         self._right_panel.show_camera_controls(connected)
 
@@ -547,5 +428,4 @@ class MainWindow(QMainWindow):
         else:
             self.BtnBacklight.setText('Backlight\nOFF')
             self.BtnBacklight.setStyleSheet(self._backlight_style_off)
-        # Actualizar indicador de cámara activa
         self._cam_indicator.set_mode('platform' if cam_key == 1 else 'comments')
