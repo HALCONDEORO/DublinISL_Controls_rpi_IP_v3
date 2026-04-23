@@ -299,7 +299,9 @@ class TestDataPaths:
     def test_export_empty_when_no_files(self, tmp_path, isolated, monkeypatch):
         import data_paths
         zip_path = tmp_path / 'empty.zip'
-        included = data_paths.export_backup(zip_path)
+        empty_app = tmp_path / 'empty_app'
+        empty_app.mkdir()
+        included = data_paths.export_backup(zip_path, app_dir=empty_app)
         assert included == []
 
     def test_import_restores_files(self, tmp_path, isolated, monkeypatch):
@@ -352,22 +354,25 @@ class TestDataPaths:
 
     def test_export_then_import_roundtrip(self, tmp_path, isolated, monkeypatch):
         import data_paths
+        app_dir = tmp_path / 'app'
+        app_dir.mkdir()
+
         # Crear datos originales
         (isolated / 'chairman_presets.json').write_text('{"Alice": 10, "Bob": 11}', encoding='utf-8')
         (isolated / 'seat_names.json').write_text(
             '{"names": ["Alice", "Bob"], "seats": {"4": "Alice"}}', encoding='utf-8'
         )
 
-        # Exportar
+        # Exportar (sin .txt — app_dir vacío)
         zip_path = tmp_path / 'roundtrip.zip'
-        data_paths.export_backup(zip_path)
+        data_paths.export_backup(zip_path, app_dir=app_dir)
 
         # Borrar datos
         (isolated / 'chairman_presets.json').unlink()
         (isolated / 'seat_names.json').unlink()
 
         # Importar
-        restored = data_paths.import_backup(zip_path)
+        restored = data_paths.import_backup(zip_path, app_dir=app_dir)
         assert len(restored) == 2
         assert json.loads((isolated / 'chairman_presets.json').read_text()) == {'Alice': 10, 'Bob': 11}
 
@@ -515,3 +520,217 @@ class TestImportBackupAtomic:
             data_paths.import_backup(zip_path)
         # El primer archivo debería haberse restaurado antes del error
         assert (isolated / 'chairman_presets.json').exists()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Idea 4 — Archivos .txt de configuración en el ZIP de backup
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestBackupTxtFiles:
+    """Export incluye .txt de red; import los restaura al directorio de la app."""
+
+    @pytest.fixture()
+    def isolated(self, tmp_path, monkeypatch):
+        import data_paths
+        config_dir = tmp_path / 'config'
+        config_dir.mkdir()
+        monkeypatch.setattr(data_paths, 'CONFIG_DIR', config_dir)
+        monkeypatch.setattr(data_paths, 'CHAIRMAN_PRESETS_FILE', config_dir / 'chairman_presets.json')
+        monkeypatch.setattr(data_paths, 'SEAT_NAMES_FILE',       config_dir / 'seat_names.json')
+        monkeypatch.setattr(data_paths, 'SCHEDULE_FILE',         config_dir / 'schedule.json')
+        monkeypatch.setattr(data_paths, '_DATA_FILES', (
+            config_dir / 'chairman_presets.json',
+            config_dir / 'seat_names.json',
+            config_dir / 'schedule.json',
+        ))
+        return config_dir
+
+    @pytest.fixture()
+    def app_dir(self, tmp_path):
+        d = tmp_path / 'app'
+        d.mkdir()
+        return d
+
+    def _write_txt_files(self, app_dir):
+        (app_dir / 'PTZ1IP.txt').write_text('172.16.1.11', encoding='utf-8')
+        (app_dir / 'PTZ2IP.txt').write_text('172.16.1.12', encoding='utf-8')
+        (app_dir / 'Cam1ID.txt').write_text('81', encoding='utf-8')
+        (app_dir / 'Cam2ID.txt').write_text('82', encoding='utf-8')
+        (app_dir / 'ATEMIP.txt').write_text('192.168.1.240', encoding='utf-8')
+        (app_dir / 'Contact.txt').write_text('IT Support: ext 123', encoding='utf-8')
+
+    def test_export_includes_txt_files(self, tmp_path, isolated, app_dir):
+        import data_paths
+        self._write_txt_files(app_dir)
+
+        zip_path = tmp_path / 'backup.zip'
+        included = data_paths.export_backup(zip_path, app_dir=app_dir)
+
+        assert 'PTZ1IP.txt' in included
+        assert 'Cam1ID.txt' in included
+        assert 'ATEMIP.txt' in included
+        assert 'Contact.txt' in included
+
+        with zipfile.ZipFile(zip_path) as zf:
+            names = zf.namelist()
+        assert 'config/PTZ1IP.txt' in names
+        assert 'config/Cam2ID.txt' in names
+
+    def test_export_skips_missing_txt(self, tmp_path, isolated, app_dir):
+        import data_paths
+        # Solo crear algunos .txt
+        (app_dir / 'PTZ1IP.txt').write_text('172.16.1.11', encoding='utf-8')
+        (app_dir / 'ATEMIP.txt').write_text('192.168.1.240', encoding='utf-8')
+
+        zip_path = tmp_path / 'backup.zip'
+        included = data_paths.export_backup(zip_path, app_dir=app_dir)
+
+        assert 'PTZ1IP.txt' in included
+        assert 'ATEMIP.txt' in included
+        assert 'PTZ2IP.txt' not in included
+        assert 'Cam1ID.txt' not in included
+
+    def test_import_restores_txt_to_app_dir(self, tmp_path, isolated, app_dir):
+        import data_paths
+
+        zip_path = tmp_path / 'backup.zip'
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr('config/PTZ1IP.txt', '172.16.1.11')
+            zf.writestr('config/Cam1ID.txt', '81')
+            zf.writestr('chairman_presets.json', '{"Alice": 10}')
+
+        restored = data_paths.import_backup(zip_path, app_dir=app_dir)
+
+        assert 'PTZ1IP.txt' in restored
+        assert 'Cam1ID.txt' in restored
+        assert 'chairman_presets.json' in restored
+        assert (app_dir / 'PTZ1IP.txt').read_text() == '172.16.1.11'
+        assert (app_dir / 'Cam1ID.txt').read_text() == '81'
+
+    def test_import_txt_bak_before_overwrite(self, tmp_path, isolated, app_dir):
+        import data_paths
+        (app_dir / 'PTZ1IP.txt').write_text('OLD_IP', encoding='utf-8')
+
+        zip_path = tmp_path / 'backup.zip'
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr('config/PTZ1IP.txt', 'NEW_IP')
+
+        data_paths.import_backup(zip_path, app_dir=app_dir)
+
+        assert (app_dir / 'PTZ1IP.bak').exists()
+        assert (app_dir / 'PTZ1IP.bak').read_text() == 'OLD_IP'
+        assert (app_dir / 'PTZ1IP.txt').read_text() == 'NEW_IP'
+
+    def test_import_txt_strips_trailing_whitespace(self, tmp_path, isolated, app_dir):
+        """Los .txt se guardan sin espacios/saltos de línea extra al final."""
+        import data_paths
+        zip_path = tmp_path / 'backup.zip'
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr('config/PTZ1IP.txt', '172.16.1.11\n\n')
+
+        data_paths.import_backup(zip_path, app_dir=app_dir)
+        assert (app_dir / 'PTZ1IP.txt').read_text() == '172.16.1.11'
+
+    def test_full_roundtrip_json_and_txt(self, tmp_path, isolated, app_dir):
+        import data_paths
+        # Datos JSON
+        (isolated / 'chairman_presets.json').write_text('{"Alice": 10}', encoding='utf-8')
+        # Config TXT
+        self._write_txt_files(app_dir)
+
+        zip_path = tmp_path / 'full.zip'
+        included = data_paths.export_backup(zip_path, app_dir=app_dir)
+        assert len(included) == 7  # 1 JSON + 6 TXT
+
+        # Borrar todo
+        (isolated / 'chairman_presets.json').unlink()
+        for f in app_dir.iterdir():
+            f.unlink()
+
+        restored = data_paths.import_backup(zip_path, app_dir=app_dir)
+        assert len(restored) == 7
+        assert (app_dir / 'PTZ1IP.txt').read_text() == '172.16.1.11'
+        assert json.loads((isolated / 'chairman_presets.json').read_text()) == {'Alice': 10}
+
+    def test_zip_only_txt_recognized(self, tmp_path, isolated, app_dir):
+        """Un ZIP que solo tiene .txt (sin JSON) debe ser aceptado."""
+        import data_paths
+        zip_path = tmp_path / 'txt_only.zip'
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr('config/PTZ1IP.txt', '172.16.1.11')
+
+        restored = data_paths.import_backup(zip_path, app_dir=app_dir)
+        assert 'PTZ1IP.txt' in restored
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Idea 5 — Detección de presets duplicados en load_chairman_presets
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestDuplicatePresetDetection:
+
+    @pytest.fixture()
+    def preset_file(self, tmp_path, monkeypatch):
+        import chairman_presets as cp
+        f = tmp_path / 'chairman_presets.json'
+        monkeypatch.setattr(cp, 'CHAIRMAN_PRESETS_FILE', f)
+        return f
+
+    def test_no_duplicates_loads_all(self, preset_file):
+        from chairman_presets import load_chairman_presets
+        preset_file.write_text('{"Alice": 10, "Bob": 11, "Carol": 12}', encoding='utf-8')
+        result = load_chairman_presets()
+        assert result == {'Alice': 10, 'Bob': 11, 'Carol': 12}
+
+    def test_duplicate_preset_keeps_first(self, preset_file):
+        from chairman_presets import load_chairman_presets
+        # Alice y Bob comparten el preset 10
+        preset_file.write_text('{"Alice": 10, "Bob": 10, "Carol": 11}', encoding='utf-8')
+        result = load_chairman_presets()
+        assert 'Alice' in result     # primera aparición → se mantiene
+        assert 'Bob' not in result   # segunda aparición → descartada
+        assert 'Carol' in result     # no afectada
+        assert result['Alice'] == 10
+        assert result['Carol'] == 11
+
+    def test_all_duplicates_keeps_only_first(self, preset_file):
+        """Tres personas con el mismo número: solo queda la primera."""
+        from chairman_presets import load_chairman_presets
+        preset_file.write_text('{"Alice": 10, "Bob": 10, "Carol": 10}', encoding='utf-8')
+        result = load_chairman_presets()
+        assert len(result) == 1
+        assert 'Alice' in result
+
+    def test_non_int_preset_logged_and_skipped(self, preset_file):
+        from chairman_presets import load_chairman_presets
+        preset_file.write_text('{"Alice": "diez", "Bob": 11}', encoding='utf-8')
+        result = load_chairman_presets()
+        assert 'Alice' not in result
+        assert 'Bob' in result
+
+    def test_out_of_range_preset_skipped(self, preset_file):
+        from chairman_presets import load_chairman_presets
+        preset_file.write_text('{"Alice": 5, "Bob": 90, "Carol": 10}', encoding='utf-8')
+        result = load_chairman_presets()
+        assert 'Alice' not in result   # 5 < CHAIRMAN_PRESET_START (10)
+        assert 'Bob' not in result     # 90 > CHAIRMAN_PRESET_MAX (89)
+        assert 'Carol' in result       # 10 — OK
+
+    def test_duplicate_warning_emitted(self, preset_file, caplog):
+        """El log debe mencionar el número de preset duplicado."""
+        import logging
+        from chairman_presets import load_chairman_presets
+        preset_file.write_text('{"Alice": 10, "Bob": 10}', encoding='utf-8')
+        with caplog.at_level(logging.WARNING, logger='chairman_presets'):
+            load_chairman_presets()
+        assert '10' in caplog.text   # el número de preset debe aparecer en el warning
+
+    def test_save_load_resolves_duplicates_permanently(self, preset_file):
+        """Tras cargar (eliminando duplicado) y guardar, el archivo queda sin duplicados."""
+        from chairman_presets import load_chairman_presets, save_chairman_presets
+        preset_file.write_text('{"Alice": 10, "Bob": 10, "Carol": 11}', encoding='utf-8')
+        clean = load_chairman_presets()
+        save_chairman_presets(clean)
+        reloaded = load_chairman_presets()
+        assert reloaded == clean  # no hay duplicados en el archivo
+        assert len(reloaded) == 2  # Alice:10, Carol:11

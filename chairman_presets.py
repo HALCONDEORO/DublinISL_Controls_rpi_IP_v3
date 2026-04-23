@@ -43,16 +43,42 @@ def load_chairman_presets() -> dict[str, int]:
     """
     Carga el mapa nombre→número_de_preset desde chairman_presets.json.
     Devuelve dict vacío si el archivo no existe o está corrupto.
+
+    Si el JSON contiene dos personas con el mismo número de preset (duplicado),
+    se mantiene la primera aparición y se descarta la segunda, registrando
+    un warning para que el administrador pueda corregirlo manualmente.
     """
     try:
         with open(CHAIRMAN_PRESETS_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        # Validar que los valores sean enteros en rango válido
-        return {
-            name: int(preset)
-            for name, preset in data.items()
-            if isinstance(preset, int) and CHAIRMAN_PRESET_START <= preset <= CHAIRMAN_PRESET_MAX
-        }
+
+        result: dict[str, int] = {}
+        seen: dict[int, str] = {}  # preset_num → primer nombre que lo reclamó
+
+        for name, preset in data.items():
+            if not isinstance(preset, int):
+                logger.warning("Preset de '%s' ignorado: valor no entero (%r)", name, preset)
+                continue
+            if not (CHAIRMAN_PRESET_START <= preset <= CHAIRMAN_PRESET_MAX):
+                logger.warning(
+                    "Preset de '%s' ignorado: %d fuera de rango [%d, %d]",
+                    name, preset, CHAIRMAN_PRESET_START, CHAIRMAN_PRESET_MAX,
+                )
+                continue
+            if preset in seen:
+                logger.warning(
+                    "Preset %d duplicado en chairman_presets.json: "
+                    "'%s' y '%s' comparten el mismo número. "
+                    "Se mantiene '%s', se descarta '%s'. "
+                    "Guarda de nuevo la posición de '%s' para resolverlo.",
+                    preset, seen[preset], name, seen[preset], name, name,
+                )
+                continue
+            seen[preset] = name
+            result[name] = preset
+
+        return result
+
     except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
         logger.warning("%s: %s — iniciando sin presets personales", CHAIRMAN_PRESETS_FILE, exc)
         return {}
