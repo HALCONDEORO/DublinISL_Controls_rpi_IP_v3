@@ -396,20 +396,27 @@ Real IPs are backed up to `sim_ip_backup.json` while simulation is active.
 
 ## Backup
 
-The following files contain all operational data and should be backed up
-regularly:
+**Data files** (survive reinstalls — stored in `~/.config/dublinisl/`):
 
 | File | Contents |
 |------|----------|
-| `seat_names.json` | Speaker names and seat assignments |
-| `chairman_presets.json` | Per-speaker camera presets |
-| `schedule.json` | Weekly operating schedule |
+| `~/.config/dublinisl/seat_names.json` | Speaker names and seat assignments |
+| `~/.config/dublinisl/chairman_presets.json` | Per-speaker camera presets |
+| `~/.config/dublinisl/schedule.json` | Weekly operating schedule |
+
+**Configuration files** (in the app directory — recreated manually after reinstall):
+
+| File | Contents |
+|------|----------|
 | `PTZ1IP.txt`, `PTZ2IP.txt` | Camera IP addresses |
 | `Cam1ID.txt`, `Cam2ID.txt` | VISCA device IDs |
 | `ATEMIP.txt` | ATEM IP address |
 
 > `password.enc` is machine-locked and does not need to be backed up — it
 > cannot be used on a different machine.
+
+> The data directory can be overridden with the `DUBLINISL_DATA_DIR` environment
+> variable, e.g. `DUBLINISL_DATA_DIR=/mnt/usb python3 main.py`.
 
 **Recommended: automatic daily backup to USB drive.**
 
@@ -418,10 +425,11 @@ Create the script `/home/pi/backup_dublinisl.sh`:
 ```bash
 #!/bin/bash
 DEST="/media/pi/BACKUP/dublinisl_$(date +%Y%m%d)"
-SRC="/home/pi/dublinisl_controls_rpi_ip_v3"
+DATA_DIR="$HOME/.config/dublinisl"
+APP_DIR="/home/pi/dublinisl_controls_rpi_ip_v3"
 mkdir -p "$DEST"
-cp "$SRC"/*.json "$DEST"/
-cp "$SRC"/*.txt  "$DEST"/
+cp "$DATA_DIR"/*.json "$DEST"/
+cp "$APP_DIR"/*.txt   "$DEST"/
 echo "Backup completed: $DEST"
 ```
 
@@ -438,8 +446,9 @@ crontab -e
 
 ## Updating
 
-Updating pulls new code without overwriting your configuration or data files
-(`.txt` and `.json` files are not tracked by git).
+Updating pulls new code. Data files (`seat_names.json`, `chairman_presets.json`,
+`schedule.json`) live in `~/.config/dublinisl/` and are never touched by git.
+Configuration `.txt` files in the app directory are also not tracked by git.
 
 ```bash
 cd /home/pi/dublinisl_controls_rpi_ip_v3

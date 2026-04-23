@@ -4,9 +4,12 @@
 # Centraliza la ubicación de todos los archivos JSON que deben sobrevivir
 # una reinstalación del software (git pull, rm -rf + clone, etc.).
 #
-# Directorio de datos: ~/.config/dublinisl/
+# Directorio de datos: ~/.config/dublinisl/  (por defecto)
+#   Override: variable de entorno DUBLINISL_DATA_DIR
+#   Ejemplo:  DUBLINISL_DATA_DIR=/mnt/usb/backup python3 main.py
+#
 #   - Vive en el home del usuario, fuera del árbol de la app.
-#   - Se crea automáticamente al importar este módulo.
+#   - Se crea automáticamente al arrancar la aplicación.
 #   - En reinstalaciones solo se toca el directorio de la app; ~/.config queda intacto.
 #
 # Migración automática:
@@ -17,13 +20,17 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Directorio persistente de configuración del usuario
-CONFIG_DIR = Path.home() / '.config' / 'dublinisl'
+_DEFAULT_CONFIG_DIR = Path.home() / '.config' / 'dublinisl'
+
+# DUBLINISL_DATA_DIR permite al administrador apuntar los datos a cualquier ruta
+# (NAS, USB, directorio de pruebas) sin tocar el código.
+CONFIG_DIR = Path(os.environ.get('DUBLINISL_DATA_DIR', _DEFAULT_CONFIG_DIR))
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 # Rutas de archivos de datos
@@ -31,15 +38,18 @@ CHAIRMAN_PRESETS_FILE = CONFIG_DIR / 'chairman_presets.json'
 SEAT_NAMES_FILE       = CONFIG_DIR / 'seat_names.json'
 SCHEDULE_FILE         = CONFIG_DIR / 'schedule.json'
 
+_LEGACY_FILES = ('chairman_presets.json', 'seat_names.json', 'schedule.json')
 
-def _migrate_if_needed(app_dir: Path) -> None:
-    """
-    Copia archivos de datos desde el directorio de la app al nuevo CONFIG_DIR
-    si no existen ya en el destino.
 
-    Llamar una vez al arrancar la aplicación (desde main.py).
+def migrate_legacy_files() -> None:
     """
-    for filename in ('chairman_presets.json', 'seat_names.json', 'schedule.json'):
+    Migra archivos desde el directorio de la app al CONFIG_DIR si no existen ya.
+
+    Llamar una vez al arrancar la aplicación (desde main.py), antes de que
+    cualquier módulo intente leer los archivos de datos.
+    """
+    app_dir = Path(__file__).parent
+    for filename in _LEGACY_FILES:
         src = app_dir / filename
         dst = CONFIG_DIR / filename
         if src.exists() and not dst.exists():
@@ -48,9 +58,3 @@ def _migrate_if_needed(app_dir: Path) -> None:
                 logger.info("Migrado %s → %s", src, dst)
             except OSError as exc:
                 logger.warning("No se pudo migrar %s: %s", src, exc)
-
-
-def migrate_legacy_files() -> None:
-    """Migra archivos de datos desde el directorio de la app al CONFIG_DIR."""
-    app_dir = Path(__file__).parent
-    _migrate_if_needed(app_dir)

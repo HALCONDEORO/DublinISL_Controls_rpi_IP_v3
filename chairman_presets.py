@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 
 from data_paths import CHAIRMAN_PRESETS_FILE
 
@@ -57,12 +58,14 @@ def load_chairman_presets() -> dict[str, int]:
 
 
 def save_chairman_presets(presets: dict[str, int]) -> None:
-    """Persiste el mapa nombre→preset en chairman_presets.json."""
+    """Persiste el mapa nombre→preset en chairman_presets.json (escritura atómica)."""
+    tmp = CHAIRMAN_PRESETS_FILE.with_suffix('.tmp')
     try:
-        with open(CHAIRMAN_PRESETS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(presets, f, ensure_ascii=False, indent=2)
-    except IOError as exc:
+        tmp.write_text(json.dumps(presets, ensure_ascii=False, indent=2), encoding='utf-8')
+        os.replace(tmp, CHAIRMAN_PRESETS_FILE)
+    except OSError as exc:
         logger.error("Error guardando %s: %s", CHAIRMAN_PRESETS_FILE, exc)
+        tmp.unlink(missing_ok=True)
 
 
 def next_available_preset(presets: dict[str, int]) -> int | None:

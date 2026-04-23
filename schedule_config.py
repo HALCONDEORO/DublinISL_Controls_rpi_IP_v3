@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
-from pathlib import Path
 
 from data_paths import SCHEDULE_FILE
 
@@ -38,14 +38,14 @@ def load_schedule() -> dict:
 
 
 def save_schedule(data: dict) -> bool:
-    """Guardar calendario en schedule.json. Devuelve True si tiene éxito."""
+    """Guardar calendario en schedule.json (escritura atómica). Devuelve True si tiene éxito."""
+    tmp = SCHEDULE_FILE.with_suffix('.tmp')
     try:
-        SCHEDULE_FILE.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False),
-            encoding='utf-8'
-        )
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')
+        os.replace(tmp, SCHEDULE_FILE)
         return True
     except OSError:
+        tmp.unlink(missing_ok=True)
         return False
 
 

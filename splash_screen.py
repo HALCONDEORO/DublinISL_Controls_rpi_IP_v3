@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from camera_discovery import get_camera_subnet, tcp_scan, arp_scan
+from data_paths import SCHEDULE_FILE
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
@@ -426,7 +427,6 @@ class SplashScreen(QWidget):
         names_ok = bool(load_names_data().get("names") is not None)
         sched_ok = True
         try:
-            from data_paths import SCHEDULE_FILE
             if SCHEDULE_FILE.exists():
                 json.loads(SCHEDULE_FILE.read_text(encoding='utf-8'))
         except (json.JSONDecodeError, OSError):

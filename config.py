@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import socket
 import binascii
@@ -216,55 +217,44 @@ def is_valid_cam_id(text: str) -> bool:
 def load_names_data() -> dict:
     """Cargar nombres de asistentes y asignaciones de asientos desde JSON."""
     try:
-        names_path = Path(NAMES_FILE)
-        # Si el archivo no existe, retornar estructura vacía
-        if not names_path.exists():
+        if not NAMES_FILE.exists():
             return {"names": [], "seats": {}}
-        
-        # Parsear JSON
-        data = json.loads(names_path.read_text(encoding='utf-8'))
-        
-        # Validar estructura del JSON
+
+        data = json.loads(NAMES_FILE.read_text(encoding='utf-8'))
+
         if not isinstance(data, dict):
             raise ValueError("Root must be dict")
-        
+
         names = data.get("names", [])
         seats = data.get("seats", {})
-        
-        # Validar tipos
+
         if not isinstance(names, list):
             names = []
         if not isinstance(seats, dict):
             seats = {}
-        
+
         return {"names": names, "seats": seats}
-    
+
     except (json.JSONDecodeError, OSError, ValueError, UnicodeDecodeError) as exc:
-        # Si hay error, retornar estructura vacía y registrar
         logger.warning("Error loading %s: %s", NAMES_FILE, exc)
         return {"names": [], "seats": {}}
 
 
 def save_names_data(names_list: list, seat_assignments: dict) -> bool:
-    """Guardar nombres de asistentes y asignaciones en JSON."""
-    # Validar tipos de parámetros
+    """Guardar nombres de asistentes y asignaciones en JSON (escritura atómica)."""
     if not isinstance(names_list, list) or not isinstance(seat_assignments, dict):
         logger.warning("save_names_data: names must be list, seats must be dict")
         return False
-    
+
+    tmp = NAMES_FILE.with_suffix('.tmp')
     try:
         data = {"names": names_list, "seats": seat_assignments}
-        names_path = Path(NAMES_FILE)
-        # Guardar JSON con formato legible
-        names_path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding='utf-8'
-        )
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+        os.replace(tmp, NAMES_FILE)
         return True
-    
     except (OSError, TypeError, ValueError) as exc:
-        # Registrar error si hay problema guardando
         logger.error("Error saving %s: %s", NAMES_FILE, exc)
+        tmp.unlink(missing_ok=True)
         return False
 
 
