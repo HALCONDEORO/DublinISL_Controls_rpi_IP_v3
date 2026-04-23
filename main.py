@@ -7,6 +7,7 @@ import sys
 import logging
 from PyQt5.QtWidgets import QApplication, QMessageBox
 
+from data_paths import migrate_legacy_files
 from main_window import MainWindow
 from virtual_keyboard import install_virtual_keyboard
 
@@ -32,6 +33,7 @@ def main():
 
     Todo el flujo Login → Splash → Contenido ocurre dentro de MainWindow.
     """
+    migrate_legacy_files()
     try:
         app = QApplication(sys.argv)
         install_virtual_keyboard(app)
