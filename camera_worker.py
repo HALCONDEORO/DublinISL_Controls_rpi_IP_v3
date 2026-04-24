@@ -27,6 +27,7 @@ import queue
 import select
 import socket
 import threading
+import time
 from dataclasses import dataclass
 from typing import Callable, Optional  # reemplaza `socket.socket | None` (sintaxis 3.10+)
 
@@ -94,6 +95,10 @@ class CameraWorker:
         self._sock: Optional[socket.socket] = None
         self._lock = threading.Lock()  # Protege acceso a self._sock entre hilos
 
+        # Timestamp actualizado en cada iteración de _run(); el supervisor
+        # lo usa para detectar hilos vivos pero congelados.
+        self._last_heartbeat: float = time.monotonic()
+
         # Thread daemon: muere cuando el proceso principal termina.
         # No hace falta llamar a stop() explícitamente al cerrar la app.
         self._thread = threading.Thread(
@@ -136,6 +141,20 @@ class CameraWorker:
             self._queue.put_nowait(cmd)
         except queue.Full:
             pass
+
+    def heartbeat_age(self) -> float:
+        """Seconds since the worker loop last ran. Used by the supervisor."""
+        return time.monotonic() - self._last_heartbeat
+
+    def restart(self) -> None:
+        """Re-spawn the worker thread if it has stopped unexpectedly."""
+        if not self._thread.is_alive():
+            self._close_socket()
+            self._last_heartbeat = time.monotonic()
+            self._thread = threading.Thread(
+                target=self._run, daemon=True, name=f"CamWorker-{self.ip}")
+            self._thread.start()
+            logger.info("CameraWorker %s: thread restarted by supervisor", self.ip)
 
     def _set_connected(self, connected: bool):
         """Actualiza el estado de conexión y emite señal si cambia."""
@@ -248,6 +267,7 @@ class CameraWorker:
         y el worker reintenta reconectando.
         """
         while True:
+            self._last_heartbeat = time.monotonic()
             # Espera hasta HEARTBEAT_TIMEOUT s; si no hay comando, ejecuta heartbeat y vuelve a esperar
             try:
                 cmd = self._queue.get(timeout=HEARTBEAT_TIMEOUT)

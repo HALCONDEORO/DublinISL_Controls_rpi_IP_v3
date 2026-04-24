@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 from config import (
     CAM1, CAM2,
     ATEMAddress,
+    HEARTBEAT_TIMEOUT,
     SEAT_POSITIONS,
     load_names_data,
     PRESET_MAP,
@@ -62,6 +63,7 @@ from auditorium_overlay import AuditoriumOverlay
 from core.state import SystemState
 from core.events import AsyncEventBus, EventType
 from core.controller import Controller
+from core.supervisor import Supervisor
 from application.preset_service import PresetService
 from application.camera_service import CameraService
 from application.session_service import SessionService
@@ -124,6 +126,8 @@ class MainWindow(QMainWindow):
         self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
         self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
         self._atem_monitor.start()
+
+        self._supervisor = self._build_supervisor()
 
     # ─────────────────────────────────────────────────────────────────────
     # Overlays de inicio
@@ -404,7 +408,46 @@ class MainWindow(QMainWindow):
             self.BtnNames.show()
             self.BtnNames.raise_()
 
+    def _build_supervisor(self) -> Supervisor:
+        sup = Supervisor()
+        _stale = HEARTBEAT_TIMEOUT * 3  # thread alive but frozen threshold
+
+        cam1 = self._cameras.worker(CAM1.ip)
+        cam2 = self._cameras.worker(CAM2.ip)
+
+        sup.register(
+            "camera_worker_cam1",
+            lambda: cam1._thread.is_alive() and cam1.heartbeat_age() < _stale,
+            cam1.restart,
+        )
+        sup.register(
+            "camera_worker_cam2",
+            lambda: cam2._thread.is_alive() and cam2.heartbeat_age() < _stale,
+            cam2.restart,
+        )
+        sup.register(
+            "atem_monitor",
+            lambda: self._atem_monitor.isRunning(),
+            self._restart_atem_monitor,
+        )
+
+        sup.start()
+        return sup
+
+    def _restart_atem_monitor(self):
+        # Called from supervisor thread — post to Qt main thread for safety.
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(0, self._do_restart_atem_monitor)
+
+    def _do_restart_atem_monitor(self):
+        self._atem_monitor.requestInterruption()
+        self._atem_monitor.wait(2000)
+        self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
+        self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
+        self._atem_monitor.start()
+
     def closeEvent(self, event):
+        self._supervisor.stop()
         self._bus.stop()
         self._atem_monitor.requestInterruption()
         self._atem_monitor.wait(2000)
