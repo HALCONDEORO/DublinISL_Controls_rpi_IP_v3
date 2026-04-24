@@ -23,7 +23,7 @@ import logging
 import os
 
 from PyQt5 import QtGui, QtCore
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import (
@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 from config import (
     CAM1, CAM2,
     ATEMAddress,
-    HEARTBEAT_TIMEOUT,
     SEAT_POSITIONS,
     load_names_data,
     PRESET_MAP,
@@ -127,6 +126,8 @@ class MainWindow(QMainWindow):
         self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
         self._atem_monitor.start()
 
+        # Flag que evita reinicios durante el cierre de la aplicación.
+        self._shutting_down = False
         self._supervisor = self._build_supervisor()
 
     # ─────────────────────────────────────────────────────────────────────
@@ -409,23 +410,28 @@ class MainWindow(QMainWindow):
             self.BtnNames.raise_()
 
     def _build_supervisor(self) -> Supervisor:
+        """Registra los workers y arranca el supervisor de threads."""
         sup = Supervisor()
-        _stale = HEARTBEAT_TIMEOUT * 3  # thread alive but frozen threshold
 
+        # Workers ya creados al conectar señales de connection_changed en __init__.
         cam1 = self._cameras.worker(CAM1.ip)
         cam2 = self._cameras.worker(CAM2.ip)
 
-        sup.register(
+        # Los lambdas capturan el objeto worker (no la variable local), así que
+        # seguirán apuntando al mismo worker aunque _build_supervisor ya haya retornado.
+        sup.registrar(
             "camera_worker_cam1",
-            lambda: cam1._thread.is_alive() and cam1.heartbeat_age() < _stale,
+            lambda: cam1._thread.is_alive(),
             cam1.restart,
         )
-        sup.register(
+        sup.registrar(
             "camera_worker_cam2",
-            lambda: cam2._thread.is_alive() and cam2.heartbeat_age() < _stale,
+            lambda: cam2._thread.is_alive(),
             cam2.restart,
         )
-        sup.register(
+        # El lambda evalúa self._atem_monitor en tiempo de ejecución, por lo que
+        # siempre comprueba la instancia activa incluso tras un reinicio.
+        sup.registrar(
             "atem_monitor",
             lambda: self._atem_monitor.isRunning(),
             self._restart_atem_monitor,
@@ -435,18 +441,24 @@ class MainWindow(QMainWindow):
         return sup
 
     def _restart_atem_monitor(self):
-        # Called from supervisor thread — post to Qt main thread for safety.
-        from PyQt5.QtCore import QTimer
+        # Llamado desde el hilo del supervisor: delegar al hilo principal de Qt.
         QTimer.singleShot(0, self._do_restart_atem_monitor)
 
     def _do_restart_atem_monitor(self):
+        # Ejecutado en el hilo principal de Qt (vía QTimer.singleShot).
+        if self._shutting_down:
+            return
         self._atem_monitor.requestInterruption()
         self._atem_monitor.wait(2000)
         self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
         self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
         self._atem_monitor.start()
+        logger.info("ATEMMonitor reiniciado por el supervisor")
 
     def closeEvent(self, event):
+        # Marcar antes de parar el supervisor para que cualquier QTimer.singleShot
+        # pendiente de _restart_atem_monitor no relance el ATEMMonitor durante el cierre.
+        self._shutting_down = True
         self._supervisor.stop()
         self._bus.stop()
         self._atem_monitor.requestInterruption()

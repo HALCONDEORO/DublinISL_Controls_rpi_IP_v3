@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# core/supervisor.py — Worker supervisor: detect and restart failed background threads
+# core/supervisor.py — Supervisor de workers: detecta y reinicia threads caídos
 
 from __future__ import annotations
 
@@ -9,54 +9,58 @@ from typing import Callable
 
 logger = logging.getLogger(__name__)
 
-# How often the supervisor checks each worker (seconds).
-_POLL_INTERVAL = 10.0
+# Intervalo de sondeo entre comprobaciones de salud (segundos).
+_INTERVALO_SONDEO = 10.0
 
 
 class Supervisor:
     """
-    Polls registered workers and restarts them when they become unhealthy.
+    Comprueba periódicamente los workers registrados y los reinicia si fallan.
 
-    Each worker is described by three arguments to register():
-      name      — label used in log messages
-      is_alive  — () -> bool: return True if the worker is healthy
-      restart   — () -> None: recreate/restart the worker; must be idempotent
+    Cada worker se describe con tres argumentos en register():
+      nombre    — etiqueta usada en los mensajes de log
+      esta_vivo — () -> bool: devuelve True si el worker funciona correctamente
+      reiniciar — () -> None: recrea o reinicia el worker; debe ser idempotente
 
-    Both callables are invoked from the supervisor's own daemon thread.
-    If a restart touches Qt objects, wrap it with QTimer.singleShot(0, fn)
-    so the actual work runs in the Qt main thread.
+    Ambas funciones se invocan desde el hilo daemon del supervisor.
+    Si reiniciar() toca objetos Qt, envuélvela con QTimer.singleShot(0, fn)
+    para que el trabajo real ocurra en el hilo principal de Qt.
     """
 
-    def __init__(self, poll_interval: float = _POLL_INTERVAL) -> None:
-        self._poll_interval = poll_interval
+    def __init__(self, intervalo: float = _INTERVALO_SONDEO) -> None:
+        self._intervalo = intervalo
         self._workers: list[tuple[str, Callable[[], bool], Callable[[], None]]] = []
-        self._stop = threading.Event()
-        self._thread = threading.Thread(
-            target=self._loop, daemon=True, name="Supervisor")
+        self._parar = threading.Event()
+        self._hilo = threading.Thread(
+            target=self._bucle, daemon=True, name="Supervisor")
 
-    def register(
+    def registrar(
         self,
-        name: str,
-        is_alive: Callable[[], bool],
-        restart: Callable[[], None],
+        nombre: str,
+        esta_vivo: Callable[[], bool],
+        reiniciar: Callable[[], None],
     ) -> None:
-        self._workers.append((name, is_alive, restart))
+        """Registra un worker para monitorizar. Llamar antes de start()."""
+        self._workers.append((nombre, esta_vivo, reiniciar))
 
     def start(self) -> None:
-        self._thread.start()
-        logger.info("Supervisor started — monitoring %d worker(s)", len(self._workers))
+        """Inicia el hilo daemon del supervisor."""
+        self._hilo.start()
+        logger.info("Supervisor iniciado — monitorizando %d worker(s)", len(self._workers))
 
     def stop(self) -> None:
-        self._stop.set()
-        self._thread.join(timeout=self._poll_interval + 2)
+        """Detiene el supervisor y espera a que su hilo termine."""
+        self._parar.set()
+        if self._hilo.is_alive():
+            self._hilo.join(timeout=self._intervalo + 2)
 
-    def _loop(self) -> None:
-        while not self._stop.wait(self._poll_interval):
-            for name, is_alive, restart in self._workers:
+    def _bucle(self) -> None:
+        while not self._parar.wait(self._intervalo):
+            for nombre, esta_vivo, reiniciar in self._workers:
                 try:
-                    if not is_alive():
-                        logger.warning("Supervisor: %s is down — restarting", name)
-                        restart()
-                        logger.info("Supervisor: %s restarted", name)
+                    if not esta_vivo():
+                        logger.warning("Supervisor: %s caído — reiniciando", nombre)
+                        reiniciar()
+                        logger.info("Supervisor: %s reiniciado", nombre)
                 except Exception:
-                    logger.exception("Supervisor: unhandled error handling %s", name)
+                    logger.exception("Supervisor: error inesperado gestionando %s", nombre)

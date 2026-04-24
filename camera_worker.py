@@ -95,8 +95,8 @@ class CameraWorker:
         self._sock: Optional[socket.socket] = None
         self._lock = threading.Lock()  # Protege acceso a self._sock entre hilos
 
-        # Timestamp actualizado en cada iteración de _run(); el supervisor
-        # lo usa para detectar hilos vivos pero congelados.
+        # Timestamp actualizado en cada iteración de _run(); disponible para
+        # diagnóstico externo a través de heartbeat_age().
         self._last_heartbeat: float = time.monotonic()
 
         # Thread daemon: muere cuando el proceso principal termina.
@@ -143,18 +143,23 @@ class CameraWorker:
             pass
 
     def heartbeat_age(self) -> float:
-        """Seconds since the worker loop last ran. Used by the supervisor."""
+        """Segundos transcurridos desde la última iteración del bucle; útil para diagnóstico."""
         return time.monotonic() - self._last_heartbeat
 
     def restart(self) -> None:
-        """Re-spawn the worker thread if it has stopped unexpectedly."""
-        if not self._thread.is_alive():
-            self._close_socket()
-            self._last_heartbeat = time.monotonic()
-            self._thread = threading.Thread(
-                target=self._run, daemon=True, name=f"CamWorker-{self.ip}")
-            self._thread.start()
-            logger.info("CameraWorker %s: thread restarted by supervisor", self.ip)
+        """
+        Relanza el thread del worker si ha muerto inesperadamente.
+        El objeto CameraWorker reutiliza la misma instancia, por lo que
+        las conexiones de señales Qt permanecen intactas.
+        """
+        if self._thread.is_alive():
+            return
+        self._close_socket()
+        self._last_heartbeat = time.monotonic()
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name=f"CamWorker-{self.ip}")
+        self._thread.start()
+        logger.info("CameraWorker %s: thread relanzado por el supervisor", self.ip)
 
     def _set_connected(self, connected: bool):
         """Actualiza el estado de conexión y emite señal si cambia."""
