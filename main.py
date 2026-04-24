@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 # main.py — Punto de entrada de la aplicación
+#
+# Wire-up mínimo: todo el estado, servicios y controller se instancian
+# dentro de MainWindow.__init__ para mantener el arranque simple y testeable.
+#
+# Flujo completo: Login → Splash → MainWindow (ready)
+#   MainWindow construye:
+#     SystemState, AsyncEventBus, PresetService, CameraService,
+#     SessionService, Controller, ViscaController (Qt layer)
 
 from __future__ import annotations
 
@@ -7,13 +15,9 @@ import sys
 import logging
 from PyQt5.QtWidgets import QApplication, QMessageBox
 
+from data_paths import migrate_legacy_files
 from main_window import MainWindow
 from virtual_keyboard import install_virtual_keyboard
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  CONFIGURACIÓN DE LOGGING
-# ═══════════════════════════════════════════════════════════════════════════════
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,16 +26,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  FUNCIÓN PRINCIPAL
-# ═══════════════════════════════════════════════════════════════════════════════
-
 def main():
-    """
-    Punto de entrada principal.
-
-    Todo el flujo Login → Splash → Contenido ocurre dentro de MainWindow.
-    """
+    migrate_legacy_files()
     try:
         app = QApplication(sys.argv)
         install_virtual_keyboard(app)
@@ -51,10 +47,6 @@ def main():
         )
         sys.exit(1)
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  PUNTO DE ENTRADA
-# ═══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
     main()

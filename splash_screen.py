@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from camera_discovery import get_camera_subnet, tcp_scan, arp_scan
+from data_paths import SCHEDULE_FILE
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
@@ -421,16 +422,22 @@ class SplashScreen(QWidget):
             return False
 
     def _test_data_files(self) -> bool:
-        """Verifica que seat_names.json y schedule.json son legibles y válidos."""
-        from config import load_names_data
-        names_ok = bool(load_names_data().get("names") is not None)
+        """Verifica que seat_names.json y schedule.json son legibles y JSON válido."""
+        from config import NAMES_FILE
+        names_ok = True
+        try:
+            if NAMES_FILE.exists():
+                json.loads(NAMES_FILE.read_text(encoding='utf-8'))
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            names_ok = False
+
         sched_ok = True
         try:
-            p = Path("schedule.json")
-            if p.exists():
-                json.loads(p.read_text(encoding='utf-8'))
-        except (json.JSONDecodeError, OSError):
+            if SCHEDULE_FILE.exists():
+                json.loads(SCHEDULE_FILE.read_text(encoding='utf-8'))
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             sched_ok = False
+
         return names_ok and sched_ok
 
     def _test_os(self) -> bool:

@@ -274,8 +274,8 @@ class ViscaProtocol:
         ip, cam_id = self._active_cam()
         if pan_spd is None:
             pan_spd = tilt_spd = self._get_speed()
-        pan_spd  = 0 if pan_dir  == PanDir.STOP  else pan_spd
-        tilt_spd = 0 if tilt_dir == TiltDir.STOP else tilt_spd
+        pan_spd  = 0 if pan_dir  == PanDir.STOP  else max(1, min(SPEED_MAX, pan_spd))
+        tilt_spd = 0 if tilt_dir == TiltDir.STOP else max(1, min(SPEED_MAX, tilt_spd))
         self._dispatch(ViscaCommand(
             camera=self._cam_key(ip),
             payload=bytes.fromhex(

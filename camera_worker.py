@@ -27,6 +27,7 @@ import queue
 import select
 import socket
 import threading
+import time
 from dataclasses import dataclass
 from typing import Callable, Optional  # reemplaza `socket.socket | None` (sintaxis 3.10+)
 
@@ -94,6 +95,10 @@ class CameraWorker:
         self._sock: Optional[socket.socket] = None
         self._lock = threading.Lock()  # Protege acceso a self._sock entre hilos
 
+        # Timestamp actualizado en cada iteración de _run(); disponible para
+        # diagnóstico externo a través de heartbeat_age().
+        self._last_heartbeat: float = time.monotonic()
+
         # Thread daemon: muere cuando el proceso principal termina.
         # No hace falta llamar a stop() explícitamente al cerrar la app.
         self._thread = threading.Thread(
@@ -136,6 +141,25 @@ class CameraWorker:
             self._queue.put_nowait(cmd)
         except queue.Full:
             pass
+
+    def heartbeat_age(self) -> float:
+        """Segundos transcurridos desde la última iteración del bucle; útil para diagnóstico."""
+        return time.monotonic() - self._last_heartbeat
+
+    def restart(self) -> None:
+        """
+        Relanza el thread del worker si ha muerto inesperadamente.
+        El objeto CameraWorker reutiliza la misma instancia, por lo que
+        las conexiones de señales Qt permanecen intactas.
+        """
+        if self._thread.is_alive():
+            return
+        self._close_socket()
+        self._last_heartbeat = time.monotonic()
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name=f"CamWorker-{self.ip}")
+        self._thread.start()
+        logger.info("CameraWorker %s: thread relanzado por el supervisor", self.ip)
 
     def _set_connected(self, connected: bool):
         """Actualiza el estado de conexión y emite señal si cambia."""
@@ -248,6 +272,7 @@ class CameraWorker:
         y el worker reintenta reconectando.
         """
         while True:
+            self._last_heartbeat = time.monotonic()
             # Espera hasta HEARTBEAT_TIMEOUT s; si no hay comando, ejecuta heartbeat y vuelve a esperar
             try:
                 cmd = self._queue.get(timeout=HEARTBEAT_TIMEOUT)

@@ -5,3 +5,5 @@ __pycache__/
 venv/
 audit_log.json
 boot_stats.json
+*.bak
+*.tmp

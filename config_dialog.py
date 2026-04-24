@@ -31,6 +31,8 @@ import sys
 import socket
 import subprocess
 import platform
+from datetime import datetime
+from pathlib import Path
 import threading
 
 from PyQt5.QtCore import Qt, QSize, QTimer
@@ -202,7 +204,7 @@ class _CamEditDialog(QDialog):
             else:
                 _cfg.CAM2.cam_id = text
 
-        with open(self._filename, 'w') as f:
+        with open(self._filename, 'w', encoding='utf-8') as f:
             f.write(text)
 
         self._close_keyboard()
@@ -527,6 +529,84 @@ class ConfigDialog(QDialog):
         line4.setFrameShape(QFrame.HLine)
         line4.setStyleSheet("color: #ccc;")
         layout.addWidget(line4)
+
+        # ── Sección: Backup ───────────────────────────────────────────────
+        layout.addWidget(self._section_label('Data Backup'))
+
+        row_backup = QHBoxLayout()
+        row_backup.setSpacing(8)
+
+        btn_export = QPushButton('📤  Export...')
+        btn_export.setFixedHeight(36)
+        btn_export.setToolTip(
+            'Save seat names, chairman presets and schedule to a ZIP file'
+        )
+        btn_export.setStyleSheet(
+            "QPushButton { background: #2E7D32; border: none; border-radius: 6px;"
+            " font: 13px; color: white; }"
+            "QPushButton:pressed { background: #1B5E20; }"
+        )
+
+        btn_import = QPushButton('📥  Import...')
+        btn_import.setFixedHeight(36)
+        btn_import.setToolTip(
+            'Restore data from a previously exported ZIP backup'
+        )
+        btn_import.setStyleSheet(
+            "QPushButton { background: #1565C0; border: none; border-radius: 6px;"
+            " font: 13px; color: white; }"
+            "QPushButton:pressed { background: #0D47A1; }"
+        )
+
+        row_backup.addWidget(btn_export)
+        row_backup.addWidget(btn_import)
+        layout.addLayout(row_backup)
+
+        def _export():
+            from PyQt5.QtWidgets import QFileDialog, QMessageBox
+            from data_paths import export_backup
+            default_name = f"dublinisl_backup_{datetime.now():%Y%m%d_%H%M}.zip"
+            dest, _ = QFileDialog.getSaveFileName(
+                self, "Export Backup", default_name, "ZIP files (*.zip)"
+            )
+            if not dest:
+                return
+            try:
+                included = export_backup(Path(dest))
+                names_str = '\n'.join(f"  ✓ {n}" for n in included)
+                QMessageBox.information(
+                    self, "Export OK",
+                    f"Backup guardado en:\n{dest}\n\n{names_str}"
+                )
+            except Exception as exc:
+                QMessageBox.warning(self, "Export Error", str(exc))
+
+        def _import():
+            from PyQt5.QtWidgets import QFileDialog, QMessageBox
+            from data_paths import import_backup
+            src, _ = QFileDialog.getOpenFileName(
+                self, "Import Backup", "", "ZIP files (*.zip)"
+            )
+            if not src:
+                return
+            try:
+                restored = import_backup(Path(src))
+                names_str = '\n'.join(f"  ✓ {n}" for n in restored)
+                QMessageBox.information(
+                    self, "Import OK",
+                    f"Restaurados {len(restored)} archivo(s):\n{names_str}"
+                    "\n\nReinicia la aplicación para aplicar los cambios."
+                )
+            except Exception as exc:
+                QMessageBox.warning(self, "Import Error", str(exc))
+
+        btn_export.clicked.connect(_export)
+        btn_import.clicked.connect(_import)
+
+        line_backup = QFrame()
+        line_backup.setFrameShape(QFrame.HLine)
+        line_backup.setStyleSheet("color: #ccc;")
+        layout.addWidget(line_backup)
 
         # ── Sección: Simulation Mode ──────────────────────────────────────
         layout.addWidget(self._section_label('Simulation Mode'))

@@ -6,11 +6,14 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 import socket
 import binascii
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from data_paths import SEAT_NAMES_FILE as NAMES_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +60,6 @@ CAMERA_QUEUE_MAXSIZE = 20
 # Segundos sin comando antes de enviar heartbeat (ping)
 HEARTBEAT_TIMEOUT = 5.0
 BUTTON_COLOR = "black"
-NAMES_FILE = 'seat_names.json'
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -226,31 +228,31 @@ def load_names_data() -> dict:
         # Validar estructura del JSON
         if not isinstance(data, dict):
             raise ValueError("Root must be dict")
-        
+
         names = data.get("names", [])
         seats = data.get("seats", {})
-        
-        # Validar tipos
+
         if not isinstance(names, list):
             names = []
         if not isinstance(seats, dict):
             seats = {}
-        
+
         return {"names": names, "seats": seats}
-    
+
     except (json.JSONDecodeError, OSError, ValueError, UnicodeDecodeError) as exc:
-        # Si hay error, retornar estructura vacía y registrar
         logger.warning("Error loading %s: %s", NAMES_FILE, exc)
         return {"names": [], "seats": {}}
 
 
 def save_names_data(names_list: list, seat_assignments: dict) -> bool:
-    """Guardar nombres de asistentes y asignaciones en JSON."""
-    # Validar tipos de parámetros
+    """Guardar nombres de asistentes y asignaciones en JSON (escritura atómica)."""
     if not isinstance(names_list, list) or not isinstance(seat_assignments, dict):
         logger.warning("save_names_data: names must be list, seats must be dict")
         return False
-    
+
+    if NAMES_FILE.exists():
+        shutil.copy2(NAMES_FILE, NAMES_FILE.with_suffix('.bak'))
+    tmp = NAMES_FILE.with_suffix('.tmp')
     try:
         data = {"names": names_list, "seats": seat_assignments}
         names_path = Path(NAMES_FILE)
@@ -262,8 +264,8 @@ def save_names_data(names_list: list, seat_assignments: dict) -> bool:
         return True
     
     except (OSError, TypeError, ValueError) as exc:
-        # Registrar error si hay problema guardando
         logger.error("Error saving %s: %s", NAMES_FILE, exc)
+        tmp.unlink(missing_ok=True)
         return False
 
 

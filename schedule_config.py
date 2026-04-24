@@ -3,11 +3,10 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
-from pathlib import Path
+from json_io import load_json, save_json
 
-SCHEDULE_FILE = Path(__file__).parent / 'schedule.json'
+from data_paths import SCHEDULE_FILE
 
 DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
@@ -19,11 +18,10 @@ DEFAULT_SCHEDULE: dict = {
 
 def load_schedule() -> dict:
     """Leer schedule.json. Devuelve DEFAULT_SCHEDULE si no existe o hay error."""
+    data = load_json(SCHEDULE_FILE)
+    if not isinstance(data, dict):
+        return {day: dict(DEFAULT_SCHEDULE[day]) for day in DAYS}
     try:
-        if not SCHEDULE_FILE.exists():
-            return {day: dict(DEFAULT_SCHEDULE[day]) for day in DAYS}
-        data = json.loads(SCHEDULE_FILE.read_text(encoding='utf-8'))
-        # Asegurar que todos los días existen con valores válidos
         result = {}
         for day in DAYS:
             entry = data.get(day, DEFAULT_SCHEDULE[day])
@@ -33,20 +31,13 @@ def load_schedule() -> dict:
                 "end":     str(entry.get("end",   "17:00")),
             }
         return result
-    except (OSError, json.JSONDecodeError, TypeError, AttributeError):
+    except (TypeError, AttributeError):
         return {day: dict(DEFAULT_SCHEDULE[day]) for day in DAYS}
 
 
 def save_schedule(data: dict) -> bool:
     """Guardar calendario en schedule.json. Devuelve True si tiene éxito."""
-    try:
-        SCHEDULE_FILE.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False),
-            encoding='utf-8'
-        )
-        return True
-    except OSError:
-        return False
+    return save_json(SCHEDULE_FILE, data)
 
 
 def is_within_schedule() -> bool:
@@ -70,8 +61,15 @@ def is_within_schedule() -> bool:
     except (ValueError, KeyError):
         return False
 
+    if not (0 <= start_h <= 23 and 0 <= start_m <= 59
+            and 0 <= end_h <= 23 and 0 <= end_m <= 59):
+        return False
+
     current_minutes = now.hour * 60 + now.minute
     start_minutes   = start_h  * 60 + start_m
     end_minutes     = end_h    * 60 + end_m
 
+    if end_minutes <= start_minutes:
+        # Horario nocturno que cruza la medianoche (ej. 22:00 → 06:00)
+        return current_minutes >= start_minutes or current_minutes < end_minutes
     return start_minutes <= current_minutes < end_minutes

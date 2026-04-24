@@ -58,7 +58,9 @@ class SeatNamesController:
             # Migrar preset de Chairman si la persona renombrada tenía uno.
             if old_name in self._w._chairman_presets:
                 self._w._chairman_presets[new_name] = self._w._chairman_presets.pop(old_name)
-                save_chairman_presets(self._w._chairman_presets)
+                if not save_chairman_presets(self._w._chairman_presets):
+                    # Revertir el cambio en memoria si el disco falló para mantener consistencia
+                    self._w._chairman_presets[old_name] = self._w._chairman_presets.pop(new_name)
 
         save_names_data(self._w._names_list, self._w._seat_names)
 

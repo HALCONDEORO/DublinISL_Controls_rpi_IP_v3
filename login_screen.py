@@ -7,8 +7,8 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont
 from datetime import datetime
-import json
 from pathlib import Path
+from json_io import load_json, save_json
 
 from config import Contact
 from secret_manager import decrypt_password as _get_password
@@ -56,26 +56,15 @@ class LoginAudit:
             if len(logs) > 1000:
                 logs = logs[-1000:]
             
-            # Guardar JSON
-            self.log_file.write_text(
-                json.dumps(logs, indent=2, ensure_ascii=False),
-                encoding='utf-8'
-            )
-            return True
-        
-        except (OSError, json.JSONDecodeError, TypeError):
+            return save_json(self.log_file, logs)
+
+        except (OSError, TypeError):
             return False
     
     def _read_logs(self) -> list:
         """Leer logs existentes de forma segura."""
-        try:
-            if not self.log_file.exists():
-                return []
-            data = json.loads(self.log_file.read_text(encoding='utf-8'))
-            # Validar que sea una lista
-            return data if isinstance(data, list) else []
-        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-            return []
+        data = load_json(self.log_file, default=[])
+        return data if isinstance(data, list) else []
     
     def detect_suspicious_activity(self) -> dict:
         """Detectar patrones de ataque (>20 fallos/hora = riesgo alto)."""
