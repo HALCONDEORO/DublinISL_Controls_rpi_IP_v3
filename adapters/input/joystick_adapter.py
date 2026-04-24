@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from core.events import EventBus, EventType
+from core.events import AsyncEventBus, EventType
 
 
 class JoystickAdapter:
@@ -22,7 +22,7 @@ class JoystickAdapter:
         )
     """
 
-    def __init__(self, bus: EventBus, active_camera_fn) -> None:
+    def __init__(self, bus: AsyncEventBus, active_camera_fn) -> None:
         self._bus = bus
         self._get_active_camera = active_camera_fn
 

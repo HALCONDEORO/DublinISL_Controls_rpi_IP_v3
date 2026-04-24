@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from core.events import EventBus, EventType
+from core.events import AsyncEventBus, EventType
 
 
 class SeatAdapter:
@@ -15,7 +15,7 @@ class SeatAdapter:
         btn.clicked.connect(lambda: adapter.on_seat_pressed(seat_number))
     """
 
-    def __init__(self, bus: EventBus, active_camera_fn, seat_name_fn) -> None:
+    def __init__(self, bus: AsyncEventBus, active_camera_fn, seat_name_fn) -> None:
         self._bus = bus
         self._get_active_camera = active_camera_fn
         self._get_seat_name = seat_name_fn

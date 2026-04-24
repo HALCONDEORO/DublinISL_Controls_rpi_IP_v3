@@ -60,7 +60,7 @@ from auditorium_overlay import AuditoriumOverlay
 
 # ── Nueva arquitectura ────────────────────────────────────────────────────────
 from core.state import SystemState
-from core.events import EventBus, EventType
+from core.events import AsyncEventBus, EventType
 from core.controller import Controller
 from application.preset_service import PresetService
 from application.camera_service import CameraService
@@ -86,7 +86,8 @@ class MainWindow(QMainWindow):
 
         # ── Nueva arquitectura: instanciar capas ──────────────────────────
         self._state      = SystemState()
-        self._bus        = EventBus()
+        self._bus        = AsyncEventBus()
+        self._bus.start()
         self._preset_svc = PresetService()
         self._camera_svc = CameraService(self._cameras)
         self._session_svc = SessionService(self._camera_svc)
@@ -404,6 +405,7 @@ class MainWindow(QMainWindow):
             self.BtnNames.raise_()
 
     def closeEvent(self, event):
+        self._bus.stop()
         self._atem_monitor.requestInterruption()
         self._atem_monitor.wait(2000)
         event.accept()

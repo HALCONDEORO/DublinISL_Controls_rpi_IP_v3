@@ -22,7 +22,7 @@ from PyQt5 import QtCore, QtGui
 from PyQt5.QtWidgets import QPushButton
 
 from widgets import SpecialDragButton
-from core.events import EventBus, EventType
+from core.events import AsyncEventBus, EventType
 
 
 class ChairmanButton(SpecialDragButton):
@@ -42,13 +42,14 @@ class ChairmanButton(SpecialDragButton):
     _EDIT_W  = 52
     _EDIT_H  = 28
 
-    def __init__(self, bus: EventBus, preset_svc,
+    def __init__(self, bus: AsyncEventBus, preset_svc,
                  svg_data: str, icon_w: int, icon_h: int, parent=None):
         super().__init__(seat_id=1, default_label='Chairman', parent=parent)
 
         self._bus        = bus
         self._preset_svc = preset_svc
-        self._bus.subscribe(EventType.PRESET_SAVED, self._on_preset_saved_event)
+        # subscribe_qt ensures _on_preset_saved_event runs on the Qt main thread
+        self._bus.subscribe_qt(EventType.PRESET_SAVED, self._on_preset_saved_event)
 
         renderer = QSvgRenderer(QtCore.QByteArray(svg_data.encode('utf-8')))
         pix = QPixmap(icon_w, icon_h)
