@@ -38,13 +38,6 @@ _SPECIAL_SEAT_DEFS = {
     131: dict(label='Library',     svg_data=None,           svg_file='library.svg',     w=55, h=65, iw=40, ih=40),
 }
 
-_SPECIAL_STYLE = (
-    "QToolButton { background-color: #cccccc; border: 2px solid #7B4F2E;"
-    " border-radius: 5px; font: 8px; font-weight: bold; color: "
-    + BUTTON_COLOR + "; }"
-)
-
-
 # ── API pública ───────────────────────────────────────────────────────────────
 
 def build_special_seat_button(seat_number: int, x: int, y: int, parent) -> SpecialDragButton:
@@ -57,7 +50,7 @@ def build_special_seat_button(seat_number: int, x: int, y: int, parent) -> Speci
     button.move(x, y)
     button.resize(defn['w'], defn['h'])
     button.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-    button.setStyleSheet(_SPECIAL_STYLE)
+    button._apply_style()
 
     pix = _load_svg_pixmap(defn['svg_data'], defn['svg_file'], defn['iw'], defn['ih'])
     if pix is not None:

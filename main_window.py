@@ -225,6 +225,8 @@ class MainWindow(QMainWindow):
         GoButton.set_call_mode(mode == 'call')
         for btn in self.findChildren(GoButton):
             btn._apply_style()
+        for btn in self.findChildren(SpecialDragButton):
+            btn._apply_style()
 
     def _build_set_overlay(self):
         self._set_overlay = AuditoriumOverlay(self)

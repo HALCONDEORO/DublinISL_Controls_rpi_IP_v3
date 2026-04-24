@@ -118,14 +118,9 @@ class DragDropButton:
         """Hook: el drag salió o terminó. Subclase sobreescribe para restaurar estilo."""
 
     def mouseDoubleClickEvent(self, event):
-        """
-        Doble-tap con nombre asignado → confirmación → borrado.
-
-        PARAMETRIZADO: el texto del diálogo lo aporta _clear_confirm_msg()
-        porque varía entre subclases:
-          GoButton:          'Clear "X" from seat 42?'
-          SpecialDragButton: 'Clear "X" from Wheelchair?'
-        """
+        if self._call_mode:
+            super().mouseDoubleClickEvent(event)
+            return
         if self.assigned_name:
             reply = QMessageBox.question(
                 self.parent(), "Clear Assignment",
@@ -317,61 +312,49 @@ class SpecialDragButton(DragDropButton, QToolButton):
     def __init__(self, seat_id: int, default_label: str, parent=None):
         QToolButton.__init__(self, parent)
         self.seat_number    = seat_id
-        self._default_label = default_label  # texto a restaurar al borrar la asignación
+        self._default_label = default_label
         self.assigned_name  = ""
-        self._base_style    = ""             # capturado lazy en _apply_assigned_style
         self.setText(default_label)
         self.setAcceptDrops(True)
 
     def _clear_confirm_msg(self) -> str:
-        """Mensaje con el nombre del botón especial — implementación requerida por DragDropButton."""
         return f'Clear "{self.assigned_name}" from {self._default_label}?'
 
-    def set_name(self, name: str, emit_signal: bool = True):
+    def _apply_style(self):
         """
-        Asigna o borra el nombre.
-        Con nombre: texto truncado + borde verde.
-        Sin nombre: restaura _default_label + estilo base.
+        Call mode : burdeo pastel vacío / burdeo oscuro con nombre (igual que GoButton).
+        Set mode  : gris con borde marrón vacío / borde verde con nombre.
         """
-        self.assigned_name = name
-        if name:
-            self.setText(name.split()[0])
-            self._apply_assigned_style()
+        if self._call_mode:
+            if self.assigned_name:
+                style = (
+                    "background-color: #8c3048; border: none; border-radius: 5px;"
+                    " font: 8px; font-weight: bold; color: white;"
+                )
+            else:
+                style = (
+                    f"background-color: #e8b4bc; border: none; border-radius: 5px;"
+                    f" font: 8px; font-weight: bold; color: {BUTTON_COLOR};"
+                )
         else:
-            self.setText(self._default_label)
-            self._apply_default_style()
+            if self.assigned_name:
+                style = (
+                    "background-color: rgba(76,175,80,30); border: 2px solid #2e7d32;"
+                    f" border-radius: 5px; font: 8px; font-weight: bold; color: {BUTTON_COLOR};"
+                )
+            else:
+                style = (
+                    "background-color: #cccccc; border: 2px solid #7B4F2E;"
+                    f" border-radius: 5px; font: 8px; font-weight: bold; color: {BUTTON_COLOR};"
+                )
+        self.setStyleSheet(f"QToolButton {{ {style} }}")
+
+    def set_name(self, name: str, emit_signal: bool = True):
+        self.assigned_name = name
+        self.setText(name.split()[0] if name else self._default_label)
+        self._apply_style()
         if emit_signal:
             self.name_assigned.emit(self.seat_number, name)
-
-    def _apply_assigned_style(self):
-        """
-        Añade borde verde al estilo base cuando hay nombre asignado.
-
-        CAMBIADO: la versión anterior usaba str.replace() buscando
-        'border: 0px solid black;' o 'border: none;' dentro del CSS.
-        Si el estilo base no contenía ninguna de esas cadenas exactas,
-        el borde no se aplicaba silenciosamente — bug difícil de detectar.
-
-        AHORA: captura _base_style lazy (la primera vez que se asigna un
-        nombre, cuando MainWindow ya aplicó su setStyleSheet), y concatena
-        el borde verde como bloque CSS adicional sin depender del contenido
-        exacto del estilo base.
-        """
-        if not self._base_style:
-            # Primera asignación: capturar el estilo que MainWindow ya aplicó.
-            # Lazy porque en __init__ el estilo aún no está aplicado.
-            self._base_style = self.styleSheet()
-
-        self.setStyleSheet(
-            self._base_style
-            + "\nQToolButton { border: 2px solid #2e7d32;"
-              " background-color: rgba(76,175,80,30); }"
-        )
-
-    def _apply_default_style(self):
-        """Restaura el estilo base sin borde de asignación."""
-        if self._base_style:
-            self.setStyleSheet(self._base_style)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

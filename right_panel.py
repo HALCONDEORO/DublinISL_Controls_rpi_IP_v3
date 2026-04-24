@@ -91,6 +91,11 @@ class RightPanel:
         active._label.setStyleSheet(self._MODE_LBL_STYLE_ACT)
         inactive.setStyleSheet(self._MODE_STYLE_INACTIVE)
         inactive._label.setStyleSheet(self._MODE_LBL_STYLE_INACT)
+        if hasattr(self, '_btn_gear'):
+            visible = mode == 'set'
+            self._btn_gear.setVisible(visible)
+            self._gear_sep.setVisible(visible)
+            QtCore.QTimer.singleShot(0, self._fit_container_height)
 
     def set_joystick_mode(self, mode: str):
         """'platform' → burdeo  |  'comments' → verde."""
@@ -508,6 +513,10 @@ class RightPanel:
         )
         btn_gear.clicked.connect(mw._open_config_dialog)
         gear_row.addWidget(btn_gear, stretch=1)
+        self._btn_gear = btn_gear
+        self._gear_sep = sep
+        self._btn_gear.hide()
+        self._gear_sep.hide()
 
         layout.addLayout(gear_row)
 

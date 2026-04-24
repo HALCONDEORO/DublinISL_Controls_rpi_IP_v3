@@ -271,9 +271,9 @@ class DigitalJoystick(QWidget):
             scale = self._outer_r / dist
             dx, dy = dx * scale, dy * scale
             dist = self._outer_r
-        self._knob_pos = center + QtCore.QPointF(dx, dy)
 
         if dist < self._dead_r:
+            self._knob_pos = center + QtCore.QPointF(dx, dy)
             if self._cur_dir is not None:
                 self._timer.stop()
                 self._cur_dir    = None
@@ -286,8 +286,6 @@ class DigitalJoystick(QWidget):
         t         = (dist - self._dead_r) / (self._outer_r - self._dead_r)
         t         = min(1.0, t)
         total_spd = max(1, round(1 + t * (max_spd - 1)))
-        pan_spd   = max(1, round(total_spd * abs(dx) / dist))
-        tilt_spd  = max(1, round(total_spd * abs(dy) / dist))
 
         angle      = math.degrees(math.atan2(dx, -dy)) % 360
         raw_sector = int((angle + self._SECTOR_HALF) / 45) % 8
@@ -301,6 +299,13 @@ class DigitalJoystick(QWidget):
             delta              = (angle - sector_center + 180) % 360 - 180
             dist_from_boundary = self._SECTOR_HALF - abs(delta)
             accepted_sector    = raw_sector if dist_from_boundary >= self._HYSTERESIS else self._cur_sector
+
+        # Snap knob visual y velocidades al ángulo exacto del sector
+        snap_rad       = math.radians(accepted_sector * 45.0)
+        self._knob_pos = center + QtCore.QPointF(dist * math.sin(snap_rad),
+                                                 -dist * math.cos(snap_rad))
+        pan_spd  = max(1, round(total_spd * abs(math.sin(snap_rad))))
+        tilt_spd = max(1, round(total_spd * abs(math.cos(snap_rad))))
 
         new_dir = self._DIR_MAP[accepted_sector]
 
