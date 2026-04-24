@@ -25,8 +25,9 @@ sessions.
 11. [Troubleshooting](#troubleshooting)
 12. [Contributing](#contributing)
 13. [Project Structure](#project-structure)
-14. [License](#license)
-15. [Contact](#contact)
+14. [Architecture](#architecture)
+15. [License](#license)
+16. [Contact](#contact)
 
 ---
 
@@ -42,6 +43,11 @@ sessions.
 - **Operating schedule** — Per-weekday enable/disable with configurable start and end times
 - **Touchscreen interface** — Optimised for 1920x1080 with virtual keyboard support
 - **Machine-locked login** — PBKDF2-HMAC-SHA256 password encryption; audit log of all login attempts
+- **Persistent data outside the app** — JSON data files stored in `~/.config/dublinisl/`; survive reinstalls and `git pull`
+- **Automatic `.bak` copies** — Every save writes a `.bak` alongside the JSON for instant single-step rollback
+- **ZIP export / import** — One-click full backup and restore (data + config `.txt` files) via Settings
+- **Duplicate preset detection** — Warns before overwriting a chairman preset that is already assigned to another name
+- **Atomic JSON writes** — All JSON saves use a temp-file + rename to prevent corruption on power loss
 
 > Screenshots of the interface will be added in a future release.
 
@@ -396,7 +402,7 @@ Real IPs are backed up to `sim_ip_backup.json` while simulation is active.
 
 ## Backup
 
-**Data files** (survive reinstalls — stored in `~/.config/dublinisl/`):
+### Data files (survive reinstalls — stored in `~/.config/dublinisl/`)
 
 | File | Contents |
 |------|----------|
@@ -404,13 +410,18 @@ Real IPs are backed up to `sim_ip_backup.json` while simulation is active.
 | `~/.config/dublinisl/chairman_presets.json` | Per-speaker camera presets |
 | `~/.config/dublinisl/schedule.json` | Weekly operating schedule |
 
-**Configuration files** (in the app directory — recreated manually after reinstall):
+Alongside each JSON the app automatically keeps a `.bak` copy (e.g.
+`chairman_presets.json.bak`). If a JSON file becomes corrupt, rename the
+`.bak` to restore the previous save.
+
+### Configuration files (in the app directory)
 
 | File | Contents |
 |------|----------|
 | `PTZ1IP.txt`, `PTZ2IP.txt` | Camera IP addresses |
 | `Cam1ID.txt`, `Cam2ID.txt` | VISCA device IDs |
 | `ATEMIP.txt` | ATEM IP address |
+| `Contact.txt` | Support contact shown in Help |
 
 > `password.enc` is machine-locked and does not need to be backed up — it
 > cannot be used on a different machine.
@@ -418,7 +429,19 @@ Real IPs are backed up to `sim_ip_backup.json` while simulation is active.
 > The data directory can be overridden with the `DUBLINISL_DATA_DIR` environment
 > variable, e.g. `DUBLINISL_DATA_DIR=/mnt/usb python3 main.py`.
 
-**Recommended: automatic daily backup to USB drive.**
+### ZIP export / import (built-in)
+
+The Settings dialog now includes **Export Backup** and **Import Backup** buttons.
+
+- **Export Backup** — creates a single `.zip` that contains all three JSON data
+  files *and* all six `.txt` configuration files. Save it to a USB drive or
+  cloud storage.
+- **Import Backup** — restores both groups from a previously exported `.zip` to
+  their correct locations automatically.
+
+This is the recommended way to migrate the application to a new Raspberry Pi.
+
+### Recommended: automatic daily backup to USB drive
 
 Create the script `/home/pi/backup_dublinisl.sh`:
 
@@ -505,11 +528,20 @@ python3 main.py
 
 ### Data files (JSON, auto-managed by the app)
 
+Persistent data lives in `~/.config/dublinisl/` (overridable via `DUBLINISL_DATA_DIR`):
+
 | File | Description |
 |------|-------------|
-| `seat_names.json` | Speaker names and seat assignments |
-| `chairman_presets.json` | Per-speaker camera presets for the chairman seat |
-| `schedule.json` | Weekly operating schedule |
+| `~/.config/dublinisl/seat_names.json` | Speaker names and seat assignments |
+| `~/.config/dublinisl/chairman_presets.json` | Per-speaker camera presets for the chairman seat |
+| `~/.config/dublinisl/schedule.json` | Weekly operating schedule |
+
+Each JSON file has an automatic `.bak` sibling (e.g. `seat_names.json.bak`).
+
+Files in the app directory:
+
+| File | Description |
+|------|-------------|
 | `password.enc` | Machine-locked encrypted login password |
 | `audit_log.json` | Timestamped log of all login attempts |
 | `sim_ip_backup.json` | Backup of real IPs while simulation mode is active |
@@ -542,7 +574,9 @@ python3 main.py
 | ATEM shows "--" in splash | ATEM offline or wrong IP | Check `ATEMIP.txt`; the app works without ATEM |
 | Joystick has no effect | Session not started | Settings -> **Start Session** |
 | App crashes at startup | PyQt5 not installed | Run `pip3 install PyQt5` |
-| Seat assignments lost after reboot | `seat_names.json` missing | Check file exists; restore from backup |
+| Seat assignments lost after reboot | `seat_names.json` missing | Check `~/.config/dublinisl/`; rename `.bak` to `.json` or restore from ZIP backup |
+| Chairman preset slot collision warning | Two speakers share a slot | Click OK to reassign automatically; or clear the old entry first in SET mode |
+| JSON file corrupt / empty after power cut | Incomplete write | Rename `<file>.json.bak` → `<file>.json` in `~/.config/dublinisl/` |
 
 ---
 
@@ -563,36 +597,108 @@ Please include:
 
 ## Project Structure
 
+The codebase follows a layered architecture. Each layer only depends on layers below it.
+
 ```
 dublinisl_controls_rpi_ip_v3/
-├── main.py                  # Application entry point
-├── main_window.py           # Main window — composes all panels and controllers
-├── config.py                # IP/ID config loader; VISCA preset map (131 seats)
-├── visca_protocol.py        # Pure VISCA command logic (no Qt dependency)
-├── visca_mixin.py           # Qt adapter layer for VISCA
-├── camera_worker.py         # Daemon thread per camera; persistent TCP socket
-├── camera_manager.py        # Centralised camera state (zoom, focus, backlight)
-├── atem_monitor.py          # Background thread monitoring ATEM program output
-├── right_panel.py           # Right control panel (joystick, zoom, focus, exposure)
-├── joystick.py              # DigitalJoystick widget
-├── names_panel.py           # Attendees floating panel
-├── widgets.py               # GoButton, DragDropButton, SpecialDragButton
-├── chair_button.py          # ChairmanButton with per-speaker preset UI
-├── chairman_presets.py      # Per-speaker preset storage
-├── seat_names_mixin.py      # Controller — speaker names and seat assignments
-├── session_mixin.py         # Controller — camera power on/off sequence
-├── login_screen.py          # Login UI with lockout
-├── splash_screen.py         # Startup system-check screen
-├── secret_manager.py        # PBKDF2 + machine-locked password encryption
-├── setup_password.py        # CLI utility to set/reset the login password
-├── config_dialog.py         # Settings modal dialog
-├── schedule_dialog.py       # Weekly schedule editor dialog
-├── schedule_config.py       # Schedule read/write logic
-├── camera_discovery.py      # TCP + ARP network scan for camera auto-detection
-├── hardware_simulator.py    # Virtual VISCA servers + ATEM (simulation mode)
-├── sim_mode.py              # CLI to enable/disable simulation mode
-└── virtual_keyboard.py      # Touchscreen virtual keyboard
+│
+├── domain/                        # Pure data models — no Qt, no I/O
+│   ├── camera.py                  # Camera dataclass (index, ip, cam_id, label)
+│   ├── preset.py                  # Preset slot constants and platform preset IDs
+│   └── seat.py                    # Seat dataclass (number, x, y, name)
+│
+├── core/                          # Framework-agnostic logic — no Qt, no I/O
+│   ├── controller.py              # Central coordinator wiring services together
+│   ├── events.py                  # EventBus + EventType enum (synchronous, thread-safe)
+│   └── state.py                   # SystemState — single source of truth for runtime state
+│
+├── application/                   # Business logic services — no Qt
+│   ├── camera_service.py          # Translates business intents into VISCA commands
+│   ├── preset_service.py          # Owns the name→slot map for chairman personal presets
+│   └── session_service.py         # Session lifecycle state (start/end, chairman tracking)
+│
+├── adapters/input/                # Qt input adapters — bridge UI events to EventBus
+│   ├── joystick_adapter.py        # Converts joystick drag signals to CAMERA_MOVE events
+│   └── seat_adapter.py            # Converts seat button clicks to SEAT_SELECTED events
+│
+├── devices/                       # Re-exports for hardware drivers (migration shim)
+│   └── __init__.py                # Exports CameraWorker, CameraManager, ViscaProtocol
+│
+├── simulation/                    # Hardware simulation (no physical devices needed)
+│   └── sim_worker.py              # Virtual VISCA + ATEM worker thread
+│
+├── tests/                         # Test package
+│   └── __init__.py
+│
+├── main.py                        # Application entry point
+├── main_window.py                 # Main window — composes all panels and controllers
+├── config.py                      # IP/ID config loader; VISCA preset map (131 seats)
+├── data_paths.py                  # Persistent data directory + ZIP export/import
+├── json_io.py                     # Atomic JSON read/write with .bak copies
+├── visca_protocol.py              # Pure VISCA command logic (no Qt dependency)
+├── visca_mixin.py                 # Qt adapter layer for VISCA
+├── camera_worker.py               # Daemon thread per camera; persistent TCP socket
+├── camera_manager.py              # Centralised camera state (zoom, focus, backlight)
+├── atem_monitor.py                # Background thread monitoring ATEM program output
+├── right_panel.py                 # Right control panel (joystick, zoom, focus, exposure)
+├── joystick.py                    # DigitalJoystick widget
+├── names_panel.py                 # Attendees floating panel
+├── widgets.py                     # GoButton, DragDropButton, SpecialDragButton
+├── chairman_button.py             # ChairmanButton with per-speaker preset UI
+├── chairman_presets.py            # Per-speaker preset storage (reads via data_paths)
+├── seat_names_mixin.py            # Controller — speaker names and seat assignments
+├── session_mixin.py               # Controller — camera power on/off sequence
+├── login_screen.py                # Login UI with lockout
+├── splash_screen.py               # Startup system-check screen
+├── secret_manager.py              # PBKDF2 + machine-locked password encryption
+├── setup_password.py              # CLI utility to set/reset the login password
+├── config_dialog.py               # Settings modal dialog (includes ZIP export/import)
+├── schedule_dialog.py             # Weekly schedule editor dialog
+├── schedule_config.py             # Schedule read/write logic
+├── camera_discovery.py            # TCP + ARP network scan for camera auto-detection
+├── hardware_simulator.py          # Virtual VISCA servers + ATEM (simulation mode)
+├── sim_mode.py                    # CLI to enable/disable simulation mode
+├── virtual_keyboard.py            # Touchscreen virtual keyboard
+└── test_persistence.py            # Comprehensive persistence and data-integrity tests
 ```
+
+---
+
+## Architecture
+
+The application is structured in four layers. Each layer only imports from layers below it; no circular dependencies are permitted.
+
+```
+┌──────────────────────────────────────────┐
+│  UI Layer (Qt)                           │
+│  main_window, right_panel, login_screen, │
+│  splash_screen, config_dialog, …         │
+├──────────────────────────────────────────┤
+│  Adapters  (adapters/input/)             │
+│  joystick_adapter, seat_adapter          │
+├──────────────────────────────────────────┤
+│  Application  (application/)             │
+│  CameraService, PresetService,           │
+│  SessionService                          │
+├──────────────────────────────────────────┤
+│  Core  (core/)                           │
+│  EventBus, SystemState, Controller       │
+├──────────────────────────────────────────┤
+│  Domain  (domain/)                       │
+│  Camera, Preset, Seat  (data only)       │
+└──────────────────────────────────────────┘
+```
+
+| Layer | Qt? | I/O? | Responsibility |
+|-------|-----|------|----------------|
+| **Domain** | No | No | Data shapes and constants |
+| **Core** | No | No | State, events, orchestration |
+| **Application** | No | JSON / TCP | Business logic services |
+| **Adapters** | Yes | No | Bridge Qt signals → EventBus |
+| **UI** | Yes | No | Render state, capture user input |
+
+Hardware drivers (`camera_worker`, `camera_manager`, `visca_protocol`) are
+re-exported via the `devices/` package during the ongoing migration.
 
 ---
 
