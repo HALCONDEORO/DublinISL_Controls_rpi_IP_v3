@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (
     QMessageBox, QFrame, QGraphicsDropShadowEffect,
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtGui import QFont, QColor, QPalette
 from datetime import datetime
 from pathlib import Path
 from json_io import load_json, save_json
@@ -218,9 +218,14 @@ class LoginScreen(QWidget):
 
         # ── Title ─────────────────────────────────────────────────────────────
         title = QLabel('DublinISL Controls')
-        title.setFont(QFont('Inter Tight', 38, QFont.Bold))
         title.setStyleSheet(
-            "QLabel { color: #1A3318; background: transparent; border: none; }"
+            "QLabel {"
+            "  font: 700 36px 'Inter Tight', 'Segoe UI', sans-serif;"
+            "  color: #1A3318;"
+            "  background: transparent;"
+            "  border: none;"
+            "  letter-spacing: -1px;"
+            "}"
         )
         title.setAlignment(Qt.AlignCenter)
         card_layout.addWidget(title)
@@ -228,34 +233,41 @@ class LoginScreen(QWidget):
 
         # ── Subtitle ──────────────────────────────────────────────────────────
         subtitle = QLabel('Restricted Access')
-        subtitle.setFont(QFont('Inter Tight', 20))
         subtitle.setStyleSheet(
-            "QLabel { color: #2E5229; background: transparent; border: none; }"
+            "QLabel {"
+            "  font: 400 19px 'Inter Tight', 'Segoe UI', sans-serif;"
+            "  color: #2E5229;"
+            "  background: transparent;"
+            "  border: none;"
+            "}"
         )
         subtitle.setAlignment(Qt.AlignCenter)
+        card_layout.addWidget(subtitle)
         card_layout.addSpacing(44)
 
         # ── Password label ────────────────────────────────────────────────────
         pwd_label = QLabel('Password')
-        pwd_label.setFont(QFont('Inter Tight', 16, QFont.DemiBold))
         pwd_label.setStyleSheet(
-            "QLabel { color: #444444; background: transparent; border: none; }"
+            "QLabel {"
+            "  font: 600 15px 'Inter Tight', 'Segoe UI', sans-serif;"
+            "  color: #444444;"
+            "  background: transparent;"
+            "  border: none;"
+            "}"
         )
         card_layout.addWidget(pwd_label)
         card_layout.addSpacing(10)
 
-        # ── Password input — IBM Plex Mono centrado ───────────────────────────
+        # ── Password input ────────────────────────────────────────────────────
         self.password_input = QLineEdit()
-        self.password_input.setPlaceholderText('· · · · · · · ·')
+        self.password_input.setPlaceholderText('Enter password')
         self.password_input.setEchoMode(QLineEdit.Password)
-        mono_font = QFont('IBM Plex Mono', 22)
-        mono_font.setLetterSpacing(QFont.AbsoluteSpacing, 6)
-        self.password_input.setFont(mono_font)
+        input_font = QFont('Segoe UI', 18)
+        self.password_input.setFont(input_font)
         self.password_input.setAlignment(Qt.AlignCenter)
         self.password_input.setStyleSheet("""
             QLineEdit {
                 background-color: #FAFAFA;
-                color: #111111;
                 border: 2px solid #4A7A44;
                 border-radius: 8px;
                 padding: 0 20px;
@@ -265,6 +277,12 @@ class LoginScreen(QWidget):
                 background-color: #FFFFFF;
             }
         """)
+        # Color de texto y placeholder via paleta (el QSS no define color,
+        # así Qt respeta QPalette.PlaceholderText para el hint)
+        pal = self.password_input.palette()
+        pal.setColor(QPalette.Text, QColor(0x11, 0x11, 0x11))
+        pal.setColor(QPalette.PlaceholderText, QColor(160, 160, 160))
+        self.password_input.setPalette(pal)
         self.password_input.setMinimumHeight(64)
         self.password_input.returnPressed.connect(self._verify_password)
         card_layout.addWidget(self.password_input)
