@@ -12,7 +12,7 @@ from core.events import AsyncEventBus, EventType
 
 class JoystickAdapter:
     """
-    Conecta un DigitalJoystick con el EventBus.
+    Conecta un DigitalJoystick con el AsyncEventBus.
 
     Uso en main_window:
         adapter = JoystickAdapter(bus, active_camera_fn)

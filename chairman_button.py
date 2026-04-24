@@ -30,7 +30,7 @@ class ChairmanButton(SpecialDragButton):
     Botón Chairman con gestión de preset por persona.
 
     Parámetros:
-      bus          — EventBus del sistema (emite CHAIRMAN_ASSIGNED y PRESET_SAVE_REQUESTED)
+      bus          — AsyncEventBus del sistema (emite CHAIRMAN_ASSIGNED y PRESET_SAVE_REQUESTED)
       preset_svc   — PresetService (solo lectura, para display de botones auxiliares)
       svg_data     — datos SVG del icono
     """
@@ -48,7 +48,6 @@ class ChairmanButton(SpecialDragButton):
 
         self._bus        = bus
         self._preset_svc = preset_svc
-        # subscribe_qt ensures _on_preset_saved_event runs on the Qt main thread
         self._bus.subscribe_qt(EventType.PRESET_SAVED, self._on_preset_saved_event)
 
         renderer = QSvgRenderer(QtCore.QByteArray(svg_data.encode('utf-8')))

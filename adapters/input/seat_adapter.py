@@ -8,7 +8,7 @@ from core.events import AsyncEventBus, EventType
 
 class SeatAdapter:
     """
-    Conecta el click de un GoButton con el EventBus.
+    Conecta el click de un GoButton con el AsyncEventBus.
 
     Uso:
         adapter = SeatAdapter(bus, active_camera_fn, seat_names_fn)

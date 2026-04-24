@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# main_window.py — Ventana principal: layout de UI + wire-up de EventBus
+# main_window.py — Ventana principal: layout de UI + wire-up de AsyncEventBus
 #
 # ARQUITECTURA:
 #   MainWindow solo hace:
 #     1. Construir widgets y layout
-#     2. Instanciar las capas (SystemState, EventBus, servicios, Controller)
-#     3. Conectar señales Qt → EventBus.emit()
+#     2. Instanciar las capas (SystemState, AsyncEventBus, servicios, Controller)
+#     3. Conectar señales Qt → AsyncEventBus.emit()
 #     4. Suscribirse a eventos del bus para actualizar display
 #
 #   Nunca llama a VISCA directamente.
@@ -15,7 +15,7 @@
 #   - Eliminados _chairman_recall() y _save_chairman_preset(): Controller los gestiona.
 #   - ChairmanButton recibe bus + preset_svc en lugar de callbacks y presets_ref.
 #   - SessionController se actualiza para usar SessionService vía Controller.
-#   - EventBus conecta joystick, asientos, chairman → Controller → CameraService.
+#   - AsyncEventBus conecta joystick, asientos, chairman → Controller → CameraService.
 
 from __future__ import annotations
 
@@ -266,7 +266,7 @@ class MainWindow(QMainWindow):
         btn.clicked.connect(lambda checked=False: self._visca.go_to_preset(2))
         btn.raise_()
 
-        # ── Chairman (preset 1) — ChairmanButton con EventBus ─────────────
+        # ── Chairman (preset 1) — ChairmanButton con AsyncEventBus ──────────
         cx = 744
         self._chairman_btn = ChairmanButton(
             bus        = self._bus,

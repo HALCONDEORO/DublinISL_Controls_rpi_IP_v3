@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-# core/events.py — EventBus y tipos de evento
+# core/events.py — Bus de eventos y tipos de evento
+#
+# Sin Qt en tiempo de importación. Sin I/O. La única dependencia de Qt
+# está en _QtDispatchProxy, cargada de forma perezosa mediante subscribe_qt(),
+# para mantener el núcleo desacoplado de la interfaz gráfica.
 
 from __future__ import annotations
 
@@ -15,24 +19,24 @@ logger = logging.getLogger(__name__)
 
 class EventType(Enum):
     # ── Entrada de asientos ──────────────────────────────────
-    SEAT_SELECTED       = auto()   # payload: name, camera, seat_number
+    SEAT_SELECTED        = auto()   # payload: name, camera, seat_number
 
     # ── Movimiento de cámara ─────────────────────────────────
-    CAMERA_MOVE         = auto()   # payload: camera, pan_speed, tilt_speed
-    CAMERA_STOP         = auto()   # payload: camera
-    CAMERA_ZOOM         = auto()   # payload: camera, speed
+    CAMERA_MOVE          = auto()   # payload: camera, pan_speed, tilt_speed
+    CAMERA_STOP          = auto()   # payload: camera
+    CAMERA_ZOOM          = auto()   # payload: camera, speed
 
     # ── Presets ──────────────────────────────────────────────
-    CHAIRMAN_ASSIGNED   = auto()   # payload: name
-    PRESET_SAVE_REQUESTED = auto() # payload: camera, name
-    PRESET_SAVED        = auto()   # payload: camera, name, slot
+    CHAIRMAN_ASSIGNED    = auto()   # payload: name
+    PRESET_SAVE_REQUESTED = auto()  # payload: camera, name
+    PRESET_SAVED         = auto()   # payload: camera, name, slot
 
     # ── Sesión ───────────────────────────────────────────────
-    SESSION_START       = auto()
-    SESSION_END         = auto()
+    SESSION_START        = auto()
+    SESSION_END          = auto()
 
     # ── Conexión ─────────────────────────────────────────────
-    CONNECTION_CHANGED  = auto()   # payload: camera, connected
+    CONNECTION_CHANGED   = auto()   # payload: camera, connected
 
 
 @dataclass
@@ -41,50 +45,23 @@ class Event:
     payload: Dict[str, Any]
 
 
-class EventBus:
-    """Synchronous event bus (legacy). Prefer AsyncEventBus for new code."""
-
-    def __init__(self) -> None:
-        self._subscribers: Dict[EventType, List[Callable[[Event], None]]] = {}
-
-    def subscribe(self, event_type: EventType,
-                  handler: Callable[[Event], None]) -> None:
-        self._subscribers.setdefault(event_type, []).append(handler)
-
-    def unsubscribe(self, event_type: EventType,
-                    handler: Callable[[Event], None]) -> None:
-        handlers = self._subscribers.get(event_type, [])
-        if handler in handlers:
-            handlers.remove(handler)
-
-    def emit(self, event_type: EventType, **payload: Any) -> None:
-        event = Event(type=event_type, payload=payload)
-        for handler in list(self._subscribers.get(event_type, [])):
-            handler(event)
-
-
 class _QtDispatchProxy:
     """
-    Routes a handler call onto the Qt main thread using a queued signal.
-
-    The QObject must be created on the main thread (i.e., during subscribe_qt,
-    which is always called from main-thread widget constructors). Qt's queued
-    connection then delivers the signal — and therefore the handler call — back
-    to the main thread regardless of which thread calls dispatch().
+    Reenvía llamadas al handler al hilo principal de Qt mediante una señal
+    con QueuedConnection. El QObject se crea en el hilo principal (subscribe_qt
+    siempre se llama desde constructores de widgets), por lo que Qt enruta
+    automáticamente la señal al hilo correcto sin importar desde qué hilo
+    se llame a dispatch().
     """
 
     def __init__(self, handler: Callable[[Event], None]) -> None:
-        from PyQt5.QtCore import QObject, pyqtSignal, Qt
+        from PyQt5.QtCore import QObject, pyqtSignal, Qt  # importación perezosa
 
         class _Emitter(QObject):
-            fired: Any = pyqtSignal(object)
-
-            def __init__(self) -> None:
-                super().__init__()
-                self.fired.connect(handler, Qt.QueuedConnection)
+            fired = pyqtSignal(object)
 
         self._emitter = _Emitter()
-        self._original = handler
+        self._emitter.fired.connect(handler, Qt.QueuedConnection)
 
     def dispatch(self, event: Event) -> None:
         self._emitter.fired.emit(event)
@@ -92,20 +69,19 @@ class _QtDispatchProxy:
 
 class AsyncEventBus:
     """
-    Thread-safe asynchronous event bus.
+    Bus de eventos asíncrono y thread-safe.
 
-    emit() enqueues the event and returns immediately (non-blocking for UI).
-    A single daemon worker thread dequeues events and dispatches handlers.
+    emit() encola el evento y retorna inmediatamente; no bloquea la UI.
+    Un único hilo worker daemon desencola y despacha los handlers en orden.
 
-    Lifecycle:
+    Ciclo de vida:
         bus = AsyncEventBus()
-        bus.start()          # launch worker thread
+        bus.start()   # lanza el hilo worker
         ...
-        bus.stop()           # drain queue and join worker
+        bus.stop()    # envía centinela, drena la cola y une el hilo
 
-    Subscribing Qt-touching handlers:
-        bus.subscribe_qt(EventType.PRESET_SAVED, self._on_saved)
-        # handler is invoked on the Qt main thread via a queued signal
+    Para handlers que accedan a widgets Qt usar subscribe_qt(); el proxy
+    entrega la llamada en el hilo principal mediante QueuedConnection.
     """
 
     def __init__(self) -> None:
@@ -114,9 +90,11 @@ class AsyncEventBus:
         self._lock = threading.RLock()
         self._worker: Optional[threading.Thread] = None
 
-    # ── Lifecycle ────────────────────────────────────────────────────────────
+    # ── Ciclo de vida ────────────────────────────────────────────────────────
 
     def start(self) -> None:
+        if self._worker is not None and self._worker.is_alive():
+            return  # idempotente: no arranca un segundo worker
         self._worker = threading.Thread(
             target=self._run,
             name="AsyncEventBus-worker",
@@ -125,12 +103,13 @@ class AsyncEventBus:
         self._worker.start()
 
     def stop(self) -> None:
-        self._queue.put(None)  # sentinel signals worker to exit
-        if self._worker:
-            self._worker.join(timeout=2.0)
-            self._worker = None
+        if self._worker is None:
+            return
+        self._queue.put(None)  # centinela: ordena al worker que termine
+        self._worker.join(timeout=2.0)
+        self._worker = None
 
-    # ── Subscription ─────────────────────────────────────────────────────────
+    # ── Suscripción ──────────────────────────────────────────────────────────
 
     def subscribe(self, event_type: EventType,
                   handler: Callable[[Event], None]) -> None:
@@ -139,14 +118,14 @@ class AsyncEventBus:
 
     def subscribe_qt(self, event_type: EventType,
                      handler: Callable[[Event], None]) -> None:
-        """Register handler to be invoked on the Qt main thread."""
+        """Registra un handler que se ejecutará en el hilo principal de Qt."""
         proxy = _QtDispatchProxy(handler)
 
-        def _dispatch(event: Event) -> None:
+        def _despachar(event: Event) -> None:
             proxy.dispatch(event)
 
-        _dispatch._original = handler  # type: ignore[attr-defined]
-        self.subscribe(event_type, _dispatch)
+        _despachar._original = handler  # type: ignore[attr-defined]
+        self.subscribe(event_type, _despachar)
 
     def unsubscribe(self, event_type: EventType,
                     handler: Callable[[Event], None]) -> None:
@@ -159,25 +138,28 @@ class AsyncEventBus:
             for h in to_remove:
                 handlers.remove(h)
 
-    # ── Publishing ───────────────────────────────────────────────────────────
+    # ── Publicación ──────────────────────────────────────────────────────────
 
     def emit(self, event_type: EventType, **payload: Any) -> None:
         self._queue.put(Event(type=event_type, payload=payload))
 
-    # ── Worker ───────────────────────────────────────────────────────────────
+    # ── Worker interno ───────────────────────────────────────────────────────
 
     def _run(self) -> None:
         while True:
             event = self._queue.get()
-            if event is None:
-                break
-            with self._lock:
-                handlers = list(self._subscribers.get(event.type, []))
-            for handler in handlers:
-                try:
-                    handler(event)
-                except Exception:
-                    logger.exception(
-                        "Unhandled exception in handler %r for %s",
-                        handler, event.type,
-                    )
+            try:
+                if event is None:  # centinela de parada
+                    break
+                with self._lock:
+                    handlers = list(self._subscribers.get(event.type, []))
+                for handler in handlers:
+                    try:
+                        handler(event)
+                    except Exception:
+                        logger.exception(
+                            "Excepción en handler %r para %s",
+                            handler, event.type,
+                        )
+            finally:
+                self._queue.task_done()

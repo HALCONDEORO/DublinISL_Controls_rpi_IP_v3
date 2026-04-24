@@ -6,7 +6,7 @@
 #
 # Flujo completo: Login → Splash → MainWindow (ready)
 #   MainWindow construye:
-#     SystemState, EventBus, PresetService, CameraService,
+#     SystemState, AsyncEventBus, PresetService, CameraService,
 #     SessionService, Controller, ViscaController (Qt layer)
 
 from __future__ import annotations
