@@ -3,19 +3,19 @@
 
 from __future__ import annotations
 
-from core.events import EventBus, EventType
+from core.events import AsyncEventBus, EventType
 
 
 class SeatAdapter:
     """
-    Conecta el click de un GoButton con el EventBus.
+    Conecta el click de un GoButton con el AsyncEventBus.
 
     Uso:
         adapter = SeatAdapter(bus, active_camera_fn, seat_names_fn)
         btn.clicked.connect(lambda: adapter.on_seat_pressed(seat_number))
     """
 
-    def __init__(self, bus: EventBus, active_camera_fn, seat_name_fn) -> None:
+    def __init__(self, bus: AsyncEventBus, active_camera_fn, seat_name_fn) -> None:
         self._bus = bus
         self._get_active_camera = active_camera_fn
         self._get_seat_name = seat_name_fn

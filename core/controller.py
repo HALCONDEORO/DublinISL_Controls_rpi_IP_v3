@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from core.events import EventBus, EventType, Event
+from core.events import AsyncEventBus, EventType, Event
 from core.state import SystemState
 
 if TYPE_CHECKING:
@@ -30,7 +30,7 @@ class Controller:
     def __init__(
         self,
         state: SystemState,
-        bus: EventBus,
+        bus: AsyncEventBus,
         camera_svc: 'CameraService',
         preset_svc: 'PresetService',
         session_svc: 'SessionService',

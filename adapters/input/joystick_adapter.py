@@ -7,12 +7,12 @@
 
 from __future__ import annotations
 
-from core.events import EventBus, EventType
+from core.events import AsyncEventBus, EventType
 
 
 class JoystickAdapter:
     """
-    Conecta un DigitalJoystick con el EventBus.
+    Conecta un DigitalJoystick con el AsyncEventBus.
 
     Uso en main_window:
         adapter = JoystickAdapter(bus, active_camera_fn)
@@ -22,7 +22,7 @@ class JoystickAdapter:
         )
     """
 
-    def __init__(self, bus: EventBus, active_camera_fn) -> None:
+    def __init__(self, bus: AsyncEventBus, active_camera_fn) -> None:
         self._bus = bus
         self._get_active_camera = active_camera_fn
 
