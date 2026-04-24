@@ -40,6 +40,7 @@ from config import (
     load_names_data,
     PRESET_MAP,
     check_all_cameras,
+    SPEED_MAX,
 )
 from atem_monitor import ATEMMonitor
 from camera_manager import CameraManager
@@ -354,6 +355,19 @@ class MainWindow(QMainWindow):
         self.BtnNames.setIconSize(_pe_pix.size())
         self.BtnNames.clicked.connect(self._toggle_names_panel)
 
+    @staticmethod
+    def _zoom_to_speed(zoom: int) -> int:
+        # zoom %     velocidad   (~% de SPEED_MAX=18)
+        # ─────────────────────────────────────────
+        #   0 – 25      18          100 %   (gran angular)
+        #  26 – 50      13           72 %   (moderado)
+        #  51 – 75       7           39 %   (teleobjetivo)
+        #  76 – 100      3           17 %   (teleobjetivo extremo)
+        if zoom <= 25:   return 18
+        if zoom <= 50:   return 13
+        if zoom <= 75:   return 7
+        return 3
+
     def _build_right_panel(self):
         from right_panel import RightPanel
         self._right_panel = RightPanel(self)
@@ -369,6 +383,7 @@ class MainWindow(QMainWindow):
                 'downright': self._visca.DownRight,
             },
             stop_handler=self._visca.Stop,
+            speed_provider=lambda: self._zoom_to_speed(self.ZoomSlider.value()),
         )
         self._right_panel.set_joystick_mode('platform')
         self._update_focus_ui()
