@@ -139,7 +139,7 @@ class SplashScreen(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setAutoFillBackground(True)
-        self.setStyleSheet("QWidget { background-color: #DCDCDC; }")
+        self.setStyleSheet("QWidget { background-color: #1A1F19; }")
 
         self.tests_passed    = 0
         self.tests_total     = 0
@@ -161,50 +161,63 @@ class SplashScreen(QWidget):
 
     def _build_ui(self):
         layout = QVBoxLayout()
-        layout.setSpacing(30)
-        layout.setContentsMargins(100, 200, 100, 200)
+        layout.setSpacing(24)
+        layout.setContentsMargins(100, 160, 100, 160)
 
         title = QLabel('DublinISL Controls')
-        title.setFont(QFont('Arial', 48, QFont.Bold))
-        title.setStyleSheet("color: #1A3318;")
+        title.setFont(QFont('Inter Tight', 48, QFont.Bold))
+        title.setStyleSheet("color: #FFFFFF; background: transparent;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
         subtitle = QLabel('Initializing system...')
-        subtitle.setFont(QFont('Arial', 24))
-        subtitle.setStyleSheet("color: #2E5229;")
+        subtitle.setFont(QFont('Inter Tight', 22))
+        subtitle.setStyleSheet("color: rgba(255,255,255,100); background: transparent;")
         subtitle.setAlignment(Qt.AlignCenter)
         layout.addWidget(subtitle)
 
-        layout.addSpacing(50)
+        layout.addSpacing(40)
 
         self.log_label = QLabel('Starting tests...')
-        self.log_label.setFont(QFont('Courier', 13))
+        self.log_label.setFont(QFont('IBM Plex Mono', 13))
         self.log_label.setStyleSheet(
-            "color: #1A3318; background-color: #EBEBEB;"
-            "padding: 20px; border: 2px solid #4A7A44;"
+            "QLabel {"
+            "  color: #7DC47D;"
+            "  background-color: #0D160C;"
+            "  padding: 20px;"
+            "  border: 1px solid rgba(74,122,68,0.40);"
+            "  border-radius: 10px;"
+            "}"
         )
         self.log_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.log_label.setMinimumHeight(380)
         self.log_label.setWordWrap(True)
         layout.addWidget(self.log_label)
 
-        layout.addSpacing(20)
+        layout.addSpacing(16)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setStyleSheet("""
             QProgressBar {
-                border: 2px solid #4A7A44; border-radius: 5px;
-                background-color: #EBEBEB; height: 30px;
+                border: none;
+                border-radius: 4px;
+                background-color: rgba(255,255,255,15);
+                height: 8px;
+                text-align: center;
+                color: transparent;
             }
-            QProgressBar::chunk { background-color: #2E5229; }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #4A7A44, stop:1 #2E5229);
+                border-radius: 4px;
+            }
         """)
         self.progress_bar.setValue(0)
         layout.addWidget(self.progress_bar)
 
         self.status_label = QLabel('Status: initializing...')
-        self.status_label.setFont(QFont('Arial', 16, QFont.Bold))
-        self.status_label.setStyleSheet("color: #2E5229;")
+        self.status_label.setFont(QFont('Inter Tight', 16, QFont.Bold))
+        self.status_label.setStyleSheet("color: rgba(255,255,255,140); background: transparent;")
         self.status_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status_label)
 
@@ -225,9 +238,11 @@ class SplashScreen(QWidget):
 
     def _do_status(self, message: str, color: str):
         """Actualizar etiqueta de estado — llamado sólo desde el hilo principal."""
-        colors = {"green": "#1A3318", "yellow": "#7A5C00", "red": "#8B0000"}
+        colors = {"green": "#7DC47D", "yellow": "#F5A623", "red": "#E05050"}
         self.status_label.setText(message)
-        self.status_label.setStyleSheet(f"color: {colors.get(color, 'white')};")
+        self.status_label.setStyleSheet(
+            f"color: {colors.get(color, 'rgba(255,255,255,140)')}; background: transparent;"
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     #  API pública para hilos de fondo (emiten señales, nunca tocan widgets)

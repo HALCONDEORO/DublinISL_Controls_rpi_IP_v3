@@ -11,7 +11,9 @@
       "Bash(xargs -I {} basename {})",
       "WebFetch(domain:api.anthropic.com)",
       "Bash(git fetch *)",
-      "Bash(grep -E \"\\\\.py$|^d\")"
+      "Bash(grep -E \"\\\\.py$|^d\")",
+      "Bash(gunzip -c \"C:\\\\Users\\\\marco\\\\.claude\\\\projects\\\\C--Users-marco-Desktop-Update2026\\\\03580a81-50d5-420a-8bd9-e3cbf2f6a0b9\\\\tool-results\\\\webfetch-1777047857385-yvl1oh.bin\")",
+      "Bash(python -c ' *)"
     ]
   }
 }
