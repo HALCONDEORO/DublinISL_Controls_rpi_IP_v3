@@ -34,7 +34,7 @@ class ViscaController:
             ui=ViscaUICallbacks(
                 # ── Lectura de estado UI ──────────────────────────────────────
                 get_active_cam=self._active_cam,
-                get_speed=lambda: SPEED_MAX,
+                get_speed=lambda: SPEED_MAX,  # SpeedSlider eliminado; velocidad siempre al máximo para pan/tilt por botón
                 get_zoom_value=lambda: window.ZoomSlider.value(),
                 is_call_mode=lambda: window.BtnCall.isChecked(),
                 is_set_mode=lambda: window.BtnSet.isChecked(),

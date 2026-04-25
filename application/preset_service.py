@@ -74,7 +74,7 @@ class PresetService:
                     return slot, True
 
         logger.error("PresetService: rango de slots agotado (>%d personas)",
-                     PRESET_SLOT_MAX - PRESET_SLOT_MIN)
+                     PRESET_SLOT_MAX - PRESET_SLOT_MIN + 1)
         return None, False
 
     def persist(self) -> None:

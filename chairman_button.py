@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+import re
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
@@ -92,11 +94,9 @@ class ChairmanButton(SpecialDragButton):
 
     def _apply_style(self):
         super()._apply_style()
-        # Agrandar fuente del nombre chairman
+        # Agrandar fuente del nombre chairman (regex: tolerante a variaciones de px o espacios)
         self.setStyleSheet(
-            self.styleSheet().replace(
-                " font: 8px; font-weight: bold;", " font: bold 13px;"
-            )
+            re.sub(r'font:\s*[^;]+;(\s*font-weight:\s*[^;]+;)?', 'font: bold 13px;', self.styleSheet())
         )
         self._update_aux_buttons()
 

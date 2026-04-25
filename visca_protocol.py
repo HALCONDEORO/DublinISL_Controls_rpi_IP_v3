@@ -27,7 +27,7 @@ from typing import Callable, Optional
 
 from config import (
     CAM1, CAM2,
-    PRESET_MAP, SPEED_MIN, SPEED_MAX, SOCKET_TIMEOUT, VISCA_PORT
+    PRESET_MAP, SPEED_MAX, SOCKET_TIMEOUT, VISCA_PORT
 )
 from camera_worker import ViscaCommand
 from camera_manager import CameraManager
@@ -80,7 +80,7 @@ class ViscaUICallbacks:
     """Devuelve (ip, cam_id) de la cámara seleccionada en la UI."""
 
     get_speed: Callable[[], int]
-    """Valor actual del SpeedSlider (1–SPEED_MAX)."""
+    """Velocidad para pan/tilt (1–SPEED_MAX). El SpeedSlider fue eliminado; en producción devuelve SPEED_MAX."""
 
     get_zoom_value: Callable[[], int]
     """Valor actual del ZoomSlider (0–100 %)."""
@@ -227,37 +227,11 @@ class ViscaProtocol:
 
     def _get_speed(self) -> int:
         """
-        Lee la velocidad actual del slider (1-18).
-        Se usa directamente como byte de velocidad pan/tilt en los comandos VISCA.
+        Lee la velocidad configurada para pan/tilt (devuelve siempre SPEED_MAX;
+        el SpeedSlider fue eliminado de la UI — la velocidad la gestiona el joystick
+        internamente según la distancia del knob al centro).
         """
         return self._ui_cb.get_speed()
-
-    def _get_zoom_speed(self) -> int:
-        """
-        Convierte la velocidad del slider (1-18) a escala de zoom (1-7).
-        El protocolo VISCA limita la velocidad de zoom a 0x00-0x07.
-        Se escala proporcionalmente y se clampea para evitar valores fuera de rango.
-        """
-        return max(1, min(7, round(self._ui_cb.get_speed() * 7 / SPEED_MAX)))
-
-    def _speed_label_text(self, value: int) -> str:
-        """
-        Devuelve una etiqueta descriptiva de la velocidad para mostrar al operador.
-        Hace la UI más comprensible que mostrar solo el número raw del slider.
-        SPEED_MIN y SPEED_MAX se importan al nivel del módulo, no aquí.
-        """
-        mid = (SPEED_MIN + SPEED_MAX) / 2
-        if value <= SPEED_MIN:
-            desc = "minimum"
-        elif value >= SPEED_MAX:
-            desc = "maximum"
-        elif value < mid - 2:
-            desc = "slow"
-        elif value > mid + 2:
-            desc = "fast"
-        else:
-            desc = "medium"
-        return f"Speed: {value}  ({desc})"
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Movimiento Pan/Tilt
@@ -517,7 +491,9 @@ class ViscaProtocol:
               MOTIVO: son posiciones fijas del orador, siempre en Cam1.
 
         Presets 4-129 (asientos):
-            → Van a la cámara activa (la que el operador haya seleccionado).
+            → Van siempre a la cámara Comments (Cam2), independientemente
+              de la cámara seleccionada en la UI.
+              MOTIVO: los asientos son posiciones del público, siempre en Cam2.
 
         Modo Call: envía recall preset (02).
         Modo Set:  pide confirmación y envía save preset (01).

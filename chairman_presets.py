@@ -103,7 +103,7 @@ def next_available_preset(presets: dict[str, int]) -> int | None:
     for n in range(CHAIRMAN_PRESET_START, CHAIRMAN_PRESET_MAX + 1):
         if n not in used:
             return n
-    return None  # rango agotado — situación muy improbable (79 personas)
+    return None  # rango agotado — situación muy improbable (80 personas: slots 10–89)
 
 
 def get_preset_for_name(presets: dict[str, int], name: str) -> int:
