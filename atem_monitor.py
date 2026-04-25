@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
+# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
+# distribución, modificación o uso sin autorización escrita del autor.
 # atem_monitor.py — Monitor de programa del switcher BlackMagic ATEM
 #
 # Corre en un hilo daemon y emite switched_to_input2 cuando el ATEM

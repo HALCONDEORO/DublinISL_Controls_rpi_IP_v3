@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
+# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
+# distribución, modificación o uso sin autorización escrita del autor.
 # sim_mode.py — Activa / desactiva el modo simulación
 #
 # Llamado desde config_dialog.py (_build_sim_section) y opcionalmente

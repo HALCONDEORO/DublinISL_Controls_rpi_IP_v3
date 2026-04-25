@@ -521,9 +521,9 @@ Key modules:
 
 ## License
 
-Licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
+Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
 
-You are free to use, study, modify, and distribute this software, provided that any derivative work is also distributed under the same licence. See the [LICENSE](LICENSE) file for the full text.
+Este software es propietario y de uso privado exclusivo. Queda prohibida su copia, distribución, modificación o uso sin autorización expresa y por escrito del autor. Consulta el fichero [LICENSE](LICENSE) para el texto completo.
 
 ---
 

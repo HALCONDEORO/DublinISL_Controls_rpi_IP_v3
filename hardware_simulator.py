@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
+# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
+# distribución, modificación o uso sin autorización escrita del autor.
 # hardware_simulator.py — Simulador de hardware PTZ + ATEM (módulo interno)
 #
 # Se importa desde main_window.py cuando sim_ip_backup.json existe.

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
+# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
+# distribución, modificación o uso sin autorización escrita del autor.
 # adapters/input/joystick_adapter.py — Traduce eventos del joystick al EventBus
 #
 # El widget DigitalJoystick llama a handlers con (pan_spd, tilt_spd).

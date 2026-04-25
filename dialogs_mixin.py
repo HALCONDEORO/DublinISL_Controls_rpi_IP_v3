@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
+# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
+# distribución, modificación o uso sin autorización escrita del autor.
 # dialogs_mixin.py — Mixin de diálogos de configuración y ayuda
 #
 # Responsabilidad única: gestionar todos los diálogos modales de la app:

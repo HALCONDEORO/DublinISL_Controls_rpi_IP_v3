@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
+# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
+# distribución, modificación o uso sin autorización escrita del autor.
 # names_panel.py — Panel de asistentes y lista de asistentes
 #
 # Extraído de widgets.py para reducir el tamaño de ese módulo.

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
+# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
+# distribución, modificación o uso sin autorización escrita del autor.
 # application/preset_service.py — Servicio de presets personales del Chairman
 #
 # Dueño único del mapa nombre→slot. Ningún otro componente escribe en él.
