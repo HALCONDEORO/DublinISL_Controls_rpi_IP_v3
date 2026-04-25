@@ -288,8 +288,7 @@ class MainWindow(QMainWindow):
         )
         self._chairman_btn.setGeometry(cx - btn_w // 2, 30, btn_w, btn_h)
         self._chairman_btn.name_assigned.connect(self._seat_names_ctrl._on_seat_name_assigned)
-        self._chairman_btn.clicked.connect(
-            lambda checked=False: self._visca.go_to_preset(PRESET_CHAIRMAN_GENERIC))
+        self._chairman_btn.clicked.connect(self._on_chairman_btn_clicked)
         self._chairman_btn.raise_()
         setattr(self, "Seat1", self._chairman_btn)
 
@@ -418,6 +417,13 @@ class MainWindow(QMainWindow):
             self._names_panel.show()
         else:
             self._names_panel.hide()
+
+    def _on_chairman_btn_clicked(self):
+        name = self._chairman_btn.assigned_name
+        if name:
+            self._bus.emit(EventType.CHAIRMAN_ASSIGNED, name=name)
+        else:
+            self._visca.go_to_preset(PRESET_CHAIRMAN_GENERIC)
 
     def _on_preset_mode_changed(self):
         if self.BtnCall.isChecked():

@@ -33,10 +33,12 @@ import logging
 from json_io import load_json, save_json
 
 from data_paths import CHAIRMAN_PRESETS_FILE
+from domain.preset import PRESET_SLOT_MIN, PRESET_SLOT_MAX
 
 logger = logging.getLogger(__name__)
-CHAIRMAN_PRESET_START  = 10   # primer número de preset disponible para personas
-CHAIRMAN_PRESET_MAX    = 89   # último número de preset seguro (0x59 hex)
+# Alias exportados para compatibilidad con código externo y tests
+CHAIRMAN_PRESET_START   = PRESET_SLOT_MIN
+CHAIRMAN_PRESET_MAX     = PRESET_SLOT_MAX
 CHAIRMAN_GENERIC_PRESET = 1   # preset genérico si la persona no tiene uno asignado
 
 

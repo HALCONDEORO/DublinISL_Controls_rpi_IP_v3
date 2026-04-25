@@ -121,6 +121,8 @@ class Controller:
 
         ok = self._camera.save_preset(cam, slot)
         if ok:
+            if is_new:
+                self._presets.persist()
             logger.info("Preset %d guardado para '%s' en Cam%d", slot, name, cam)
             self._bus.emit(EventType.PRESET_SAVED, camera=cam, name=name, slot=slot)
         else:

@@ -8,13 +8,12 @@
 # cambios CRUD en NamesPanel, y restauración de nombres persistidos al arrancar.
 #
 # Accede en runtime a atributos de MainWindow:
-#   self._names_list, self._seat_names, self._chairman_presets
+#   self._names_list, self._seat_names, self._preset_svc
 #   self._names_panel  (NamesPanel)
 #   self._chairman_btn (ChairmanButton)
 #   getattr(self, f"Seat{N}")  (GoButton / SpecialDragButton / ChairmanButton)
 
 from config import save_names_data
-from chairman_presets import save_chairman_presets
 from widgets import GoButton, SpecialDragButton
 
 
@@ -59,11 +58,7 @@ class SeatNamesController:
                         btn.set_name(new_name, emit_signal=False)
 
             # Migrar preset de Chairman si la persona renombrada tenía uno.
-            if old_name in self._w._chairman_presets:
-                self._w._chairman_presets[new_name] = self._w._chairman_presets.pop(old_name)
-                if not save_chairman_presets(self._w._chairman_presets):
-                    # Revertir el cambio en memoria si el disco falló para mantener consistencia
-                    self._w._chairman_presets[old_name] = self._w._chairman_presets.pop(new_name)
+            self._w._preset_svc.rename(old_name, new_name)
 
         save_names_data(self._w._names_list, self._w._seat_names)
 

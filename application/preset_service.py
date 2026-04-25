@@ -55,17 +55,14 @@ class PresetService:
 
     def assign_slot(self, name: str) -> tuple[Optional[int], bool]:
         """
+        Reserva un slot en memoria. NO escribe en disco.
+
         Devuelve (slot, is_new).
-
-        is_new=True significa que el slot fue recién asignado y aún no
-        confirmado por la cámara — el llamador debe hacer rollback con
-        release_slot(name) si el comando VISCA falla.
-
-        is_new=False: slot ya existía en JSON, no necesita rollback.
-        Devuelve (None, False) si el rango está agotado.
+          is_new=True  → slot recién asignado; llamar persist() si VISCA tiene éxito,
+                         o release_slot(name) para rollback si falla.
+          is_new=False → slot ya existía; no necesita persist() ni rollback.
+          (None, False) → rango agotado.
         """
-        to_persist: Optional[dict] = None
-
         with self._lock:
             if name in self._presets:
                 return self._presets[name], False
@@ -74,31 +71,25 @@ class PresetService:
             for slot in range(PRESET_SLOT_MIN, PRESET_SLOT_MAX + 1):
                 if slot not in used:
                     self._presets[name] = slot
-                    to_persist = dict(self._presets)
-                    break
+                    return slot, True
 
-        if to_persist is None:
-            logger.error("PresetService: rango de slots agotado (>%d personas)",
-                         PRESET_SLOT_MAX - PRESET_SLOT_MIN)
-            return None, False
+        logger.error("PresetService: rango de slots agotado (>%d personas)",
+                     PRESET_SLOT_MAX - PRESET_SLOT_MIN)
+        return None, False
 
+    def persist(self) -> None:
+        """Persiste el estado actual en disco. Llamar solo tras confirmar VISCA."""
+        with self._lock:
+            to_persist = dict(self._presets)
         save_chairman_presets(to_persist)
-        return to_persist[name], True
 
     def release_slot(self, name: str) -> None:
         """
-        Elimina el slot de 'name'. Usar para rollback cuando assign_slot()
-        devolvió is_new=True pero el comando VISCA posterior falló.
+        Elimina el slot de 'name' de memoria sin tocar el disco.
+        Solo para rollback de assign_slot() cuando VISCA falla antes de persist().
         """
-        to_persist: Optional[dict] = None
-
         with self._lock:
-            if name in self._presets:
-                del self._presets[name]
-                to_persist = dict(self._presets)
-
-        if to_persist is not None:
-            save_chairman_presets(to_persist)
+            self._presets.pop(name, None)
 
     def rename(self, old_name: str, new_name: str) -> None:
         """Migra el preset de old_name a new_name sin cambiar el número de slot."""

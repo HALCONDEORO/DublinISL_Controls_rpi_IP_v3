@@ -38,7 +38,7 @@ class ChairmanButton(SpecialDragButton):
       svg_data     — datos SVG del icono
     """
 
-    _AUX_Y   = 130
+    _AUX_Y   = 150
     _AUX_CX  = 744
     _SAVE_W  = 110
     _SAVE_H  = 28
@@ -75,11 +75,6 @@ class ChairmanButton(SpecialDragButton):
             self._AUX_CX - self._SAVE_W // 2, self._AUX_Y,
             self._SAVE_W, self._SAVE_H
         )
-        self._btn_save.setStyleSheet(
-            "QPushButton { background: #1976D2; border: none; border-radius: 4px;"
-            " font: bold 11px; color: white; }"
-            "QPushButton:pressed { background: #1255a0; }"
-        )
         self._btn_save.clicked.connect(self._on_save_clicked)
         self._btn_save.hide()
 
@@ -88,13 +83,36 @@ class ChairmanButton(SpecialDragButton):
             self._AUX_CX - self._EDIT_W // 2, self._AUX_Y,
             self._EDIT_W, self._EDIT_H
         )
-        self._btn_edit.setStyleSheet(
+        self._btn_edit.clicked.connect(self._on_edit_clicked)
+        self._btn_edit.hide()
+
+        self._update_aux_buttons()
+
+    # ── Override de _apply_style ─────────────────────────────────────────
+
+    def _apply_style(self):
+        super()._apply_style()
+        # Agrandar fuente del nombre chairman
+        self.setStyleSheet(
+            self.styleSheet().replace(
+                " font: 8px; font-weight: bold;", " font: bold 13px;"
+            )
+        )
+        self._update_aux_buttons()
+
+    def _refresh_aux_style(self):
+        save_style = (
+            "QPushButton { background: #1976D2; border: none; border-radius: 4px;"
+            " font: bold 11px; color: white; }"
+            "QPushButton:pressed { background: #1255a0; }"
+        )
+        edit_style = (
             "QPushButton { background: rgba(80,80,80,180); border: none; border-radius: 4px;"
             " font: 10px; color: #ddd; }"
             "QPushButton:pressed { background: rgba(50,50,50,200); }"
         )
-        self._btn_edit.clicked.connect(self._on_edit_clicked)
-        self._btn_edit.hide()
+        self._btn_save.setStyleSheet(save_style)
+        self._btn_edit.setStyleSheet(edit_style)
 
     # ── Override de set_name ──────────────────────────────────────────────
 
@@ -112,11 +130,12 @@ class ChairmanButton(SpecialDragButton):
 
     def _update_aux_buttons(self):
         name = self.assigned_name
-        if not name:
+        if not name or self._call_mode:
             self._btn_save.hide()
             self._btn_edit.hide()
             return
 
+        self._refresh_aux_style()
         has_preset = self._preset_svc.has_preset(name)
         if has_preset:
             self._btn_save.hide()
