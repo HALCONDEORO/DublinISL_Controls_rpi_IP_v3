@@ -20,7 +20,7 @@ from __future__ import annotations
 from PyQt5.QtCore import QMetaObject, Qt, Q_ARG, QTimer
 from PyQt5.QtWidgets import QMessageBox
 
-from config import CAM1, CAM2, SPEED_MAX
+from config import CAM1, CAM2
 from visca_protocol import ViscaProtocol, ViscaUICallbacks
 
 
@@ -34,7 +34,9 @@ class ViscaController:
             ui=ViscaUICallbacks(
                 # ── Lectura de estado UI ──────────────────────────────────────
                 get_active_cam=self._active_cam,
-                get_speed=lambda: SPEED_MAX,  # SpeedSlider eliminado; velocidad siempre al máximo para pan/tilt por botón
+                get_speed=lambda: window._pan_cap,   # velocidad botones = cap actual de pan
+                get_pan_cap=lambda: window._pan_cap,
+                get_tilt_cap=lambda: window._tilt_cap,
                 get_zoom_value=lambda: window.ZoomSlider.value(),
                 is_call_mode=lambda: window.BtnCall.isChecked(),
                 is_set_mode=lambda: window.BtnSet.isChecked(),

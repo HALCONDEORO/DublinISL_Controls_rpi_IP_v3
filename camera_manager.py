@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Callable, Optional
 
 from config import CAM1, CAM2, CameraConfig
 from camera_worker import CameraWorker
@@ -33,9 +33,11 @@ class CameraManager:
     Índices de cámara: 1 = CAM1 (Platform), 2 = CAM2 (Comments).
     """
 
-    def __init__(self, cam1: CameraConfig, cam2: CameraConfig):
+    def __init__(self, cam1: CameraConfig, cam2: CameraConfig,
+                 on_worker_ready: Optional[Callable[['CameraWorker'], None]] = None):
         self._cam1_ip = cam1.ip
         self._cam2_ip = cam2.ip
+        self._on_worker_ready = on_worker_ready
 
         # Workers creados bajo demanda: el thread TCP no arranca hasta el
         # primer acceso, evitando conexiones con IPs aún no validadas.
@@ -73,7 +75,10 @@ class CameraManager:
         hasta que se sabe que la IP es válida y necesaria.
         """
         if ip not in self._workers:
-            self._workers[ip] = CameraWorker(ip)
+            w = CameraWorker(ip)
+            self._workers[ip] = w
+            if self._on_worker_ready:
+                self._on_worker_ready(w)
         return self._workers[ip]
 
     # ─────────────────────────────────────────────────────────────────────────

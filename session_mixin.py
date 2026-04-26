@@ -70,6 +70,7 @@ class SessionController:
         if not self._w.session_active:
             # ── Arrancar sesión ───────────────────────────────────────────
             self._w.session_active = True
+            self._w._reset_watchdog_state()  # restaura caps y reintentos
 
             # Deshabilitar botón mientras las cámaras arrancan
             self._w.BtnSession.setEnabled(False)
@@ -93,6 +94,8 @@ class SessionController:
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No
             )
             if reply == QMessageBox.Yes:
+                self._w._visca.cancel_preset_polls()
+
                 # Standby ambas cámaras: 8x 01 04 00 03 FF
                 self._w._visca._send_cmd(CAM1.ip, CAM1.cam_id, "01040003FF")
                 self._w._visca._send_cmd(CAM2.ip, CAM2.cam_id, "01040003FF")

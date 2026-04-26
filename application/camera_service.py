@@ -17,7 +17,7 @@ import socket
 from typing import TYPE_CHECKING
 
 from camera_worker import ViscaCommand
-from config import CAM1, CAM2, PRESET_MAP, SPEED_MAX, VISCA_PORT, SOCKET_TIMEOUT
+from config import CAM1, CAM2, PRESET_MAP, PAN_SPEED_MAX, TILT_SPEED_MAX, ZOOM_DRIVE_MAX, VISCA_PORT, SOCKET_TIMEOUT
 
 if TYPE_CHECKING:
     from camera_manager import CameraManager
@@ -38,6 +38,10 @@ class CameraService:
 
     def __init__(self, manager: 'CameraManager') -> None:
         self._mgr = manager
+        # Caps dinámicos: el watchdog de main_window los reduce en caso de error VISCA
+        self.pan_cap:       int = PAN_SPEED_MAX   # 24
+        self.tilt_cap:      int = TILT_SPEED_MAX  # 20
+        self.zoom_drive_cap: int = ZOOM_DRIVE_MAX  # 7
 
     # ── Comandos confirmados (preset recall/save, power) ──────────────────
 
@@ -76,8 +80,8 @@ class CameraService:
         # pan_dir:  01=Left, 02=Right, 03=Stop  |  tilt_dir: 01=Up, 02=Down, 03=Stop
         pan_dir  = 0x02 if pan_speed  > 0 else (0x01 if pan_speed  < 0 else 0x03)
         tilt_dir = 0x01 if tilt_speed > 0 else (0x02 if tilt_speed < 0 else 0x03)
-        pan_abs  = 0 if pan_dir  == 0x03 else max(1, min(SPEED_MAX, abs(pan_speed)))
-        tilt_abs = 0 if tilt_dir == 0x03 else max(1, min(SPEED_MAX, abs(tilt_speed)))
+        pan_abs  = 0 if pan_dir  == 0x03 else max(1, min(self.pan_cap,  abs(pan_speed)))
+        tilt_abs = 0 if tilt_dir == 0x03 else max(1, min(self.tilt_cap, abs(tilt_speed)))
         _, cam_id = self._cam(camera)
         self._send_queued(camera, bytes.fromhex(
             cam_id + f"010601{pan_abs:02X}{tilt_abs:02X}{pan_dir:02X}{tilt_dir:02X}FF"
@@ -94,9 +98,9 @@ class CameraService:
         if speed == 0:
             zoom_byte = 0x00
         elif speed > 0:
-            zoom_byte = 0x20 | min(7, abs(speed))
+            zoom_byte = 0x20 | min(self.zoom_drive_cap, abs(speed))
         else:
-            zoom_byte = 0x30 | min(7, abs(speed))
+            zoom_byte = 0x30 | min(self.zoom_drive_cap, abs(speed))
         self._send_queued(camera, bytes.fromhex(cam_id + f"010407{zoom_byte:02X}FF"))
 
     # ── Zoom cache (delegado a CameraManager) ────────────────────────────

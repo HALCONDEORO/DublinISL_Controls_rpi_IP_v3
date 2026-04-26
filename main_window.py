@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 
 from PyQt5 import QtGui, QtCore
 from PyQt5.QtCore import Qt, QTimer
@@ -43,7 +44,9 @@ from config import (
     load_names_data,
     PRESET_MAP,
     check_all_cameras,
-    SPEED_MAX,
+    PAN_SPEED_MAX,
+    TILT_SPEED_MAX,
+    ZOOM_DRIVE_MAX,
 )
 from atem_monitor import ATEMMonitor
 from camera_manager import CameraManager
@@ -76,6 +79,11 @@ from domain.preset import PRESET_CHAIRMAN_GENERIC
 class MainWindow(QMainWindow):
     """Ventana principal 1920x1080 px."""
 
+    _WATCHDOG_COOLDOWN       = 1.5     # s mínimos entre dos reducciones del mismo tipo
+    _WATCHDOG_RECOVERY_MS    = 20_000  # ms hasta el primer intento de recuperación
+    _WATCHDOG_WINDOW_SECS    = 300     # ventana de 5 min: más de 3 fallos → bloqueado
+    _WATCHDOG_MAX_RETRIES    = 3       # intentos de recuperación antes de bloquear
+
     def __init__(self):
         super().__init__()
 
@@ -83,7 +91,14 @@ class MainWindow(QMainWindow):
         self.setGeometry(0, 0, 1920, 1080)
 
         self.session_active = False
-        self._cameras = CameraManager(CAM1, CAM2)
+        self._pan_cap:        int = PAN_SPEED_MAX   # 24 — watchdog lo reduce en error move
+        self._tilt_cap:       int = TILT_SPEED_MAX  # 20 — watchdog lo reduce en error move
+        self._zoom_drive_cap: int = ZOOM_DRIVE_MAX  # 7  — watchdog lo reduce en error zoom_drive
+        self._watchdog_state: dict = {
+            'move':       self._fresh_watchdog_state(),
+            'zoom_drive': self._fresh_watchdog_state(),
+        }
+        self._cameras = CameraManager(CAM1, CAM2, on_worker_ready=self._on_worker_ready)
 
         _data = load_names_data()
         self._names_list = _data["names"]
@@ -359,18 +374,139 @@ class MainWindow(QMainWindow):
         self.BtnNames.setIconSize(_pe_pix.size())
         self.BtnNames.clicked.connect(self._toggle_names_panel)
 
-    @staticmethod
-    def _zoom_to_speed(zoom: int) -> int:
-        # zoom %     velocidad   (~% de SPEED_MAX=18)
+    def _zoom_to_speed(self, zoom: int) -> int:
+        # zoom %     velocidad   (~% de TILT_SPEED_MAX=20; pan puede llegar a 24 via _pan_cap)
         # ─────────────────────────────────────────
-        #   0 – 25      18          100 %   (gran angular)
-        #  26 – 50      13           72 %   (moderado)
-        #  51 – 75       7           39 %   (teleobjetivo)
-        #  76 – 100      3           17 %   (teleobjetivo extremo)
-        if zoom <= 25:   return 18
-        if zoom <= 50:   return 13
-        if zoom <= 75:   return 7
-        return 3
+        #   0 –  9      20          100 %
+        #  10 – 18      19           95 %
+        #  19 – 27      18           90 %
+        #  28 – 36      16           80 %
+        #  37 – 45      15           75 %
+        #  46 – 54      14           70 %
+        #  55 – 63      13           65 %
+        #  64 – 72      11           55 %
+        #  73 – 81      10           50 %
+        #  82 – 90       9           45 %
+        #  91 – 100      8           40 %
+        if zoom <=  9:   raw = 20
+        elif zoom <= 18: raw = 19
+        elif zoom <= 27: raw = 18
+        elif zoom <= 36: raw = 16
+        elif zoom <= 45: raw = 15
+        elif zoom <= 54: raw = 14
+        elif zoom <= 63: raw = 13
+        elif zoom <= 72: raw = 11
+        elif zoom <= 81: raw = 10
+        elif zoom <= 90: raw = 9
+        else:            raw = 8
+        return min(raw, self._tilt_cap)
+
+    # ── Watchdog de velocidad VISCA ───────────────────────────────────────────
+
+    @staticmethod
+    def _fresh_watchdog_state() -> dict:
+        return {'last_reduction': 0.0, 'window_start': 0.0, 'retries': 0}
+
+    def _reset_watchdog_state(self) -> None:
+        """Restablece caps y estado al iniciar sesión."""
+        self._pan_cap        = PAN_SPEED_MAX
+        self._tilt_cap       = TILT_SPEED_MAX
+        self._zoom_drive_cap = ZOOM_DRIVE_MAX
+        self._camera_svc.pan_cap        = self._pan_cap
+        self._camera_svc.tilt_cap       = self._tilt_cap
+        self._camera_svc.zoom_drive_cap = self._zoom_drive_cap
+        self._watchdog_state = {
+            'move':       self._fresh_watchdog_state(),
+            'zoom_drive': self._fresh_watchdog_state(),
+        }
+        logger.info("Watchdog VISCA: estado y caps restablecidos al inicio de sesión")
+
+    def _on_worker_ready(self, worker) -> None:
+        worker.signals.visca_error.connect(self._on_visca_speed_error)
+
+    def _on_visca_speed_error(self, ip: str, cmd_type: str) -> None:
+        if cmd_type not in self._watchdog_state:
+            return
+        now  = time.monotonic()
+        st   = self._watchdog_state[cmd_type]
+
+        # Ventana de 5 min expirada → empezar ciclo nuevo
+        if st['window_start'] > 0 and (now - st['window_start']) > self._WATCHDOG_WINDOW_SECS:
+            self._watchdog_state[cmd_type] = st = self._fresh_watchdog_state()
+
+        # Bloqueado (agotados los reintentos en esta ventana)
+        if st['retries'] >= self._WATCHDOG_MAX_RETRIES:
+            return
+
+        # Cooldown: evita cascada de reducciones por errores rápidos consecutivos
+        if (now - st['last_reduction']) < self._WATCHDOG_COOLDOWN:
+            return
+
+        st['last_reduction'] = now
+        if st['window_start'] == 0.0:
+            st['window_start'] = now
+
+        self._apply_reduction(cmd_type, ip)
+
+        # Programar intento de recuperación si quedan reintentos
+        st['retries'] += 1
+        if st['retries'] < self._WATCHDOG_MAX_RETRIES:
+            QTimer.singleShot(
+                self._WATCHDOG_RECOVERY_MS,
+                lambda ct=cmd_type: self._recover_cap(ct),
+            )
+        else:
+            logger.warning(
+                "Watchdog VISCA [%s] %s: %d reducciones en %.0f s — cap bloqueado hasta reinicio de sesión",
+                cmd_type, ip, self._WATCHDOG_MAX_RETRIES, self._WATCHDOG_WINDOW_SECS,
+            )
+
+    def _apply_reduction(self, cmd_type: str, ip: str) -> None:
+        if cmd_type == 'move':
+            changed = False
+            if self._pan_cap > 8:
+                self._pan_cap = max(8, self._pan_cap - 2)
+                self._camera_svc.pan_cap = self._pan_cap
+                changed = True
+            if self._tilt_cap > 8:
+                self._tilt_cap = max(8, self._tilt_cap - 2)
+                self._camera_svc.tilt_cap = self._tilt_cap
+                changed = True
+            if changed:
+                logger.warning(
+                    "Watchdog VISCA [move] %s — pan_cap→%d  tilt_cap→%d",
+                    ip, self._pan_cap, self._tilt_cap,
+                )
+        elif cmd_type == 'zoom_drive':
+            if self._zoom_drive_cap > 1:
+                self._zoom_drive_cap -= 1
+                self._camera_svc.zoom_drive_cap = self._zoom_drive_cap
+                logger.warning(
+                    "Watchdog VISCA [zoom_drive] %s — zoom_drive_cap→%d",
+                    ip, self._zoom_drive_cap,
+                )
+
+    def _recover_cap(self, cmd_type: str) -> None:
+        """Sube el cap un paso para comprobar si la cámara admite mayor velocidad."""
+        st = self._watchdog_state.get(cmd_type)
+        if st is None or st['retries'] >= self._WATCHDOG_MAX_RETRIES:
+            return
+        if cmd_type == 'move':
+            self._pan_cap  = min(PAN_SPEED_MAX,  self._pan_cap  + 2)
+            self._tilt_cap = min(TILT_SPEED_MAX, self._tilt_cap + 2)
+            self._camera_svc.pan_cap  = self._pan_cap
+            self._camera_svc.tilt_cap = self._tilt_cap
+            logger.info(
+                "Watchdog VISCA [move]: intento recuperación %d/%d — pan_cap→%d tilt_cap→%d",
+                st['retries'], self._WATCHDOG_MAX_RETRIES, self._pan_cap, self._tilt_cap,
+            )
+        elif cmd_type == 'zoom_drive':
+            self._zoom_drive_cap = min(ZOOM_DRIVE_MAX, self._zoom_drive_cap + 1)
+            self._camera_svc.zoom_drive_cap = self._zoom_drive_cap
+            logger.info(
+                "Watchdog VISCA [zoom_drive]: intento recuperación %d/%d — cap→%d",
+                st['retries'], self._WATCHDOG_MAX_RETRIES, self._zoom_drive_cap,
+            )
 
     def _build_right_panel(self):
         from right_panel import RightPanel

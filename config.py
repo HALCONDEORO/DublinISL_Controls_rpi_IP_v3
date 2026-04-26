@@ -52,7 +52,10 @@ def _read_config(filename: str, default: str) -> str:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 SPEED_MIN = 1
-SPEED_MAX = 18
+PAN_SPEED_MAX  = 24   # VISCA max pan:       0x18
+TILT_SPEED_MAX = 20   # VISCA max tilt:      0x14
+ZOOM_DRIVE_MAX = 7    # VISCA max zoom drive: nibble 0x7
+SPEED_MAX = TILT_SPEED_MAX   # alias: límite más restrictivo (tilt)
 SPEED_DEFAULT = 8
 
 # Timeout para conexiones socket (1 s: suficiente en LAN local)
@@ -63,6 +66,17 @@ CAMERA_QUEUE_MAXSIZE = 20
 # Segundos sin comando antes de enviar heartbeat (ping)
 HEARTBEAT_TIMEOUT = 5.0
 BUTTON_COLOR = "black"
+
+# Parámetros del polling de zoom tras recall de preset.
+# La cámara responde Completion en ms, pero el movimiento físico puede tardar
+# varios segundos. El polling lee posición y zoom cada INTERVAL hasta que la
+# cámara deja de moverse (posición estable 2 ciclos seguidos) o se alcanza el
+# techo. El techo escala con la reducción de velocidad del watchdog: si pan_cap
+# baja a la mitad, el movimiento tarda el doble → techo doble.
+PRESET_ZOOM_SETTLE_BASE   = 4.0   # segundos de techo a velocidad máxima (cap=24)
+PRESET_ZOOM_SETTLE_MARGIN = 1.5   # factor de seguridad sobre el tiempo calculado
+PRESET_ZOOM_SETTLE_MAX    = 12.0  # techo absoluto aunque el watchdog reduzca mucho la velocidad
+PRESET_ZOOM_POLL_INTERVAL = 0.3   # segundos entre consultas PTZ+zoom
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

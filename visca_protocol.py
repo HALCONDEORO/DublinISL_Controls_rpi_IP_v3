@@ -21,13 +21,17 @@ import logging
 import socket
 import binascii
 import threading
+import time
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Callable, Optional
 
 from config import (
     CAM1, CAM2,
-    PRESET_MAP, SPEED_MAX, SOCKET_TIMEOUT, VISCA_PORT
+    PRESET_MAP, SOCKET_TIMEOUT, VISCA_PORT,
+    PAN_SPEED_MAX,
+    PRESET_ZOOM_SETTLE_BASE, PRESET_ZOOM_SETTLE_MARGIN, PRESET_ZOOM_SETTLE_MAX,
+    PRESET_ZOOM_POLL_INTERVAL,
 )
 from camera_worker import ViscaCommand
 from camera_manager import CameraManager
@@ -58,6 +62,8 @@ class ViscaUICallbacks:
         ui = ViscaUICallbacks(
             get_active_cam=lambda: (CAM1.ip, CAM1.cam_id),
             get_speed=lambda: 9,
+            get_pan_cap=lambda: 24,
+            get_tilt_cap=lambda: 20,
             get_zoom_value=lambda: 50,
             is_call_mode=lambda: True,
             is_set_mode=lambda: False,
@@ -80,7 +86,13 @@ class ViscaUICallbacks:
     """Devuelve (ip, cam_id) de la cámara seleccionada en la UI."""
 
     get_speed: Callable[[], int]
-    """Velocidad para pan/tilt (1–SPEED_MAX). El SpeedSlider fue eliminado; en producción devuelve SPEED_MAX."""
+    """Velocidad para pan/tilt por botón (devuelve el cap de pan como máximo)."""
+
+    get_pan_cap: Callable[[], int]
+    """Cap dinámico de velocidad pan (watchdog lo reduce si VISCA responde error)."""
+
+    get_tilt_cap: Callable[[], int]
+    """Cap dinámico de velocidad tilt (watchdog lo reduce si VISCA responde error)."""
 
     get_zoom_value: Callable[[], int]
     """Valor actual del ZoomSlider (0–100 %)."""
@@ -160,6 +172,7 @@ class ViscaProtocol:
     def __init__(self, cameras: CameraManager, ui: ViscaUICallbacks):
         self._cameras = cameras
         self._ui_cb   = ui
+        self._preset_stop_events: dict[str, threading.Event] = {}  # ip → stop event del poll activo
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Helpers internos
@@ -196,7 +209,6 @@ class ViscaProtocol:
         """
         Enruta ViscaCommand al worker de la cámara indicada en cmd.camera.
         Si cmd.priority=True vacía la cola antes de encolar (para STOP).
-        Fallback a thread directo si el worker no existe (no debería ocurrir).
         """
         ip = CAM1.ip if cmd.camera == 1 else CAM2.ip
         worker = self._cameras.worker(ip)
@@ -204,7 +216,6 @@ class ViscaProtocol:
             worker.send_priority(cmd)
         else:
             worker.send(cmd)
-
 
     def _active_cam(self) -> tuple[str, str]:
         """
@@ -227,7 +238,7 @@ class ViscaProtocol:
 
     def _get_speed(self) -> int:
         """
-        Lee la velocidad configurada para pan/tilt (devuelve siempre SPEED_MAX;
+        Lee la velocidad para pan/tilt por botón (devuelve pan_cap;
         el SpeedSlider fue eliminado de la UI — la velocidad la gestiona el joystick
         internamente según la distancia del knob al centro).
         """
@@ -251,8 +262,8 @@ class ViscaProtocol:
         ip, cam_id = self._active_cam()
         if pan_spd is None:
             pan_spd = tilt_spd = self._get_speed()
-        pan_spd  = 0 if pan_dir  == PanDir.STOP  else max(1, min(SPEED_MAX, pan_spd))
-        tilt_spd = 0 if tilt_dir == TiltDir.STOP else max(1, min(SPEED_MAX, tilt_spd))
+        pan_spd  = 0 if pan_dir  == PanDir.STOP  else max(1, min(self._ui_cb.get_pan_cap(),  pan_spd))
+        tilt_spd = 0 if tilt_dir == TiltDir.STOP else max(1, min(self._ui_cb.get_tilt_cap(), tilt_spd))
         self._dispatch(ViscaCommand(
             camera=self._cam_key(ip),
             payload=bytes.fromhex(
@@ -318,6 +329,27 @@ class ViscaProtocol:
             payload=bytes.fromhex(cam_id + f"010447{p:02X}{q:02X}{r:02X}{s:02X}FF"),
         ))
 
+    @staticmethod
+    def _parse_zoom_response(data: bytes) -> Optional[int]:
+        """Extrae el valor 0–0x4000 de una respuesta VISCA zoom inquiry (y0 50 0p…)."""
+        if len(data) >= 7 and data[1] == 0x50:
+            return ((data[2]&0xF)<<12 | (data[3]&0xF)<<8
+                    | (data[4]&0xF)<<4 | (data[5]&0xF))
+        return None
+
+    @staticmethod
+    def _parse_ptz_response(data: bytes) -> Optional[tuple[int, int]]:
+        """
+        Extrae (pan, tilt) de una respuesta VISCA PTZ Position Inquiry.
+        Formato: y0 58 0p 0q 0r 0s 0t 0u 0v 0w FF  (11 bytes)
+        Los valores son enteros de 16 bits sin signo (posición absoluta de la cámara).
+        """
+        if len(data) >= 11 and data[1] == 0x58:
+            pan  = (data[2]&0xF)<<12|(data[3]&0xF)<<8|(data[4]&0xF)<<4|(data[5]&0xF)
+            tilt = (data[6]&0xF)<<12|(data[7]&0xF)<<8|(data[8]&0xF)<<4|(data[9]&0xF)
+            return pan, tilt
+        return None
+
     def _query_zoom(self, ip: str, cam_id: str) -> Optional[int]:
         """Consulta el zoom actual vía VISCA inquiry. Devuelve valor 0–0x4000 o None."""
         try:
@@ -326,12 +358,32 @@ class ViscaProtocol:
                 s.connect((ip, VISCA_PORT))
                 s.send(binascii.unhexlify(cam_id + "090447FF"))
                 data = s.recv(64)
-            if len(data) >= 7 and data[1] == 0x50:
-                return ((data[2] & 0xF) << 12 | (data[3] & 0xF) << 8
-                        | (data[4] & 0xF) << 4 | (data[5] & 0xF))
+            return self._parse_zoom_response(data)
         except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
             logger.error("_query_zoom %s: %s", ip, exc)
         return None
+
+    def _query_position_and_zoom(self, ip: str, cam_id: str
+                                 ) -> tuple[Optional[tuple[int, int]], Optional[int]]:
+        """
+        Una sola sesión TCP: envía PTZ Position Inquiry y Zoom Inquiry en secuencia.
+        Devuelve ((pan, tilt), zoom_raw) — cualquiera puede ser None si falla.
+
+        MOTIVO: dos consultas en una conexión reduce el overhead de setup TCP
+        que se acumula en el polling de 300 ms durante un preset.
+        """
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(SOCKET_TIMEOUT)
+                s.connect((ip, VISCA_PORT))
+                s.send(binascii.unhexlify(cam_id + "090612FF"))  # PTZ Position Inquiry
+                ptz_data  = s.recv(64)
+                s.send(binascii.unhexlify(cam_id + "090447FF"))  # Zoom Inquiry
+                zoom_data = s.recv(64)
+            return self._parse_ptz_response(ptz_data), self._parse_zoom_response(zoom_data)
+        except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
+            logger.debug("_query_position_and_zoom %s: %s", ip, exc)
+            return None, None
 
     def _refresh_zoom_slider(self):
         """
@@ -359,14 +411,101 @@ class ViscaProtocol:
 
         threading.Thread(target=_fetch, daemon=True).start()
 
-    def _invalidate_zoom_cache(self, ip: str):
+    # ─────────────────────────────────────────────────────────────────────────
+    #  Preset zoom polling
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _compute_preset_ceiling(self) -> float:
         """
-        Invalida el cache de zoom para la cámara dada (preset recall mueve el zoom).
-        Si es la cámara activa, refresca el slider inmediatamente vía red.
+        Techo dinámico para el polling post-preset, en segundos.
+
+        Escala inversamente con pan_cap: si el watchdog redujo la velocidad a
+        la mitad, el movimiento tarda el doble → techo doble.
+        Está acotado por PRESET_ZOOM_SETTLE_MAX para no esperar eternamente.
         """
-        self._cameras.invalidate_zoom(ip)
-        if self._active_cam()[0] == ip:
-            self._refresh_zoom_slider()
+        pan_cap = self._ui_cb.get_pan_cap()
+        base = PRESET_ZOOM_SETTLE_BASE * (PAN_SPEED_MAX / max(pan_cap, 1))
+        return min(base * PRESET_ZOOM_SETTLE_MARGIN, PRESET_ZOOM_SETTLE_MAX)
+
+    def _start_preset_poll(self, ip: str, cam_id: str, ceiling: float) -> None:
+        """Cancela el poll anterior para esta cámara (si existe) y arranca uno nuevo."""
+        prev = self._preset_stop_events.pop(ip, None)
+        if prev is not None:
+            prev.set()
+        ev = threading.Event()
+        self._preset_stop_events[ip] = ev
+        threading.Thread(
+            target=self._preset_poll_loop,
+            args=(ip, cam_id, ceiling, ev),
+            daemon=True,
+            name=f"PresetPoll-{ip}",
+        ).start()
+
+    def _preset_poll_loop(self, ip: str, cam_id: str,
+                          ceiling: float, stop: threading.Event) -> None:
+        """
+        Consulta posición PTZ y zoom cada PRESET_ZOOM_POLL_INTERVAL segundos.
+
+        Actualiza el ZoomSlider en cada ciclo (actualización progresiva mientras
+        la cámara se mueve). Para cuando AMBOS —posición PTZ y zoom— llevan 2
+        ciclos sin cambiar, o se alcanza el techo de tiempo.
+
+        Si la cámara no soporta PTZ Position Inquiry (pos siempre None), se
+        usa estabilidad de zoom únicamente como criterio de parada.
+        """
+        deadline   = time.monotonic() + ceiling
+        prev_pos   = None
+        prev_zoom  = None
+        stable_cnt = 0
+
+        try:
+            while not stop.is_set() and time.monotonic() < deadline:
+                try:
+                    pos, zoom_raw = self._query_position_and_zoom(ip, cam_id)
+
+                    if zoom_raw is not None:
+                        pct = round(zoom_raw * 100 / self._ZOOM_MAX)
+                        self._cameras.set_zoom(ip, pct)
+                        if self._active_cam()[0] == ip:
+                            self._ui_cb.update_zoom_slider(pct)
+
+                    # Criterio de estabilidad:
+                    #   pos_stable  = pos es None (cámara no lo soporta → ignorar) o no cambió
+                    #   zoom_stable = zoom conocido y sin cambio respecto al ciclo anterior
+                    # Ambos deben cumplirse para incrementar el contador.
+                    pos_stable  = (pos      is None) or (pos      == prev_pos)
+                    zoom_stable = (zoom_raw is not None) and (zoom_raw == prev_zoom)
+
+                    if pos_stable and zoom_stable:
+                        stable_cnt += 1
+                        if stable_cnt >= 2:
+                            break
+                    else:
+                        stable_cnt = 0
+
+                    if pos is not None:
+                        prev_pos = pos
+                    if zoom_raw is not None:
+                        prev_zoom = zoom_raw
+
+                except Exception as exc:
+                    logger.error("_preset_poll_loop %s: ciclo abortado: %s", ip, exc)
+                    break
+
+                stop.wait(PRESET_ZOOM_POLL_INTERVAL)
+
+        finally:
+            # Garantizado incluso si un callback lanza excepción:
+            # solo borramos nuestra entrada; si _start_preset_poll ya registró
+            # un nuevo evento para esta ip entre medias, no lo tocamos.
+            if self._preset_stop_events.get(ip) is stop:
+                self._preset_stop_events.pop(ip, None)
+
+    def cancel_preset_polls(self) -> None:
+        """Cancela todos los polls activos. Llamar al terminar la sesión."""
+        for ev in self._preset_stop_events.values():
+            ev.set()
+        self._preset_stop_events.clear()
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Focus
@@ -508,10 +647,14 @@ class ViscaProtocol:
         preset_hex, ip, cam_id = self._resolve_preset(preset_number)
         if preset_hex is None:
             return
+        def _on_preset_ack():
+            ceiling = self._compute_preset_ceiling()
+            self._start_preset_poll(ip, cam_id, ceiling)
+
         self._dispatch(ViscaCommand(
             camera=self._cam_key(ip),
             payload=bytes.fromhex(cam_id + f"01043f02{preset_hex}ff"),
-            on_success=lambda: self._invalidate_zoom_cache(ip),
+            on_success=_on_preset_ack,
             on_failure=lambda: self._ui(self._ui_cb.show_error),
         ))
 

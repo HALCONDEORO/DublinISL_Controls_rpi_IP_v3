@@ -107,6 +107,12 @@ def handle_visca(data: bytes, cam: SimCamera) -> bytes:
                 cam.last_cmd = "INQ:Backlight"
                 return bytes([0x90, 0x50, 0x02 if cam.backlight else 0x03, 0xFF])
 
+            if cat == 0x06 and cmd == 0x12:   # PTZ Position
+                cam.last_cmd = "INQ:PTZPos"
+                pan_nibs  = _nibbles_to_bytes(cam.pan  & 0xFFFF)
+                tilt_nibs = _nibbles_to_bytes(cam.tilt & 0xFFFF)
+                return bytes([0x90, 0x58]) + pan_nibs + tilt_nibs + bytes([0xFF])
+
             cam.last_cmd = f"INQ:?{cat:02X}{cmd:02X}"
             return bytes([0x90, 0x60, 0x02, 0xFF])
 
@@ -123,7 +129,7 @@ def handle_visca(data: bytes, cam: SimCamera) -> bytes:
                 tilt_dir = data[7]
                 dirs = {0x01: "L", 0x02: "R", 0x03: "."}
                 td   = {0x01: "U", 0x02: "D", 0x03: "."}
-                cam.last_cmd = f"Move {dirs.get(pan_dir,'?')}{td.get(tilt_dir,'?')} spd={pan_spd}"
+                cam.last_cmd = f"Move {dirs.get(pan_dir,'?')}{td.get(tilt_dir,'?')} pan={pan_spd} tilt={tilt_spd}"
                 step = pan_spd * 5
                 if pan_dir == 0x01:   cam.pan  -= step
                 elif pan_dir == 0x02: cam.pan  += step

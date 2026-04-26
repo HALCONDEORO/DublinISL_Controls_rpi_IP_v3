@@ -66,7 +66,8 @@ class ViscaCommand:
 
 class CameraWorkerSignals(QObject):
     """Señales Qt para CameraWorker (QObject requerido para pyqtSignal)."""
-    connection_changed = pyqtSignal(bool)  # True = conectado, False = desconectado
+    connection_changed = pyqtSignal(bool)        # True = conectado, False = desconectado
+    visca_error        = pyqtSignal(str, str)    # (ip, cmd_type): 'move'|'zoom_drive'|'other'
 
 
 class CameraWorker:
@@ -175,23 +176,18 @@ class CameraWorker:
         with self._lock:
             sock_ref = self._sock
 
-        if sock_ref is not None:
-            if self._socket_alive(sock_ref):
-                self._set_connected(True)
-            else:
-                # Socket muerto (cámara apagada / cable desconectado)
-                self._close_socket()
-                with self._lock:
-                    self._sock = self._connect()
-                    sock_ref = self._sock
-                self._set_connected(sock_ref is not None)
-        else:
-            # Sin socket → intentar reconectar
-            with self._lock:
-                if self._sock is None:
-                    self._sock = self._connect()
-                sock_ref = self._sock
-            self._set_connected(sock_ref is not None)
+        if sock_ref is not None and self._socket_alive(sock_ref):
+            self._set_connected(True)
+            return
+
+        # Socket muerto o inexistente: reconectar SIN tener el lock.
+        # _connect() puede bloquear hasta SOCKET_TIMEOUT; mantener el lock
+        # durante ese tiempo causaría deadlock si restart() llega desde la UI.
+        self._close_socket()
+        new_sock = self._connect()
+        with self._lock:
+            self._sock = new_sock
+        self._set_connected(new_sock is not None)
 
     @staticmethod
     def _socket_alive(sock: socket.socket) -> bool:
@@ -256,6 +252,65 @@ class CameraWorker:
                 self._sock = None
         self._set_connected(False)
 
+    @staticmethod
+    def _classify_payload(payload: bytes) -> str:
+        """Clasifica un payload VISCA por tipo de comando para el watchdog de velocidad."""
+        body = payload[1:4]  # slice seguro: nunca lanza IndexError
+        if body == b'\x01\x06\x01':
+            return 'move'
+        if body == b'\x01\x04\x07':
+            return 'zoom_drive'
+        return 'other'
+
+    @staticmethod
+    def _has_final_visca_frame(data: bytes) -> bool:
+        """
+        Devuelve True si data contiene al menos una trama VISCA de respuesta final:
+          - Completion 9x 5y FF  (byte[1] high-nibble = 0x5)
+          - Error      9x 6y FF  (byte[1] high-nibble = 0x6)
+        El ACK 9x 4y FF NO es final — muchas cámaras lo envían antes del Completion
+        en un paquete TCP separado.
+        """
+        pos = 0
+        while pos < len(data):
+            term = data.find(b'\xff', pos)
+            if term == -1:
+                break
+            frame = data[pos:term]
+            if len(frame) >= 2 and (frame[1] & 0xF0) in (0x50, 0x60):
+                return True
+            pos = term + 1
+        return False
+
+    def _read_visca_response(self, sock: socket.socket) -> bytes:
+        """
+        Lee la respuesta completa de la cámara, esperando hasta obtener
+        una trama final (Completion o Error).
+
+        Necesario porque algunas cámaras (Sony, PTZOptics, Datavideo, etc.)
+        envían ACK y Completion en paquetes TCP separados. Un único recv()
+        podría capturar solo el ACK y perder el Error que llega después.
+
+        Usa select() para respetar el timeout total sin resetear el timer
+        con cada recv() parcial.
+        """
+        buf = b''
+        deadline = time.monotonic() + SOCKET_TIMEOUT
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            readable, _, _ = select.select([sock], [], [], remaining)
+            if not readable:
+                break
+            chunk = sock.recv(1024)
+            if not chunk:
+                break
+            buf += chunk
+            if CameraWorker._has_final_visca_frame(buf):
+                break
+        return buf
+
     def _run(self):
         """
         Bucle principal del worker (corre en thread de fondo).
@@ -302,10 +357,18 @@ class CameraWorker:
                 # mientras tanto sin quedarse esperando.
                 try:
                     sock_ref.send(cmd.payload)
-                    sock_ref.recv(1024)  # Leer ACK de la cámara (sin lock)
+                    response = self._read_visca_response(sock_ref)
                     self._set_connected(True)
+                    # VISCA syntax error: 9x 6y 02 FF — 0x60 0x02 = parámetro inválido.
+                    # Buscamos 0x6002 específicamente para no reaccionar a otros errores
+                    # (0x6001=longitud, 0x6003=buffer lleno) que no indican velocidad alta.
+                    if b'\x60\x02' in response:
+                        cmd_type = CameraWorker._classify_payload(cmd.payload)
+                        self.signals.visca_error.emit(self.ip, cmd_type)
+                        logger.warning("CameraWorker %s: VISCA syntax error [%s] en respuesta %s",
+                                       self.ip, cmd_type, response.hex())
                     _succeeded = True
-                    break  # Éxito: salir del bucle de reintentos
+                    break  # Éxito de comunicación (aunque haya error VISCA de parámetro)
 
                 except (socket.timeout, socket.error, OSError) as exc:
                     logger.warning("CameraWorker %s intento %d: %s", self.ip, attempt + 1, exc)
