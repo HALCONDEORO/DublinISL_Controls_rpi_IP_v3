@@ -20,8 +20,8 @@ from __future__ import annotations
 import os
 
 from PyQt5 import QtCore
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QPainter
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QColor, QFont, QPainter
 from PyQt5.QtSvg import QSvgWidget
 from PyQt5.QtWidgets import (
     QButtonGroup, QFrame, QHBoxLayout, QLabel,
@@ -32,31 +32,10 @@ from PyQt5.QtWidgets import (
 
 class RightPanel:
     """
-    Construye el panel derecho usando layouts (sin coordenadas absolutas).
-    El container blanco ocupa (1446, 0, 474, 1080) sobre el fondo gris.
-    Todos los widgets son hijos del container, pero sus referencias
-    se asignan como atributos de main_window para compatibilidad total.
+    Panel derecho de controles PTZ (layout-based).
+    Container blanco sobre (1446, 0, 474, 1080). Todos los widgets son hijos
+    del container; sus referencias se asignan como atributos de main_window.
     """
-
-    _ZOOM_VERT_STYLE = (
-        "QSlider:vertical {{"
-        "  padding: 11px 0px;"
-        "}}"
-        "QSlider::groove:vertical {{"
-        "  background: #E0E0E0; width: 6px; border-radius: 3px;"
-        "}}"
-        "QSlider::add-page:vertical {{"
-        "  background: {fill}; border-radius: 3px;"
-        "}}"
-        "QSlider::handle:vertical {{"
-        "  background: {handle}; border: 2px solid {border};"
-        "  width: 22px; height: 22px; margin: 0 -9px; border-radius: 11px;"
-        "}}"
-    )
-    _ZOOM_STYLE_PLATFORM = _ZOOM_VERT_STYLE.format(
-        fill='#9B3A3A', handle='#B41E1E', border='#6E1212')
-    _ZOOM_STYLE_COMMENTS = _ZOOM_VERT_STYLE.format(
-        fill='#64B464', handle='#7DC47D', border='#3A8A3A')
 
     TOGGLE_STYLE = (
         "QPushButton {"
@@ -78,9 +57,23 @@ class RightPanel:
     def connect_joystick(self, handlers: dict, stop_handler, speed_provider=None):
         """Inserta el DigitalJoystick en el slot reservado en el layout."""
         from joystick import DigitalJoystick
+        mw = self._mw
         slot = self._joystick_slot
         self._joystick = DigitalJoystick(slot, None, None, slot.width(),
                                          handlers, stop_handler, speed_provider)
+
+        # Anillo → slider oculto → VISCA debounce
+        self._joystick.zoom_changed.connect(
+            lambda pct: mw.ZoomSlider.setValue(int(round(pct))))
+
+        # Slider oculto (actualizado por VISCA feedback) → anillo visual
+        mw.ZoomSlider.valueChanged.connect(self._joystick.set_zoom)
+
+        # Botones +/− → slider (la cadena slider→anillo→VISCA ya está cableada)
+        self._zoom_plus_btn.clicked.connect(
+            lambda: mw.ZoomSlider.setValue(min(100, mw.ZoomSlider.value() + 5)))
+        self._zoom_minus_btn.clicked.connect(
+            lambda: mw.ZoomSlider.setValue(max(0, mw.ZoomSlider.value() - 5)))
 
     def set_active_mode(self, mode: str):
         """'call' → activa call_frame rojo  |  'set' → activa set_frame verde."""
@@ -289,7 +282,7 @@ class RightPanel:
         mw.Cam2.clicked.connect(mw._update_controls_visibility)
 
     def _add_ptz_block(self, layout: QVBoxLayout):
-        """Bloque unificado: Speed (fila superior) · Joystick + Zoom (fila inferior)."""
+        """Bloque unificado: Joystick con anillo de zoom + botones +/- a la derecha."""
         mw = self._mw
 
         block = QFrame(self._container)
@@ -297,61 +290,69 @@ class RightPanel:
             "QFrame { background-color: #F2F2F2; border-radius: 12px; border: none; }"
         )
         bl = QVBoxLayout(block)
-        bl.setContentsMargins(4, 8, 4, 8)
+        bl.setContentsMargins(0, 8, 0, 8)
         bl.setSpacing(6)
 
-        # ── Joystick (izquierda) + Zoom vertical (derecha) ───────────────────
+        # ── Slot del joystick (incluirá el anillo de zoom pintado) ───────────
         joy_size = 374
         slot = QWidget(block)
         slot.setFixedSize(joy_size, joy_size)
         self._joystick_slot = slot
 
-        zoom_w = QWidget(block)
-        zoom_w.setFixedSize(56, joy_size)
-        zoom_lay = QVBoxLayout(zoom_w)
-        zoom_lay.setContentsMargins(0, 0, 0, 0)
-        zoom_lay.setSpacing(4)
-
-        mw.ZoomSlider = QSlider(Qt.Vertical, zoom_w)
+        # Slider oculto — conserva toda la lógica VISCA existente
+        mw.ZoomSlider = QSlider(Qt.Vertical)
         mw.ZoomSlider.setRange(0, 100)
         mw.ZoomSlider.setValue(0)
-        mw.ZoomSlider.setTickPosition(QSlider.TicksRight)
-        mw.ZoomSlider.setTickInterval(10)
-        mw.ZoomSlider.setFixedHeight(joy_size - 44)
-        mw.ZoomSlider.setStyleSheet(self._ZOOM_STYLE_PLATFORM)
-        zoom_lay.addWidget(mw.ZoomSlider, alignment=Qt.AlignHCenter)
+        mw.ZoomSlider.hide()
 
-        mw.ZoomValueLabel = QLabel("0%", zoom_w)
+        # ── Columna derecha: botón +, lectura %, botón − ──────────────────────
+        right_col = QWidget(block)
+        right_col.setFixedWidth(60)
+        rc_lay = QVBoxLayout(right_col)
+        rc_lay.setContentsMargins(0, 0, 0, 0)
+        rc_lay.setSpacing(10)
+        rc_lay.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+
+        self._zoom_plus_btn = _CircleButton('+', right_col)
+        self._zoom_plus_btn.setFixedSize(38, 38)
+
+        mw.ZoomValueLabel = QLabel('0%', right_col)
         mw.ZoomValueLabel.setAlignment(Qt.AlignCenter)
-        mw.ZoomValueLabel.setStyleSheet("font: 600 13px 'Inter Tight', 'Segoe UI'; color: #444444;")
-        zoom_lay.addWidget(mw.ZoomValueLabel)
+        mw.ZoomValueLabel.setStyleSheet(
+            "font: 600 12px 'IBM Plex Mono', 'Consolas'; color: #666666;")
 
-        zoom_title = _section_label('Zoom', zoom_w)
-        zoom_title.setAlignment(Qt.AlignCenter)
-        zoom_lay.addWidget(zoom_title)
+        zoom_lbl = QLabel('ZOOM', right_col)
+        zoom_lbl.setAlignment(Qt.AlignCenter)
+        zoom_lbl.setStyleSheet(
+            "font: 700 8px 'Inter Tight', 'Segoe UI'; color: #AAAAAA; letter-spacing: 1px;")
 
-        joy_zoom_row = QHBoxLayout()
-        joy_zoom_row.setSpacing(8)
-        joy_zoom_row.addWidget(slot, alignment=Qt.AlignTop)
-        joy_zoom_row.addWidget(zoom_w, alignment=Qt.AlignTop)
-        bl.addLayout(joy_zoom_row)
+        self._zoom_minus_btn = _CircleButton('−', right_col)
+        self._zoom_minus_btn.setFixedSize(38, 38)
 
-        # Debounce: envía zoom cada 150 ms mientras se arrastra; al soltar, envío inmediato
+        rc_lay.addStretch()
+        rc_lay.addWidget(self._zoom_plus_btn, alignment=Qt.AlignHCenter)
+        rc_lay.addWidget(mw.ZoomValueLabel)
+        rc_lay.addWidget(zoom_lbl)
+        rc_lay.addWidget(self._zoom_minus_btn, alignment=Qt.AlignHCenter)
+        rc_lay.addStretch()
+
+        joy_right_row = QHBoxLayout()
+        joy_right_row.setSpacing(0)
+        joy_right_row.addWidget(slot, alignment=Qt.AlignTop)
+        joy_right_row.addSpacing(12)
+        joy_right_row.addWidget(right_col, alignment=Qt.AlignVCenter)
+        bl.addLayout(joy_right_row)
+
+        # Debounce: slider oculto → VISCA (lógica sin cambios)
         mw._zoom_timer = QtCore.QTimer(block)
         mw._zoom_timer.setSingleShot(True)
         mw._zoom_timer.setInterval(150)
         mw._zoom_timer.timeout.connect(mw._visca.ZoomAbsolute)
         mw.ZoomSlider.valueChanged.connect(
             lambda v: (mw.ZoomValueLabel.setText(f"{v}%"), mw._zoom_timer.start()))
-        mw.ZoomSlider.sliderReleased.connect(
-            lambda: (mw._zoom_timer.stop(), mw._visca.ZoomAbsolute()))
 
         mw.Cam1.clicked.connect(mw._visca._refresh_zoom_slider)
         mw.Cam2.clicked.connect(mw._visca._refresh_zoom_slider)
-        mw.Cam1.clicked.connect(
-            lambda: mw.ZoomSlider.setStyleSheet(self._ZOOM_STYLE_PLATFORM))
-        mw.Cam2.clicked.connect(
-            lambda: mw.ZoomSlider.setStyleSheet(self._ZOOM_STYLE_COMMENTS))
 
         # ── Display de estado de cámara simulada (solo en modo sim) ──────────
         import sim_mode as _sm
@@ -392,7 +393,7 @@ class RightPanel:
 
     def _add_separator(self, layout: QVBoxLayout):
         layout.addSpacing(20)
-        line = QFrame(self._container)
+        line = QFrame()
         line.setFrameShape(QFrame.HLine)
         line.setStyleSheet("color: #E0E0E0;")
         layout.addWidget(line)
@@ -572,6 +573,48 @@ class _IndicatorButton(QPushButton):
         painter.drawEllipse(lx, ly, r * 2, r * 2)
 
         painter.end()
+
+
+class _CircleButton(QLabel):
+    """Botón circular con símbolo centrado garantizado vía paintEvent manual."""
+
+    clicked = pyqtSignal()
+
+    _S_NORMAL  = "QLabel { background:#FFFFFF; border:1.5px solid #E0E0E0; border-radius:19px; }"
+    _S_HOVER   = "QLabel { background:#F2F2F2; border:1.5px solid #BBBBBB; border-radius:19px; }"
+    _S_PRESSED = "QLabel { background:#E0E0E0; border:1.5px solid #BBBBBB; border-radius:19px; }"
+    _FONT      = QFont('Inter Tight', 20, QFont.Bold)
+
+    def __init__(self, symbol: str, parent=None):
+        super().__init__('', parent)        # texto vacío: QLabel no dibuja nada
+        self._symbol = symbol
+        self.setCursor(Qt.PointingHandCursor)
+        self.setStyleSheet(self._S_NORMAL)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)           # fondo + borde del stylesheet
+        p = QPainter(self)
+        p.setRenderHint(QPainter.TextAntialiasing)
+        p.setFont(self._FONT)
+        p.setPen(QColor('#444444'))
+        p.drawText(self.rect(), Qt.AlignCenter, self._symbol)
+        p.end()
+
+    def enterEvent(self, _):
+        self.setStyleSheet(self._S_HOVER)
+
+    def leaveEvent(self, _):
+        self.setStyleSheet(self._S_NORMAL)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.setStyleSheet(self._S_PRESSED)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.setStyleSheet(self._S_NORMAL)
+            if self.rect().contains(event.pos()):
+                self.clicked.emit()
 
 
 # ── Helpers de módulo ─────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@
 import math
 
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import QWidget
 
 from config import SPEED_MAX
@@ -25,7 +25,10 @@ class DigitalJoystick(QWidget):
     - Click + arrastre → llama al handler de la dirección correspondiente
     - Release          → llama a stop_handler
     - Zona muerta central → sin movimiento
+    - Anillo de zoom superior (semicírculo W→T) arrastrable; emite zoom_changed(int)
     """
+
+    zoom_changed = pyqtSignal(int)  # emite pct 0-100
 
     _DIR_MAP = {
         0: 'up', 1: 'upright', 2: 'right', 3: 'downright',
@@ -158,11 +161,27 @@ class DigitalJoystick(QWidget):
             ))
         self._arrow_halo_r = arrow_len * 1.4
 
+        # ── Anillo de zoom (semicírculo superior) ─────────────────────────────
+        self._ring_r      = r * 0.94      # radio del arco, separado del disco
+        self._ring_stroke = max(18, int(r * 0.096))  # grosor del trazo del arco
+        self._ring_pct    = 0.0               # 0–100
+        self._ring_dragging = False
+        self._ring_platform_color = QtGui.QColor(155, 58, 58)   # #9B3A3A
+        self._ring_comments_color = QtGui.QColor(74, 140, 74)   # #4A8C4A
+        self._ring_active_color   = self._ring_platform_color   # default: platform
+
     # ── modo de color ──────────────────────────────────────────────────────────
     def set_mode(self, mode: str):
         """'platform' → rojo  |  cualquier otro → verde."""
-        self._palette   = self._COLORS_CALL if mode == 'platform' else self._COLORS_SET
-        self._glow_grad = self._glow_grads[id(self._palette)]
+        self._palette           = self._COLORS_CALL if mode == 'platform' else self._COLORS_SET
+        self._glow_grad         = self._glow_grads[id(self._palette)]
+        self._ring_active_color = (self._ring_platform_color if mode == 'platform'
+                                   else self._ring_comments_color)
+        self.update()
+
+    def set_zoom(self, pct):
+        """Actualiza el anillo de zoom desde una fuente externa (sin emitir señal)."""
+        self._ring_pct = max(0.0, min(100.0, float(pct)))
         self.update()
 
     # ── paint ──────────────────────────────────────────────────────────────────
@@ -238,24 +257,146 @@ class DigitalJoystick(QWidget):
         p.setBrush(spec_grad)
         p.drawEllipse(QtCore.QPointF(spec_x, spec_y), spec_rx, spec_ry)
 
+        # Anillo de zoom encima del joystick
+        self._draw_zoom_ring(p)
+
+    # ── anillo de zoom ─────────────────────────────────────────────────────────
+
+    def _ring_pct_to_pos(self, pct: float) -> QtCore.QPointF:
+        """Convierte 0–100% a coordenada de pantalla sobre el arco."""
+        # Qt: 0°=este, 90°=norte, 180°=oeste. Arco va de 180° (izq) a 0° (der) CW.
+        deg = 180.0 - pct * 1.8
+        rad = math.radians(deg)
+        cx, cy = self._center.x(), self._center.y()
+        return QtCore.QPointF(
+            cx + self._ring_r * math.cos(rad),
+            cy - self._ring_r * math.sin(rad),
+        )
+
+    def _pos_to_ring_pct(self, pos) -> float:
+        """Convierte posición de mouse a porcentaje de zoom (restringido al semiarco superior)."""
+        cx, cy = self._center.x(), self._center.y()
+        dx = pos.x() - cx
+        dy = pos.y() - cy
+        deg = math.degrees(math.atan2(-dy, dx))  # CCW desde este
+        if deg < 0:
+            deg += 360.0
+        if 0.0 <= deg <= 180.0:
+            return max(0.0, min(100.0, (180.0 - deg) / 1.8))
+        return 0.0 if (dx < 0) else 100.0  # semianillo inferior: snap
+
+    def _is_ring_hit(self, pos) -> bool:
+        """True si el click cae sobre el arco del anillo (mitad superior)."""
+        cx, cy = self._center.x(), self._center.y()
+        dx = pos.x() - cx
+        dy = pos.y() - cy
+        dist = math.hypot(dx, dy)
+        tolerance = self._ring_stroke * 1.6
+        return abs(dist - self._ring_r) < tolerance and dy <= self._ring_stroke
+
+    def _draw_zoom_ring(self, p: QtGui.QPainter):
+        """Dibuja el semiarco de zoom encima del joystick."""
+        cx, cy = self._center.x(), self._center.y()
+        R  = self._ring_r
+        sw = self._ring_stroke
+        rect = QtCore.QRectF(cx - R, cy - R, R * 2, R * 2)
+
+        p.setBrush(Qt.NoBrush)
+
+        # Arco de pista (gris, de 180° a 0° en sentido horario = span −180)
+        track_pen = QtGui.QPen(QtGui.QColor(212, 212, 212), sw, Qt.SolidLine,
+                               Qt.RoundCap, Qt.RoundJoin)
+        p.setPen(track_pen)
+        p.drawArc(rect, 180 * 16, -180 * 16)
+
+        # Arco relleno (color cámara, de 180° hasta la posición actual)
+        if self._ring_pct > 0.5:
+            span = int(round(self._ring_pct * 1.8 * 16))
+            fill_pen = QtGui.QPen(self._ring_active_color, sw, Qt.SolidLine,
+                                  Qt.RoundCap, Qt.RoundJoin)
+            p.setPen(fill_pen)
+            p.drawArc(rect, 180 * 16, -span)
+
+        # Marcas de tick (0%, 50%, 100% mayores; 25%, 75% menores)
+        for i in range(11):
+            pct_t = i * 10
+            deg   = 180.0 - pct_t * 1.8
+            rad   = math.radians(deg)
+            major = (i % 5 == 0)
+            r1 = R - (sw * 0.55 if major else sw * 0.35)
+            r2 = R + (sw * 0.55 if major else sw * 0.35)
+            x1 = cx + r1 * math.cos(rad)
+            y1 = cy - r1 * math.sin(rad)
+            x2 = cx + r2 * math.cos(rad)
+            y2 = cy - r2 * math.sin(rad)
+            tick_pen = QtGui.QPen(
+                QtGui.QColor(160, 160, 160) if major else QtGui.QColor(200, 200, 200),
+                2.0 if major else 1.2, Qt.SolidLine, Qt.RoundCap,
+            )
+            p.setPen(tick_pen)
+            p.drawLine(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2))
+
+        # Handle — disco plano, ligeramente mayor que el trazo, difuminado en bordes
+        hp = self._ring_pct_to_pos(self._ring_pct)
+        hr = sw * 0.58  # diámetro = 1.16×sw → sobresale un poco del canal
+        ac = self._ring_active_color
+
+        p.setPen(Qt.NoPen)
+        soft_g = QtGui.QRadialGradient(hp.x(), hp.y(), hr)
+        soft_g.setColorAt(0.00, ac)
+        soft_g.setColorAt(0.62, ac)
+        soft_g.setColorAt(1.00, QtGui.QColor(ac.red(), ac.green(), ac.blue(), 0))
+        p.setBrush(soft_g)
+        p.drawEllipse(hp, hr, hr)
+
+        # Etiquetas W / T
+        p.setPen(QtGui.QColor(175, 175, 175))
+        lbl_font = QtGui.QFont('Inter Tight', max(7, int(sw * 0.72)), QtGui.QFont.Bold)
+        p.setFont(lbl_font)
+        fm = QtGui.QFontMetricsF(lbl_font)
+        # 0 (debajo del extremo izquierdo)
+        w_x = cx - R - fm.width('0') * 0.5
+        w_y = cy + sw + fm.ascent() + 2
+        p.drawText(QtCore.QPointF(w_x, w_y), '0')
+        # 100 (debajo del extremo derecho)
+        t_x = cx + R - fm.width('100') * 0.5
+        t_y = cy + sw + fm.ascent() + 2
+        p.drawText(QtCore.QPointF(t_x, t_y), '100')
+
     # ── mouse events ───────────────────────────────────────────────────────────
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self._tracking = True
-            self._process(event.pos())
+            pos = QtCore.QPointF(event.pos())
+            if self._is_ring_hit(pos):
+                self._ring_dragging = True
+                self._ring_pct = self._pos_to_ring_pct(pos)
+                self.zoom_changed.emit(int(round(self._ring_pct)))
+                self.update()
+            else:
+                self._tracking = True
+                self._process(event.pos())
 
     def mouseMoveEvent(self, event):
-        if self._tracking:
+        pos = QtCore.QPointF(event.pos())
+        if self._ring_dragging:
+            self._ring_pct = self._pos_to_ring_pct(pos)
+            self.zoom_changed.emit(int(round(self._ring_pct)))
+            self.update()
+        elif self._tracking:
             self._process(event.pos())
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self._timer.stop()
-            self._tracking   = False
-            self._knob_pos   = QtCore.QPointF(self._center)
-            self._cur_dir    = None
-            self._cur_sector = None
-            self.stop_handler()
+            if self._ring_dragging:
+                self._ring_dragging = False
+                self.zoom_changed.emit(int(round(self._ring_pct)))
+            elif self._tracking:
+                self._timer.stop()
+                self._tracking   = False
+                self._knob_pos   = QtCore.QPointF(self._center)
+                self._cur_dir    = None
+                self._cur_sector = None
+                self.stop_handler()
             self.update()
 
     # ── timer de reenvío ───────────────────────────────────────────────────────
