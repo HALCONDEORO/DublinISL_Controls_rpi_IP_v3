@@ -37,6 +37,8 @@ class SimCamera:
         self.presets: dict[int, tuple[int, int, int]] = {}
         self.pan        = 0
         self.tilt       = 0
+        self.pan_spd    = 0
+        self.tilt_spd   = 0
         self._lock      = threading.RLock()  # reentrant: evita deadlock si un método llama a otro dentro del lock
         self.cmd_count  = 0
         self.last_cmd   = ""
@@ -130,6 +132,9 @@ def handle_visca(data: bytes, cam: SimCamera) -> bytes:
                 dirs = {0x01: "L", 0x02: "R", 0x03: "."}
                 td   = {0x01: "U", 0x02: "D", 0x03: "."}
                 cam.last_cmd = f"Move {dirs.get(pan_dir,'?')}{td.get(tilt_dir,'?')} pan={pan_spd} tilt={tilt_spd}"
+                moving = pan_dir != 0x03 or tilt_dir != 0x03
+                cam.pan_spd  = pan_spd  if moving else 0
+                cam.tilt_spd = tilt_spd if moving else 0
                 step = pan_spd * 5
                 if pan_dir == 0x01:   cam.pan  -= step
                 elif pan_dir == 0x02: cam.pan  += step

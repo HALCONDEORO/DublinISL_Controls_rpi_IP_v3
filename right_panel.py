@@ -359,13 +359,13 @@ class RightPanel:
         if _sm.is_active():
             import hardware_simulator as _hw
 
-            bl.addSpacing(42)
+            bl.addSpacing(8)
             sim_lbl = QLabel("", block)
             sim_lbl.setAlignment(Qt.AlignCenter)
             sim_lbl.setWordWrap(True)
             sim_lbl.setStyleSheet(
-                "font: 14px 'IBM Plex Mono', 'Consolas'; color: #333;"
-                " background: #E8E8E8; border-radius: 6px; padding: 8px 10px;"
+                "font: 700 16px 'IBM Plex Mono', 'Consolas'; color: #222;"
+                " background: #E0E0E0; border-radius: 8px; padding: 12px 14px;"
             )
             bl.addWidget(sim_lbl)
 
@@ -377,11 +377,14 @@ class RightPanel:
                     z    = int(cam.zoom / 0x4000 * 100)
                     p    = int(cam.pan)
                     t    = int(cam.tilt)
-                    last = (cam.last_cmd or "-")[:20]
+                    ps   = int(cam.pan_spd)
+                    ts   = int(cam.tilt_spd)
+                    last = cam.last_cmd or "-"
                 sim_lbl.setText(
-                    f"zoom {z:3d}%\n"
-                    f"pan  {p:+6d}   tilt {t:+6d}\n"
-                    f"{last}"
+                    f"zoom  {z:3d}%\n"
+                    f"pan   {p:+7d}   spd {ps:2d}\n"
+                    f"tilt  {t:+7d}   spd {ts:2d}\n"
+                    f"cmd   {last}"
                 )
 
             _sim_timer = QtCore.QTimer(block)
