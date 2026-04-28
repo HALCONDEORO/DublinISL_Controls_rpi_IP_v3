@@ -90,10 +90,14 @@ sm_stub = types.ModuleType("secret_manager")
 sm_stub.decrypt_password = lambda: "test"
 sys.modules["secret_manager"] = sm_stub
 
-# data_paths stub
+# data_paths stub — incluye todos los atributos que otros módulos importan al nivel de módulo,
+# para que la sustitución en sys.modules no rompa imports de chairman_presets o schedule_config.
 dp_stub = types.ModuleType("data_paths")
 from pathlib import Path
-dp_stub.SEAT_NAMES_FILE = Path("seat_names_test.json")
+dp_stub.SEAT_NAMES_FILE        = Path("seat_names_test.json")
+dp_stub.CHAIRMAN_PRESETS_FILE  = Path("chairman_presets_test.json")
+dp_stub.SCHEDULE_FILE          = Path("schedule_test.json")
+dp_stub.CONFIG_DIR             = Path(".")
 sys.modules["data_paths"] = dp_stub
 
 # ─── Ahora podemos importar el módulo real ────────────────────────────────────

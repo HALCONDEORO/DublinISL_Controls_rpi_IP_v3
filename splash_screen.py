@@ -19,9 +19,13 @@ from typing import Optional
 from camera_discovery import get_camera_subnet, tcp_scan, arp_scan
 from data_paths import SCHEDULE_FILE
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar
+from PyQt5.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar, QFrame, QSizePolicy
+)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import (
+    QFont, QPainter, QColor, QRadialGradient, QPen, QBrush
+)
 
 from config import CAM1, CAM2, SOCKET_TIMEOUT, VISCA_PORT, SEAT_POSITIONS, ATEMAddress
 
@@ -134,97 +138,346 @@ class SplashScreen(QWidget):
     # Señales internas para actualizar UI de forma thread-safe.
     # Qt enruta señales emitidas desde hilos de fondo al hilo principal
     # automáticamente con conexión QueuedConnection.
-    _sig_log    = pyqtSignal(str)
-    _sig_status = pyqtSignal(str, str)   # mensaje, color
-    _sig_progress = pyqtSignal(int)      # 0-100
+    _sig_log        = pyqtSignal(str)
+    _sig_status     = pyqtSignal(str, str)   # mensaje, color
+    _sig_progress   = pyqtSignal(int)        # 0-100
+    _sig_cam_update = pyqtSignal(int, str)   # cam_idx (1/2), estado
+    _sig_ticker     = pyqtSignal(str)        # fragmento para añadir al ticker
+
+    # Estilos por estado de cámara
+    _CAM_STATE = {
+        'connecting': {
+            'border': 'rgba(212,134,10,0.30)',
+            'bg':     'rgba(212,134,10,0.05)',
+            'led':    '#D4860A',
+            'text':   '#D4860A',
+            'label':  'Connecting...',
+        },
+        'connected': {
+            'border': 'rgba(35,170,70,0.30)',
+            'bg':     'rgba(35,170,70,0.06)',
+            'led':    '#23AA46',
+            'text':   '#23AA46',
+            'label':  'Connected',
+        },
+        'disconnected': {
+            'border': 'rgba(190,35,35,0.30)',
+            'bg':     'rgba(190,35,35,0.05)',
+            'led':    '#BE2323',
+            'text':   '#BE2323',
+            'label':  'No response',
+        },
+    }
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setAutoFillBackground(True)
-        self.setStyleSheet("QWidget { background-color: #1A1F19; }")
+        self.setAutoFillBackground(False)
 
         self.tests_passed    = 0
         self.tests_total     = 0
         self.test_results: dict = {}
         self.boot_start_time = time.time()
         self.diagnostic_mode = False
+        self._cam1_status    = 'connecting'
+        self._cam2_status    = 'connecting'
+        self._ticker_parts: list[str] = []
+        self._led_pulse_on   = True
 
         self.boot_stats = BootStatistics()
 
         self._build_ui()
+
         # Conectar señales internas → slots en hilo principal
         self._sig_log.connect(self._do_log)
         self._sig_status.connect(self._do_status)
         self._sig_progress.connect(self.progress_bar.setValue)
+        self._sig_cam_update.connect(self._do_cam_update)
+        self._sig_ticker.connect(self._do_ticker)
+
+        # Pulso para LEDs en estado "connecting"
+        self._pulse_timer = QTimer(self)
+        self._pulse_timer.timeout.connect(self._pulse_leds)
+        self._pulse_timer.start(600)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    #  BACKGROUND
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+
+        # Fondo sólido #1A1F19
+        p.fillRect(0, 0, w, h, QColor(0x1A, 0x1F, 0x19))
+
+        # Radial verde suave centrado (70% × 60% del canvas, a 50% / 40%)
+        glow = QRadialGradient(w * 0.50, h * 0.40, max(w, h) * 0.55)
+        glow.setColorAt(0.0, QColor(46, 82, 41, 76))   # rgba 0.30
+        glow.setColorAt(1.0, QColor(46, 82, 41, 0))
+        p.fillRect(0, 0, w, h, QBrush(glow))
+
+        # Radial verde oscuro, esquina inferior-izquierda
+        accent = QRadialGradient(w * 0.20, h * 0.80, max(w, h) * 0.38)
+        accent.setColorAt(0.0, QColor(26, 51, 24, 51))  # rgba 0.20
+        accent.setColorAt(1.0, QColor(26, 51, 24, 0))
+        p.fillRect(0, 0, w, h, QBrush(accent))
+
+        # Grid 80×80 px, rgba(255,255,255,0.015)
+        grid_pen = QPen(QColor(255, 255, 255, 4))
+        grid_pen.setWidth(1)
+        p.setPen(grid_pen)
+        for x in range(0, w, 80):
+            p.drawLine(x, 0, x, h)
+        for y in range(0, h, 80):
+            p.drawLine(0, y, w, y)
+
+        p.end()
 
     # ─────────────────────────────────────────────────────────────────────────
     #  UI
     # ─────────────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        layout = QVBoxLayout()
-        layout.setSpacing(24)
-        layout.setContentsMargins(100, 160, 100, 160)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        title = QLabel('DublinISL Controls')
-        title.setFont(QFont('Inter Tight', 48, QFont.Bold))
-        title.setStyleSheet("color: #FFFFFF; background: transparent;")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        # ── Contenido central ─────────────────────────────────────────────
+        center = QWidget()
+        center.setFixedWidth(620)
+        center.setAttribute(Qt.WA_TranslucentBackground)
+        col = QVBoxLayout(center)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(0)
+        col.setAlignment(Qt.AlignHCenter)
 
-        subtitle = QLabel('Initializing system...')
-        subtitle.setFont(QFont('Inter Tight', 22))
-        subtitle.setStyleSheet("color: rgba(255,255,255,100); background: transparent;")
-        subtitle.setAlignment(Qt.AlignCenter)
-        layout.addWidget(subtitle)
-
-        layout.addSpacing(40)
-
-        self.log_label = QLabel('Starting tests...')
-        self.log_label.setFont(QFont('IBM Plex Mono', 13))
-        self.log_label.setStyleSheet(
+        # Logo (88×88, gradiente verde, border-radius 22px)
+        logo = QLabel()
+        logo.setFixedSize(88, 88)
+        logo.setStyleSheet(
             "QLabel {"
-            "  color: #7DC47D;"
-            "  background-color: #0D160C;"
-            "  padding: 20px;"
-            "  border: 1px solid rgba(74,122,68,0.40);"
-            "  border-radius: 10px;"
+            "  background: qlineargradient(x1:0.15,y1:0,x2:0.85,y2:1,"
+            "    stop:0 #4A7A44, stop:1 #1A3318);"
+            "  border-radius: 22px;"
+            "  border: 1px solid rgba(255,255,255,0.08);"
             "}"
         )
-        self.log_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self.log_label.setMinimumHeight(380)
-        self.log_label.setWordWrap(True)
-        layout.addWidget(self.log_label)
+        logo_row = QHBoxLayout()
+        logo_row.addStretch()
+        logo_row.addWidget(logo)
+        logo_row.addStretch()
+        col.addSpacing(80)
+        col.addLayout(logo_row)
+        col.addSpacing(32)
 
-        layout.addSpacing(16)
+        # Título — 64px bold, tracking -.04em
+        title = QLabel('DublinISL Controls')
+        title.setFont(QFont('Inter Tight', 52, QFont.Bold))
+        title.setStyleSheet("color: #FFFFFF; background: transparent; letter-spacing: -2px;")
+        title.setAlignment(Qt.AlignCenter)
+        col.addWidget(title)
+        col.addSpacing(12)
+
+        # Subtítulo — 22px, 40% opacidad
+        self.subtitle_label = QLabel('Initializing camera connections...')
+        self.subtitle_label.setFont(QFont('Inter Tight', 18))
+        self.subtitle_label.setStyleSheet(
+            "color: rgba(255,255,255,102); background: transparent;"
+        )
+        self.subtitle_label.setAlignment(Qt.AlignCenter)
+        col.addWidget(self.subtitle_label)
+        col.addSpacing(72)
+
+        # Tarjetas de cámara (280px c/u, gap 24px)
+        cards_row = QHBoxLayout()
+        cards_row.setSpacing(24)
+        cards_row.setContentsMargins(0, 0, 0, 0)
+        self._cam1_card = self._make_cam_card(
+            1, 'Camera 1', 'Platform', 'Chairman / Lectern area', CAM1.ip, 'connecting'
+        )
+        self._cam2_card = self._make_cam_card(
+            2, 'Camera 2', 'Comments', 'Auditorium seating area', CAM2.ip, 'connecting'
+        )
+        cards_row.addWidget(self._cam1_card)
+        cards_row.addWidget(self._cam2_card)
+        col.addLayout(cards_row)
+        col.addSpacing(56)
+
+        # Barra de progreso (400px, 3px)
+        bar_wrap = QWidget()
+        bar_wrap.setFixedWidth(440)
+        bar_wrap.setAttribute(Qt.WA_TranslucentBackground)
+        bar_col = QVBoxLayout(bar_wrap)
+        bar_col.setContentsMargins(0, 0, 0, 0)
+        bar_col.setSpacing(12)
 
         self.progress_bar = QProgressBar()
+        self.progress_bar.setFixedHeight(3)
+        self.progress_bar.setTextVisible(False)
         self.progress_bar.setStyleSheet("""
             QProgressBar {
                 border: none;
-                border-radius: 4px;
-                background-color: rgba(255,255,255,15);
-                height: 8px;
-                text-align: center;
-                color: transparent;
+                border-radius: 2px;
+                background-color: rgba(255,255,255,20);
             }
             QProgressBar::chunk {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #4A7A44, stop:1 #2E5229);
-                border-radius: 4px;
+                    stop:0 #4A7A44, stop:1 #23AA46);
+                border-radius: 2px;
             }
         """)
         self.progress_bar.setValue(0)
-        layout.addWidget(self.progress_bar)
+        bar_col.addWidget(self.progress_bar)
 
-        self.status_label = QLabel('Status: initializing...')
-        self.status_label.setFont(QFont('Inter Tight', 16, QFont.Bold))
-        self.status_label.setStyleSheet("color: rgba(255,255,255,140); background: transparent;")
-        self.status_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.status_label)
+        # Ticker de tests — monospace, muy tenue
+        self.ticker_label = QLabel('')
+        self.ticker_label.setFont(QFont('IBM Plex Mono', 11))
+        self.ticker_label.setStyleSheet(
+            "color: rgba(255,255,255,71); background: transparent;"
+        )
+        self.ticker_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.ticker_label.setWordWrap(True)
+        self.ticker_label.setFixedWidth(440)
+        bar_col.addWidget(self.ticker_label)
 
-        self.setLayout(layout)
+        bar_row = QHBoxLayout()
+        bar_row.addStretch()
+        bar_row.addWidget(bar_wrap)
+        bar_row.addStretch()
+        col.addLayout(bar_row)
+
+        # Buffer interno para el log (no visible)
+        self.log_label = QLabel('')
+        self.log_label.hide()
+        col.addWidget(self.log_label)
+
+        root.addStretch()
+        root.addWidget(center, 0, Qt.AlignHCenter)
+        root.addStretch()
+
+        # ── Footer absoluto ───────────────────────────────────────────────
+        footer = QHBoxLayout()
+        footer.setContentsMargins(48, 0, 48, 36)
+        org_lbl = QLabel('Dublin Islamic Society, Ireland')
+        org_lbl.setFont(QFont('Inter Tight', 13))
+        org_lbl.setStyleSheet("color: rgba(255,255,255,51); background: transparent;")
+        ver_lbl = QLabel('v2.0 · rpi')
+        ver_lbl.setFont(QFont('IBM Plex Mono', 12))
+        ver_lbl.setStyleSheet("color: rgba(255,255,255,46); background: transparent;")
+        footer.addWidget(org_lbl)
+        footer.addStretch()
+        footer.addWidget(ver_lbl)
+        root.addLayout(footer)
+
+    def _make_cam_card(self, cam_idx: int, cam_label: str, name: str,
+                       subtitle: str, ip: str, status: str) -> QFrame:
+        card = QFrame()
+        card.setFixedSize(280, 168)
+        self._style_card(card, status)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(0)
+
+        # ── Encabezado: etiqueta de cámara (izq) + LED (der) ──────────────
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(0)
+        mode_lbl = QLabel(cam_label.upper())
+        mode_lbl.setFont(QFont('Inter Tight', 11, QFont.Bold))
+        mode_lbl.setStyleSheet(
+            "color: rgba(255,255,255,89); background: transparent; letter-spacing: 3px;"
+        )
+        led = QLabel()
+        led.setFixedSize(14, 14)
+        self._style_led(led, status)
+        header.addWidget(mode_lbl)
+        header.addStretch()
+        header.addWidget(led)
+        layout.addLayout(header)
+        layout.addSpacing(14)
+
+        # ── Nombre + subtítulo ─────────────────────────────────────────────
+        name_lbl = QLabel(name)
+        name_lbl.setFont(QFont('Inter Tight', 22, QFont.Bold))
+        name_lbl.setStyleSheet("color: rgba(255,255,255,217); background: transparent;")
+        layout.addWidget(name_lbl)
+
+        sub_lbl = QLabel(subtitle)
+        sub_lbl.setFont(QFont('Inter Tight', 13))
+        sub_lbl.setStyleSheet("color: rgba(255,255,255,89); background: transparent;")
+        layout.addWidget(sub_lbl)
+        layout.addSpacing(10)
+
+        # ── IP ────────────────────────────────────────────────────────────
+        ip_lbl = QLabel(ip)
+        ip_lbl.setFont(QFont('IBM Plex Mono', 12))
+        ip_lbl.setStyleSheet(
+            "color: rgba(255,255,255,64);"
+            "background: rgba(255,255,255,13);"
+            "padding: 4px 10px;"
+            "border-radius: 6px;"
+        )
+        layout.addWidget(ip_lbl)
+        layout.addSpacing(10)
+
+        # ── Fila de estado ─────────────────────────────────────────────────
+        status_lbl = QLabel(self._CAM_STATE[status]['label'])
+        status_lbl.setFont(QFont('Inter Tight', 13, QFont.Medium))
+        self._style_status_text(status_lbl, status)
+        layout.addWidget(status_lbl)
+
+        # Guardar referencias
+        if cam_idx == 1:
+            self._cam1_led        = led
+            self._cam1_status_lbl = status_lbl
+            self._cam1_card_ref   = card
+        else:
+            self._cam2_led        = led
+            self._cam2_status_lbl = status_lbl
+            self._cam2_card_ref   = card
+
+        return card
+
+    # ── Helpers de estilo ─────────────────────────────────────────────────
+
+    def _style_card(self, card: QFrame, status: str):
+        st = self._CAM_STATE.get(status, self._CAM_STATE['connecting'])
+        card.setStyleSheet(
+            f"QFrame {{"
+            f"  background: {st['bg']};"
+            f"  border: 1px solid {st['border']};"
+            f"  border-radius: 16px;"
+            f"}}"
+        )
+
+    def _style_led(self, led: QLabel, status: str, dimmed: bool = False):
+        st = self._CAM_STATE.get(status, self._CAM_STATE['connecting'])
+        color = st['led']
+        alpha = '0.55' if dimmed else '1.0'
+        led.setStyleSheet(
+            f"QLabel {{"
+            f"  background: {color};"
+            f"  border-radius: 7px;"
+            f"  opacity: {alpha};"
+            f"}}"
+        )
+
+    def _style_status_text(self, lbl: QLabel, status: str):
+        st = self._CAM_STATE.get(status, self._CAM_STATE['connecting'])
+        lbl.setStyleSheet(f"color: {st['text']}; background: transparent;")
+
+    # ── Pulso LED ─────────────────────────────────────────────────────────
+
+    def _pulse_leds(self):
+        self._led_pulse_on = not self._led_pulse_on
+        for cam_idx in (1, 2):
+            status = self._cam1_status if cam_idx == 1 else self._cam2_status
+            if status == 'connecting':
+                led = self._cam1_led if cam_idx == 1 else self._cam2_led
+                self._style_led(led, 'connecting', dimmed=not self._led_pulse_on)
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Slots de UI (siempre en hilo principal)
@@ -241,11 +494,36 @@ class SplashScreen(QWidget):
 
     def _do_status(self, message: str, color: str):
         """Actualizar etiqueta de estado — llamado sólo desde el hilo principal."""
-        colors = {"green": "#7DC47D", "yellow": "#F5A623", "red": "#E05050"}
-        self.status_label.setText(message)
-        self.status_label.setStyleSheet(
-            f"color: {colors.get(color, 'rgba(255,255,255,140)')}; background: transparent;"
+        colors = {"green": "rgba(35,170,70,0.7)", "yellow": "#F5A623", "red": "rgba(190,35,35,0.7)"}
+        self.subtitle_label.setText(message)
+        self.subtitle_label.setStyleSheet(
+            f"color: {colors.get(color, 'rgba(255,255,255,102)')}; background: transparent;"
         )
+
+    def _do_cam_update(self, cam_idx: int, status: str):
+        """Actualizar tarjeta de cámara — llamado sólo desde el hilo principal."""
+        if cam_idx == 1:
+            self._cam1_status = status
+            card = self._cam1_card_ref
+            led  = self._cam1_led
+            lbl  = self._cam1_status_lbl
+        else:
+            self._cam2_status = status
+            card = self._cam2_card_ref
+            led  = self._cam2_led
+            lbl  = self._cam2_status_lbl
+
+        self._style_card(card, status)
+        self._style_led(led, status)
+        self._style_status_text(lbl, status)
+        lbl.setText(self._CAM_STATE.get(status, self._CAM_STATE['connecting'])['label'])
+
+    def _do_ticker(self, fragment: str):
+        """Añadir fragmento al ticker de tests."""
+        self._ticker_parts.append(fragment)
+        # Mostrar todos los fragmentos en dos líneas si hay muchos
+        text = '  ·  '.join(self._ticker_parts)
+        self.ticker_label.setText(text)
 
     # ─────────────────────────────────────────────────────────────────────────
     #  API pública para hilos de fondo (emiten señales, nunca tocan widgets)
@@ -379,6 +657,22 @@ class SplashScreen(QWidget):
 
         return result.to_dict()
 
+    # Nombres cortos para el ticker
+    _TICKER_SHORT = {
+        "Operating System":      "OS",
+        "Network Connectivity":  "Net",
+        "Camera 1 (Platform)":   "Cam1",
+        "Camera 2 (Audience)":   "Cam2",
+        "Configuration":         "Config",
+        "Statistics":            "Stats",
+        "Focus & Exposure Cam1": "Focus1",
+        "Focus & Exposure Cam2": "Focus2",
+        "ATEM Switcher":         "ATEM",
+        "Data Files":            "Files",
+        "TCP Scan (cameras)":    "TCP",
+        "ARP Table":             "ARP",
+    }
+
     def _process_test_result(self, test_name: str, result: dict):
         """Procesar resultado de un test completado."""
         self.test_results[test_name] = result
@@ -390,6 +684,18 @@ class SplashScreen(QWidget):
             error = result.get("error") or ""
             suffix = f" — {error}" if error else ""
             self._update_log(f"  --  {test_name}{suffix}")
+
+        # Ticker
+        short = self._TICKER_SHORT.get(test_name, test_name[:6])
+        mark  = "OK" if result.get("success") else "--"
+        self._sig_ticker.emit(f"{short} {mark}")
+
+        # Actualizar tarjetas de cámara
+        cam_status = 'connected' if result.get('success') else 'disconnected'
+        if 'Camera 1' in test_name:
+            self._sig_cam_update.emit(1, cam_status)
+        elif 'Camera 2' in test_name:
+            self._sig_cam_update.emit(2, cam_status)
 
         progress = int(len(self.test_results) / self.tests_total * 100)
         self._update_progress(progress)
@@ -544,4 +850,3 @@ class SplashScreen(QWidget):
         else:
             self._update_log(f"  ARP: no entries for {subnet}.x")
         return bool(unique)
-

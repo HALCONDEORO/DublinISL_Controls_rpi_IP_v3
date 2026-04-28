@@ -162,7 +162,7 @@ class DigitalJoystick(QWidget):
         self._arrow_halo_r = arrow_len * 1.4
 
         # ── Anillo de zoom (semicírculo superior) ─────────────────────────────
-        self._ring_r      = r * 0.94      # radio del arco, separado del disco
+        self._ring_r      = r * 0.83      # radio del arco, pegado al disco
         self._ring_stroke = max(18, int(r * 0.096))  # grosor del trazo del arco
         self._ring_pct    = 0.0               # 0–100
         self._ring_dragging = False
@@ -225,23 +225,35 @@ class DigitalJoystick(QWidget):
             p.setBrush(color)
             p.drawPolygon(self._arrow_triangles[i])
 
-        # Knob — esfera 3D
+        # Anillo de zoom (base + indicador) — ANTES del knob
+        self._draw_zoom_ring_base(p)
+        self._draw_zoom_ring_handle(p)
+
+        # Knob — siempre encima de todo
         kp = self._knob_pos
         kr = self._knob_r
 
-        knob_shadow = QtGui.QRadialGradient(kp.x() + kr * 0.15, kp.y() + kr * 0.2, kr * 1.1)
-        knob_shadow.setColorAt(0.75, QtGui.QColor(0, 0, 0,  0))
-        knob_shadow.setColorAt(1.00, QtGui.QColor(0, 0, 0, 50))
+        # Sombra difusa exterior (halo grande)
         p.setPen(Qt.NoPen)
-        p.setBrush(knob_shadow)
-        p.drawEllipse(kp, kr * 1.12, kr * 1.12)
+        outer_shadow = QtGui.QRadialGradient(kp.x() + kr * 0.18, kp.y() + kr * 0.25, kr * 1.18)
+        outer_shadow.setColorAt(0.82, QtGui.QColor(0, 0, 0,  0))
+        outer_shadow.setColorAt(1.00, QtGui.QColor(0, 0, 0, 55))
+        p.setBrush(outer_shadow)
+        p.drawEllipse(kp, kr * 1.18, kr * 1.18)
+
+        # Sombra dura cercana (profundidad inmediata)
+        inner_shadow = QtGui.QRadialGradient(kp.x() + kr * 0.12, kp.y() + kr * 0.18, kr * 1.05)
+        inner_shadow.setColorAt(0.88, QtGui.QColor(0, 0, 0,  0))
+        inner_shadow.setColorAt(1.00, QtGui.QColor(0, 0, 0, 28))
+        p.setBrush(inner_shadow)
+        p.drawEllipse(kp, kr * 1.05, kr * 1.05)
 
         ik = pal if active else self._COLORS_INACTIVE
         sphere_grad = QtGui.QRadialGradient(kp.x() - kr * 0.3, kp.y() - kr * 0.35, kr * 1.1)
         sphere_grad.setColorAt(0.00, ik['knob_hi'])
         sphere_grad.setColorAt(0.45, ik['knob_mid'])
         sphere_grad.setColorAt(1.00, ik['knob_lo'])
-        p.setPen(QtGui.QPen(ik['knob_brd'], 1.2))
+        p.setPen(Qt.NoPen)
         p.setBrush(sphere_grad)
         p.drawEllipse(kp, kr, kr)
 
@@ -256,9 +268,6 @@ class DigitalJoystick(QWidget):
         p.setPen(Qt.NoPen)
         p.setBrush(spec_grad)
         p.drawEllipse(QtCore.QPointF(spec_x, spec_y), spec_rx, spec_ry)
-
-        # Anillo de zoom encima del joystick
-        self._draw_zoom_ring(p)
 
     # ── anillo de zoom ─────────────────────────────────────────────────────────
 
@@ -294,74 +303,115 @@ class DigitalJoystick(QWidget):
         tolerance = self._ring_stroke * 1.6
         return abs(dist - self._ring_r) < tolerance and dy <= self._ring_stroke
 
-    def _draw_zoom_ring(self, p: QtGui.QPainter):
-        """Dibuja el semiarco de zoom encima del joystick."""
+    def _draw_zoom_ring_base(self, p: QtGui.QPainter):
+        """Pista del anillo (circulo punteado + track + ticks + arco + labels).
+        Se dibuja ANTES del knob para que el knob quede encima."""
         cx, cy = self._center.x(), self._center.y()
         R  = self._ring_r
         sw = self._ring_stroke
-        rect = QtCore.QRectF(cx - R, cy - R, R * 2, R * 2)
+        center = self._center
+        rect   = QtCore.QRectF(cx - R, cy - R, R * 2, R * 2)
+        sc = R / 118.0  # factor de escala respecto al diseno (R_diseno=118)
 
         p.setBrush(Qt.NoBrush)
 
-        # Arco de pista (gris, de 180° a 0° en sentido horario = span −180)
-        track_pen = QtGui.QPen(QtGui.QColor(212, 212, 212), sw, Qt.SolidLine,
-                               Qt.RoundCap, Qt.RoundJoin)
-        p.setPen(track_pen)
+        # 1. Anillo completo punteado - "faint ring" #E4E4E4
+        # Diseno: stroke-dasharray="2 7" stroke-width="15" -> [2/15, 7/15] en Qt
+        dot_pen = QtGui.QPen(QtGui.QColor(228, 228, 228), sw,
+                             Qt.CustomDashLine, Qt.RoundCap, Qt.RoundJoin)
+        dot_pen.setDashPattern([2.0 / 15.0, 7.0 / 15.0])
+        p.setPen(dot_pen)
+        p.drawEllipse(center, R, R)
+
+        # 2. Track solido semicirculo superior - #DDDDDD
+        p.setPen(QtGui.QPen(QtGui.QColor(221, 221, 221), sw,
+                            Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         p.drawArc(rect, 180 * 16, -180 * 16)
 
-        # Arco relleno (color cámara, de 180° hasta la posición actual)
-        if self._ring_pct > 0.5:
-            span = int(round(self._ring_pct * 1.8 * 16))
-            fill_pen = QtGui.QPen(self._ring_active_color, sw, Qt.SolidLine,
-                                  Qt.RoundCap, Qt.RoundJoin)
-            p.setPen(fill_pen)
-            p.drawArc(rect, 180 * 16, -span)
-
-        # Marcas de tick (0%, 50%, 100% mayores; 25%, 75% menores)
+        # 3. Tick marks - #BBBBBB, major+-10px/minor+-6px (a escala)
         for i in range(11):
             pct_t = i * 10
             deg   = 180.0 - pct_t * 1.8
-            rad   = math.radians(deg)
+            rad_t = math.radians(deg)
             major = (i % 5 == 0)
-            r1 = R - (sw * 0.55 if major else sw * 0.35)
-            r2 = R + (sw * 0.55 if major else sw * 0.35)
-            x1 = cx + r1 * math.cos(rad)
-            y1 = cy - r1 * math.sin(rad)
-            x2 = cx + r2 * math.cos(rad)
-            y2 = cy - r2 * math.sin(rad)
-            tick_pen = QtGui.QPen(
-                QtGui.QColor(160, 160, 160) if major else QtGui.QColor(200, 200, 200),
-                2.0 if major else 1.2, Qt.SolidLine, Qt.RoundCap,
-            )
-            p.setPen(tick_pen)
+            ext   = (10.0 if major else 6.0) * sc
+            r1 = R - ext;  r2 = R + ext
+            x1 = cx + r1 * math.cos(rad_t);  y1 = cy - r1 * math.sin(rad_t)
+            x2 = cx + r2 * math.cos(rad_t);  y2 = cy - r2 * math.sin(rad_t)
+            p.setPen(QtGui.QPen(QtGui.QColor(187, 187, 187),
+                                (2.0 if major else 1.0) * sc,
+                                Qt.SolidLine, Qt.RoundCap))
             p.drawLine(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2))
 
-        # Handle — disco plano, ligeramente mayor que el trazo, difuminado en bordes
-        hp = self._ring_pct_to_pos(self._ring_pct)
-        hr = sw * 0.58  # diámetro = 1.16×sw → sobresale un poco del canal
+        # 4. Arco relleno de zoom con gradiente claro→intenso
+        if self._ring_pct > 0.5:
+            ac = self._ring_active_color
+            r_c, g_c, b_c = ac.red(), ac.green(), ac.blue()
+            # Color claro en 0% (mezcla con blanco), intenso en 100%
+            lo_r = min(255, r_c + 90);  lo_g = min(255, g_c + 75);  lo_b = min(255, b_c + 75)
+            n_segs = 28
+            seg_span_deg = self._ring_pct * 1.8 / n_segs
+            for i in range(n_segs):
+                t = i / (n_segs - 1)          # 0.0 = izq (claro), 1.0 = der (intenso)
+                seg_r = int(lo_r + (r_c - lo_r) * t)
+                seg_g = int(lo_g + (g_c - lo_g) * t)
+                seg_b = int(lo_b + (b_c - lo_b) * t)
+                qt_start = int((180.0 - i * seg_span_deg) * 16)
+                qt_span  = -int(seg_span_deg * 16 + 1)  # +1 evita huecos entre segmentos
+                cap = Qt.RoundCap if (i == 0 or i == n_segs - 1) else Qt.FlatCap
+                p.setPen(QtGui.QPen(QtGui.QColor(seg_r, seg_g, seg_b), sw,
+                                    Qt.SolidLine, cap, Qt.RoundJoin))
+                p.drawArc(rect, qt_start, qt_span)
+
+        # 5. Etiquetas W / T - font 9px bold #BBBBBB
+        lbl_font = QtGui.QFont("Inter Tight", max(7, int(9 * sc)), QtGui.QFont.Bold)
+        p.setFont(lbl_font)
+        fm    = QtGui.QFontMetricsF(lbl_font)
+        lbl_y = cy + sw * 0.5 + fm.ascent() + 2 * sc
+        p.setPen(QtGui.QColor(187, 187, 187))
+        p.drawText(QtCore.QPointF(cx - R - sw * 0.5 - fm.width("W") - 2 * sc, lbl_y), "W")
+        p.drawText(QtCore.QPointF(cx + R + sw * 0.5 + 2 * sc, lbl_y), "T")
+
+    def _draw_zoom_ring_handle(self, p: QtGui.QPainter):
+        """Indicador del anillo. Se dibuja DESPUES del knob, siempre encima."""
+        cx, cy = self._center.x(), self._center.y()
+        R  = self._ring_r
+        sw = self._ring_stroke
+        sc = R / 118.0
         ac = self._ring_active_color
+        r, g, b = ac.red(), ac.green(), ac.blue()
+
+        hp = self._ring_pct_to_pos(self._ring_pct)
+        hr = sw * 0.73
 
         p.setPen(Qt.NoPen)
-        soft_g = QtGui.QRadialGradient(hp.x(), hp.y(), hr)
-        soft_g.setColorAt(0.00, ac)
-        soft_g.setColorAt(0.62, ac)
-        soft_g.setColorAt(1.00, QtGui.QColor(ac.red(), ac.green(), ac.blue(), 0))
-        p.setBrush(soft_g)
-        p.drawEllipse(hp, hr, hr)
 
-        # Etiquetas W / T
-        p.setPen(QtGui.QColor(175, 175, 175))
-        lbl_font = QtGui.QFont('Inter Tight', max(7, int(sw * 0.72)), QtGui.QFont.Bold)
-        p.setFont(lbl_font)
-        fm = QtGui.QFontMetricsF(lbl_font)
-        # 0 (debajo del extremo izquierdo)
-        w_x = cx - R - fm.width('0') * 0.5
-        w_y = cy + sw + fm.ascent() + 2
-        p.drawText(QtCore.QPointF(w_x, w_y), '0')
-        # 100 (debajo del extremo derecho)
-        t_x = cx + R - fm.width('100') * 0.5
-        t_y = cy + sw + fm.ascent() + 2
-        p.drawText(QtCore.QPointF(t_x, t_y), '100')
+        # Halo exterior tenue (0 0 0 3px con color activo)
+        halo_r = hr + 3.0 * sc
+        halo = QtGui.QRadialGradient(hp.x(), hp.y(), halo_r)
+        halo.setColorAt(0.60, QtGui.QColor(r, g, b,  0))
+        halo.setColorAt(0.82, QtGui.QColor(r, g, b, 56))
+        halo.setColorAt(1.00, QtGui.QColor(r, g, b,  0))
+        p.setBrush(halo)
+        p.drawEllipse(hp, halo_r, halo_r)
+
+        # Sombra glow
+        shadow = QtGui.QRadialGradient(hp.x(), hp.y() + 2.0 * sc, hr * 1.6)
+        shadow.setColorAt(0.0, QtGui.QColor(r, g, b, 153))
+        shadow.setColorAt(1.0, QtGui.QColor(r, g, b,   0))
+        p.setBrush(shadow)
+        p.drawEllipse(hp, hr * 1.6, hr * 1.6)
+
+        # Esfera mate con color activo de camara
+        hi  = QtGui.QColor(min(255, r + 40), min(255, g + 22), min(255, b + 22))
+        mid = ac
+        lo  = QtGui.QColor(max(0, r - 25), max(0, g - 16), max(0, b - 16))
+        sphere = QtGui.QRadialGradient(hp.x(), hp.y(), hr)
+        sphere.setColorAt(0.00, hi)
+        sphere.setColorAt(0.65, mid)
+        sphere.setColorAt(1.00, lo)
+        p.setBrush(sphere)
+        p.drawEllipse(hp, hr, hr)
 
     # ── mouse events ───────────────────────────────────────────────────────────
     def mousePressEvent(self, event):
