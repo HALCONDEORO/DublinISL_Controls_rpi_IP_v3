@@ -91,6 +91,7 @@ class MainWindow(QMainWindow):
         self.setGeometry(0, 0, 1920, 1080)
 
         self.session_active = False
+        self._last_activity: float = time.time()
         self._pan_cap:        int = PAN_SPEED_MAX   # 24 — watchdog lo reduce en error move
         self._tilt_cap:       int = TILT_SPEED_MAX  # 20 — watchdog lo reduce en error move
         self._zoom_drive_cap: int = ZOOM_DRIVE_MAX  # 7  — watchdog lo reduce en error zoom_drive
@@ -108,6 +109,8 @@ class MainWindow(QMainWindow):
         self._state      = SystemState()
         self._bus        = AsyncEventBus()
         self._bus.start()
+        for _evt in (EventType.CAMERA_MOVE, EventType.CAMERA_ZOOM, EventType.SEAT_SELECTED):
+            self._bus.subscribe(_evt, lambda _e: self._record_activity())
         self._preset_svc = PresetService()
         self._camera_svc = CameraService(self._cameras)
         self._session_svc = SessionService(self._camera_svc)
@@ -144,6 +147,11 @@ class MainWindow(QMainWindow):
         self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
         self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
         self._atem_monitor.start()
+
+        # Auto-apagado por inactividad (2 horas)
+        self._inactivity_timer = QTimer(self)
+        self._inactivity_timer.timeout.connect(self._check_inactivity)
+        self._inactivity_timer.start(60_000)  # comprueba cada minuto
 
         # Flag que evita reinicios durante el cierre de la aplicación.
         self._shutting_down = False
@@ -617,6 +625,25 @@ class MainWindow(QMainWindow):
         self._atem_monitor.start()
         logger.info("ATEMMonitor reiniciado por el supervisor")
 
+    def _record_activity(self):
+        self._last_activity = time.time()
+
+    _INACTIVITY_TIMEOUT = 2 * 3600  # 2 horas en segundos
+
+    def _check_inactivity(self):
+        if not self.session_active:
+            return
+        if time.time() - self._last_activity < self._INACTIVITY_TIMEOUT:
+            return
+        logger.info("Auto power-off: 2 horas sin actividad")
+        self._visca._send_cmd(CAM1.ip, CAM1.cam_id, "01040003FF")
+        self._visca._send_cmd(CAM2.ip, CAM2.cam_id, "01040003FF")
+        self.session_active = False
+        self.BtnSession.setStyleSheet(SessionController._STYLE_BTN_OFF)
+        self.BtnSession.setToolTip('Start Session: Power ON both cameras and go Home')
+        self.SessionStatus.setText('OFF')
+        self.SessionStatus.setStyleSheet("font: bold 12px; color: #8b1a1a")
+
     def closeEvent(self, event):
         # Marcar antes de parar el supervisor para que cualquier QTimer.singleShot
         # pendiente de _restart_atem_monitor no relance el ATEMMonitor durante el cierre.
@@ -625,6 +652,11 @@ class MainWindow(QMainWindow):
         self._bus.stop()
         self._atem_monitor.requestInterruption()
         self._atem_monitor.wait(2000)
+
+        # Power OFF ambas cámaras al salir (VISCA 01 04 00 03 FF)
+        self._visca._send_cmd(CAM1.ip, CAM1.cam_id, "01040003FF")
+        self._visca._send_cmd(CAM2.ip, CAM2.cam_id, "01040003FF")
+
         event.accept()
 
     def _update_focus_ui(self):

@@ -553,8 +553,17 @@ class SplashScreen(QWidget):
     # ─────────────────────────────────────────────────────────────────────────
 
     def _start_initialization(self):
+        threading.Thread(target=self._startup_cameras, daemon=True).start()
         thread = threading.Thread(target=self._run_initialization, daemon=True)
         thread.start()
+
+    def _startup_cameras(self):
+        """Enciende ambas cámaras y las lleva a Home (igual que el botón Start Session)."""
+        self._power_on_camera(CAM1.ip, CAM1.cam_id)
+        self._power_on_camera(CAM2.ip, CAM2.cam_id)
+        time.sleep(8)
+        self._home_camera(CAM1.ip, CAM1.cam_id)
+        self._home_camera(CAM2.ip, CAM2.cam_id)
 
     def _run_initialization(self):
         """
@@ -810,6 +819,18 @@ class SplashScreen(QWidget):
         """Envía comando VISCA Power On. Falla silenciosamente."""
         try:
             cmd = cam_id + "01040002FF"
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(SOCKET_TIMEOUT)
+                sock.connect((ip, VISCA_PORT))
+                sock.send(binascii.unhexlify(cmd))
+                sock.recv(64)
+        except Exception:
+            pass
+
+    def _home_camera(self, ip: str, cam_id: str):
+        """Envía comando VISCA Home. Falla silenciosamente."""
+        try:
+            cmd = cam_id + "010604FF"
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.settimeout(SOCKET_TIMEOUT)
                 sock.connect((ip, VISCA_PORT))

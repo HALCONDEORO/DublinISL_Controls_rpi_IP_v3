@@ -20,7 +20,8 @@
 from PyQt5 import QtCore
 from PyQt5.QtWidgets import QMessageBox
 
-from config import CAM1, CAM2
+from config import CAM1, CAM2, PRESET_MAP
+from domain.preset import PRESET_CHAIRMAN_GENERIC
 
 
 class SessionController:
@@ -70,6 +71,7 @@ class SessionController:
         if not self._w.session_active:
             # ── Arrancar sesión ───────────────────────────────────────────
             self._w.session_active = True
+            self._w._record_activity()       # resetea el contador de inactividad
             self._w._reset_watchdog_state()  # restaura caps y reintentos
 
             # Deshabilitar botón mientras las cámaras arrancan
@@ -109,10 +111,10 @@ class SessionController:
     def _session_home(self):
         """
         Llamado por QTimer 8 s después del Power ON.
-        Envía Home a ambas cámaras y activa el botón de sesión (verde = ON).
+        Cam1 → posición chairman (preset 1). Cam2 → Home.
         """
-        # Home: 8x 01 06 04 FF
-        self._w._visca._send_cmd(CAM1.ip, CAM1.cam_id, "010604FF")
+        chairman_hex = PRESET_MAP[PRESET_CHAIRMAN_GENERIC]
+        self._w._visca._send_cmd(CAM1.ip, CAM1.cam_id, f"01043f02{chairman_hex}ff")
         self._w._visca._send_cmd(CAM2.ip, CAM2.cam_id, "010604FF")
 
         self._w.BtnSession.setStyleSheet(self._STYLE_BTN_ON)  # verde: sesión activa
