@@ -24,29 +24,30 @@ from data_paths import migrate_legacy_files
 from main_window import MainWindow
 from virtual_keyboard import install_virtual_keyboard
 
-def _setup_logging():
-    Path("logs").mkdir(exist_ok=True)
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-
-    console = logging.StreamHandler()
-    console.setFormatter(logging.Formatter('[%(levelname)s] %(name)s: %(message)s'))
-
-    file_handler = logging.handlers.RotatingFileHandler(
-        "logs/app.log",
-        maxBytes=5 * 1024 * 1024,  # 5 MB por fichero
-        backupCount=5,
-        encoding="utf-8",
-    )
-    file_handler.setFormatter(logging.Formatter(
-        '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
-    ))
-
-    root.addHandler(console)
-    root.addHandler(file_handler)
-
-_setup_logging()
+# def _setup_logging():
+#     Path("logs").mkdir(exist_ok=True)
+#     root = logging.getLogger()
+#     root.setLevel(logging.INFO)
+#
+#     console = logging.StreamHandler()
+#     console.setFormatter(logging.Formatter('[%(levelname)s] %(name)s: %(message)s'))
+#
+#     file_handler = logging.handlers.RotatingFileHandler(
+#         "logs/app.log",
+#         maxBytes=5 * 1024 * 1024,  # 5 MB por fichero
+#         backupCount=5,
+#         encoding="utf-8",
+#     )
+#     file_handler.setFormatter(logging.Formatter(
+#         '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+#         datefmt='%Y-%m-%d %H:%M:%S',
+#     ))
+#
+#     root.addHandler(console)
+#     root.addHandler(file_handler)
+#
+# _setup_logging()
+logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
 
 

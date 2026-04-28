@@ -1,0 +1,21 @@
+2026-04-28 09:12:33 [INFO] hardware_simulator: SimVISCA: listening on 127.0.0.1:5678 (CAM1-Platform)
+2026-04-28 09:12:33 [INFO] hardware_simulator: SimVISCA: listening on 127.0.0.2:5678 (CAM2-Comments)
+2026-04-28 09:12:33 [INFO] core.supervisor: Supervisor iniciado — monitorizando 3 worker(s)
+2026-04-28 09:12:33 [INFO] atem_monitor: ATEMMonitor: modo simulacion activo
+2026-04-28 09:12:33 [INFO] __main__: Application started
+2026-04-28 09:12:37 [INFO] camera_worker: CameraWorker: conectado a 127.0.0.1:5678
+2026-04-28 09:12:37 [INFO] camera_worker: CameraWorker: conectado a 127.0.0.2:5678
+2026-04-28 09:15:55 [INFO] hardware_simulator: SimVISCA: listening on 127.0.0.1:5678 (CAM1-Platform)
+2026-04-28 09:15:55 [INFO] hardware_simulator: SimVISCA: listening on 127.0.0.2:5678 (CAM2-Comments)
+2026-04-28 09:15:55 [INFO] core.supervisor: Supervisor iniciado — monitorizando 3 worker(s)
+2026-04-28 09:15:55 [INFO] atem_monitor: ATEMMonitor: modo simulacion activo
+2026-04-28 09:15:55 [INFO] __main__: Application started
+2026-04-28 09:16:00 [INFO] camera_worker: CameraWorker: conectado a 127.0.0.2:5678
+2026-04-28 09:16:00 [INFO] camera_worker: CameraWorker: conectado a 127.0.0.1:5678
+2026-04-28 09:16:09 [INFO] hardware_simulator: SimVISCA: listening on 127.0.0.1:5678 (CAM1-Platform)
+2026-04-28 09:16:09 [INFO] hardware_simulator: SimVISCA: listening on 127.0.0.2:5678 (CAM2-Comments)
+2026-04-28 09:16:09 [INFO] atem_monitor: ATEMMonitor: modo simulacion activo
+2026-04-28 09:16:09 [INFO] core.supervisor: Supervisor iniciado — monitorizando 3 worker(s)
+2026-04-28 09:16:09 [INFO] __main__: Application started
+2026-04-28 09:16:14 [INFO] camera_worker: CameraWorker: conectado a 127.0.0.1:5678
+2026-04-28 09:16:14 [INFO] camera_worker: CameraWorker: conectado a 127.0.0.2:5678

@@ -166,14 +166,14 @@ class DigitalJoystick(QWidget):
         self._ring_stroke = max(18, int(r * 0.096))  # grosor del trazo del arco
         self._ring_pct    = 0.0               # 0–100
         self._ring_dragging = False
-        self._ring_platform_color = QtGui.QColor(155, 58, 58)   # #9B3A3A
-        self._ring_comments_color = QtGui.QColor(74, 140, 74)   # #4A8C4A
+        self._ring_platform_color = QtGui.QColor(74, 140, 74)    # #4A8C4A  verde
+        self._ring_comments_color = QtGui.QColor(155, 58, 58)   # #9B3A3A  rojo
         self._ring_active_color   = self._ring_platform_color   # default: platform
 
     # ── modo de color ──────────────────────────────────────────────────────────
     def set_mode(self, mode: str):
-        """'platform' → rojo  |  cualquier otro → verde."""
-        self._palette           = self._COLORS_CALL if mode == 'platform' else self._COLORS_SET
+        """'platform' → verde  |  cualquier otro → rojo."""
+        self._palette           = self._COLORS_SET if mode == 'platform' else self._COLORS_CALL
         self._glow_grad         = self._glow_grads[id(self._palette)]
         self._ring_active_color = (self._ring_platform_color if mode == 'platform'
                                    else self._ring_comments_color)

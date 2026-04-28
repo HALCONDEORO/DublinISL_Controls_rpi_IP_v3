@@ -169,15 +169,15 @@ class RightPanel:
         self._no_camera_label.hide()
         layout.addWidget(self._no_camera_label)
 
-        layout.addSpacing(20)
+        layout.addSpacing(6)
         self._add_config_buttons(layout)
+        layout.addStretch()
 
         QtCore.QTimer.singleShot(0, self._fit_container_height)
 
     def _fit_container_height(self):
-        """Ajusta la altura del container exactamente al contenido."""
-        h = self._container.sizeHint().height()
-        self._container.setGeometry(1446, 0, 474, h)
+        """El panel ocupa siempre toda la altura de la pantalla."""
+        self._container.setGeometry(1446, 0, 474, 1080)
 
     # ── Secciones ─────────────────────────────────────────────────────────────
 
@@ -395,12 +395,12 @@ class RightPanel:
         layout.addWidget(block)
 
     def _add_separator(self, layout: QVBoxLayout):
-        layout.addSpacing(20)
+        layout.addSpacing(14)
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
         line.setStyleSheet("color: #E0E0E0;")
         layout.addWidget(line)
-        layout.addSpacing(20)
+        layout.addSpacing(14)
 
     def _add_focus_exposure(self, layout: QVBoxLayout):
         mw = self._mw

@@ -20,14 +20,16 @@ from camera_discovery import get_camera_subnet, tcp_scan, arp_scan
 from data_paths import SCHEDULE_FILE
 
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar, QFrame, QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar, QFrame, QSizePolicy,
+    QGraphicsDropShadowEffect
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QRect
 from PyQt5.QtGui import (
-    QFont, QPainter, QColor, QRadialGradient, QPen, QBrush
+    QFont, QPainter, QColor, QRadialGradient, QPen, QBrush, QLinearGradient
 )
 
 from config import CAM1, CAM2, SOCKET_TIMEOUT, VISCA_PORT, SEAT_POSITIONS, ATEMAddress
+import sim_mode as _sim_mode
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -121,6 +123,87 @@ class BootStatistics:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  TICKER DE TESTS — lista rodante una línea por resultado
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestTickerWidget(QWidget):
+    """
+    Muestra los resultados de los tests como filas individuales que van
+    apareciendo desde abajo con una animación de deslizamiento.
+    Cada fila: nombre alineado a la izquierda, marca ✓/✗ a la derecha.
+    """
+
+    _ROW_H    = 20   # altura de cada fila en píxeles
+    _MAX_ROWS = 4    # filas visibles simultáneamente
+    _STEPS    = 6    # pasos de la animación slide-in
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedWidth(440)
+        self.setFixedHeight(self._MAX_ROWS * self._ROW_H)
+        self._entries: list[tuple[str, bool]] = []
+        self._slide = 0   # desplazamiento vertical actual de la animación
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(18)   # ~55 fps
+        self._timer.timeout.connect(self._advance)
+
+    def add_result(self, name: str, success: bool):
+        self._entries.append((name, success))
+        self._slide = self._ROW_H          # nueva entrada empieza fuera de vista (abajo)
+        if not self._timer.isActive():
+            self._timer.start()
+        self.update()
+
+    def _advance(self):
+        if self._slide > 0:
+            self._slide = max(0, self._slide - 3)
+            self.update()
+        else:
+            self._timer.stop()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setClipRect(0, 0, self.width(), self.height())
+
+        font = QFont('IBM Plex Mono', 11)
+        p.setFont(font)
+
+        # Mostrar las últimas MAX_ROWS+1 entradas (una extra para la animación)
+        visible = self._entries[-(self._MAX_ROWS + 1):]
+        n = len(visible)
+
+        for idx, (name, success) in enumerate(visible):
+            rows_from_bottom = n - 1 - idx   # 0 = más reciente (abajo)
+            y = self.height() - (rows_from_bottom + 1) * self._ROW_H + self._slide
+
+            if y + self._ROW_H < 0:
+                continue   # salió por arriba
+
+            # Opacidad: la más reciente brilla, las antiguas se atenúan
+            age = rows_from_bottom
+            alpha = 210 if age == 0 else max(45, 160 - age * 38)
+
+            row_rect = QRect(0, y, self.width(), self._ROW_H)
+
+            # Nombre — izquierda
+            p.setPen(QColor(255, 255, 255, alpha))
+            p.drawText(row_rect, Qt.AlignLeft | Qt.AlignVCenter, name)
+
+            # Marca — derecha
+            if success:
+                p.setPen(QColor(35, 170, 70, alpha))
+                p.drawText(row_rect, Qt.AlignRight | Qt.AlignVCenter, '✓')
+            else:
+                p.setPen(QColor(190, 35, 35, alpha))
+                p.drawText(row_rect, Qt.AlignRight | Qt.AlignVCenter, '✗')
+
+        p.end()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  PANTALLA DE SPLASH
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -142,7 +225,7 @@ class SplashScreen(QWidget):
     _sig_status     = pyqtSignal(str, str)   # mensaje, color
     _sig_progress   = pyqtSignal(int)        # 0-100
     _sig_cam_update = pyqtSignal(int, str)   # cam_idx (1/2), estado
-    _sig_ticker     = pyqtSignal(str)        # fragmento para añadir al ticker
+    _sig_ticker     = pyqtSignal(str, bool)  # nombre_corto, éxito
 
     # Estilos por estado de cámara
     _CAM_STATE = {
@@ -150,6 +233,7 @@ class SplashScreen(QWidget):
             'border': 'rgba(212,134,10,0.30)',
             'bg':     'rgba(212,134,10,0.05)',
             'led':    '#D4860A',
+            'glow':   (212, 134, 10),
             'text':   '#D4860A',
             'label':  'Connecting...',
         },
@@ -157,6 +241,7 @@ class SplashScreen(QWidget):
             'border': 'rgba(35,170,70,0.30)',
             'bg':     'rgba(35,170,70,0.06)',
             'led':    '#23AA46',
+            'glow':   (35, 170, 70),
             'text':   '#23AA46',
             'label':  'Connected',
         },
@@ -164,10 +249,12 @@ class SplashScreen(QWidget):
             'border': 'rgba(190,35,35,0.30)',
             'bg':     'rgba(190,35,35,0.05)',
             'led':    '#BE2323',
+            'glow':   (190, 35, 35),
             'text':   '#BE2323',
             'label':  'No response',
         },
     }
+
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -181,7 +268,6 @@ class SplashScreen(QWidget):
         self.diagnostic_mode = False
         self._cam1_status    = 'connecting'
         self._cam2_status    = 'connecting'
-        self._ticker_parts: list[str] = []
         self._led_pulse_on   = True
 
         self.boot_stats = BootStatistics()
@@ -193,7 +279,7 @@ class SplashScreen(QWidget):
         self._sig_status.connect(self._do_status)
         self._sig_progress.connect(self.progress_bar.setValue)
         self._sig_cam_update.connect(self._do_cam_update)
-        self._sig_ticker.connect(self._do_ticker)
+        self._sig_ticker.connect(self._do_ticker)   # str, bool
 
         # Pulso para LEDs en estado "connecting"
         self._pulse_timer = QTimer(self)
@@ -254,16 +340,25 @@ class SplashScreen(QWidget):
         col.setAlignment(Qt.AlignHCenter)
 
         # Logo (88×88, gradiente verde, border-radius 22px)
-        logo = QLabel()
+        logo = QLabel('ISL')
         logo.setFixedSize(88, 88)
+        logo.setAlignment(Qt.AlignCenter)
+        logo.setFont(QFont('Inter Tight', 22, QFont.Bold))
         logo.setStyleSheet(
             "QLabel {"
+            "  color: rgba(255,255,255,0.85);"
             "  background: qlineargradient(x1:0.15,y1:0,x2:0.85,y2:1,"
             "    stop:0 #4A7A44, stop:1 #1A3318);"
             "  border-radius: 22px;"
-            "  border: 1px solid rgba(255,255,255,0.08);"
+            "  border: 1px solid rgba(255,255,255,0.10);"
+            "  letter-spacing: 3px;"
             "}"
         )
+        logo_glow = QGraphicsDropShadowEffect(logo)
+        logo_glow.setBlurRadius(28)
+        logo_glow.setColor(QColor(35, 170, 70, 90))
+        logo_glow.setOffset(0, 0)
+        logo.setGraphicsEffect(logo_glow)
         logo_row = QHBoxLayout()
         logo_row.addStretch()
         logo_row.addWidget(logo)
@@ -272,11 +367,13 @@ class SplashScreen(QWidget):
         col.addLayout(logo_row)
         col.addSpacing(32)
 
-        # Título — 64px bold, tracking -.04em
+        # Título — 52px bold, tracking -.04em, sin wrap
         title = QLabel('DublinISL Controls')
         title.setFont(QFont('Inter Tight', 52, QFont.Bold))
         title.setStyleSheet("color: #FFFFFF; background: transparent; letter-spacing: -2px;")
         title.setAlignment(Qt.AlignCenter)
+        title.setWordWrap(False)
+        title.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         col.addWidget(title)
         col.addSpacing(12)
 
@@ -292,7 +389,7 @@ class SplashScreen(QWidget):
 
         # Tarjetas de cámara (280px c/u, gap 24px)
         cards_row = QHBoxLayout()
-        cards_row.setSpacing(24)
+        cards_row.setSpacing(20)
         cards_row.setContentsMargins(0, 0, 0, 0)
         self._cam1_card = self._make_cam_card(
             1, 'Camera 1', 'Platform', 'Chairman / Lectern area', CAM1.ip, 'connecting'
@@ -314,33 +411,26 @@ class SplashScreen(QWidget):
         bar_col.setSpacing(12)
 
         self.progress_bar = QProgressBar()
-        self.progress_bar.setFixedHeight(3)
+        self.progress_bar.setFixedHeight(4)
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setStyleSheet("""
             QProgressBar {
                 border: none;
                 border-radius: 2px;
-                background-color: rgba(255,255,255,20);
+                background-color: rgba(255,255,255,18);
             }
             QProgressBar::chunk {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #4A7A44, stop:1 #23AA46);
+                    stop:0 #2E5229, stop:0.5 #4A7A44, stop:1 #23AA46);
                 border-radius: 2px;
             }
         """)
         self.progress_bar.setValue(0)
         bar_col.addWidget(self.progress_bar)
 
-        # Ticker de tests — monospace, muy tenue
-        self.ticker_label = QLabel('')
-        self.ticker_label.setFont(QFont('IBM Plex Mono', 11))
-        self.ticker_label.setStyleSheet(
-            "color: rgba(255,255,255,71); background: transparent;"
-        )
-        self.ticker_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        self.ticker_label.setWordWrap(True)
-        self.ticker_label.setFixedWidth(440)
-        bar_col.addWidget(self.ticker_label)
+        # Ticker de tests — lista rodante con animación slide-in
+        self.ticker_widget = TestTickerWidget()
+        bar_col.addWidget(self.ticker_widget)
 
         bar_row = QHBoxLayout()
         bar_row.addStretch()
@@ -374,11 +464,16 @@ class SplashScreen(QWidget):
     def _make_cam_card(self, cam_idx: int, cam_label: str, name: str,
                        subtitle: str, ip: str, status: str) -> QFrame:
         card = QFrame()
-        card.setFixedSize(280, 168)
+        card.setObjectName("cam_card")
+        card.setFrameShape(QFrame.NoFrame)
+        card.setFrameShadow(QFrame.Plain)
+        card.setLineWidth(0)
+        card.setMidLineWidth(0)
+        card.setFixedSize(300, 188)
         self._style_card(card, status)
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(0)
 
         # ── Encabezado: etiqueta de cámara (izq) + LED (der) ──────────────
@@ -445,8 +540,11 @@ class SplashScreen(QWidget):
 
     def _style_card(self, card: QFrame, status: str):
         st = self._CAM_STATE.get(status, self._CAM_STATE['connecting'])
+        # Selector con objectName para que el borde NO se propague a los
+        # QLabel hijos (QLabel hereda QFrame en Qt, así que un selector
+        # genérico "QFrame {}" les aplica a ellos también).
         card.setStyleSheet(
-            f"QFrame {{"
+            f"QFrame#cam_card {{"
             f"  background: {st['bg']};"
             f"  border: 1px solid {st['border']};"
             f"  border-radius: 16px;"
@@ -456,14 +554,22 @@ class SplashScreen(QWidget):
     def _style_led(self, led: QLabel, status: str, dimmed: bool = False):
         st = self._CAM_STATE.get(status, self._CAM_STATE['connecting'])
         color = st['led']
-        alpha = '0.55' if dimmed else '1.0'
+        r, g, b = st['glow']
         led.setStyleSheet(
             f"QLabel {{"
             f"  background: {color};"
             f"  border-radius: 7px;"
-            f"  opacity: {alpha};"
             f"}}"
         )
+        effect = QGraphicsDropShadowEffect(led)
+        effect.setOffset(0, 0)
+        if dimmed:
+            effect.setBlurRadius(6)
+            effect.setColor(QColor(r, g, b, 80))
+        else:
+            effect.setBlurRadius(12)
+            effect.setColor(QColor(r, g, b, 160))
+        led.setGraphicsEffect(effect)
 
     def _style_status_text(self, lbl: QLabel, status: str):
         st = self._CAM_STATE.get(status, self._CAM_STATE['connecting'])
@@ -518,12 +624,9 @@ class SplashScreen(QWidget):
         self._style_status_text(lbl, status)
         lbl.setText(self._CAM_STATE.get(status, self._CAM_STATE['connecting'])['label'])
 
-    def _do_ticker(self, fragment: str):
-        """Añadir fragmento al ticker de tests."""
-        self._ticker_parts.append(fragment)
-        # Mostrar todos los fragmentos en dos líneas si hay muchos
-        text = '  ·  '.join(self._ticker_parts)
-        self.ticker_label.setText(text)
+    def _do_ticker(self, name: str, success: bool):
+        """Añadir resultado al ticker rodante."""
+        self.ticker_widget.add_result(name, success)
 
     # ─────────────────────────────────────────────────────────────────────────
     #  API pública para hilos de fondo (emiten señales, nunca tocan widgets)
@@ -630,12 +733,12 @@ class SplashScreen(QWidget):
                 )
                 self._update_log(f"\n{self.tests_passed}/{self.tests_total} passed. Continuing...")
 
-            time.sleep(1)
+            time.sleep(3 if _sim_mode.is_active() else 1)
 
         except Exception as exc:
             self._update_log(f"\nWarning during initialization: {exc}")
             self._update_status("Starting with warnings...", "yellow")
-            time.sleep(1)
+            time.sleep(3 if _sim_mode.is_active() else 1)
 
         finally:
             # Siempre continuar: las cámaras no son requisito para arrancar
@@ -645,6 +748,8 @@ class SplashScreen(QWidget):
         """
         Ejecuta un test con hasta 3 reintentos (backoff exponencial).
         Solo reintenta si lanza excepción; False se acepta como resultado.
+        En modo simulación añade un retardo por test para que el ticker
+        sea legible y el splash no desaparezca de inmediato.
         """
         result = TestResult(name)
         max_retries = 3
@@ -654,6 +759,8 @@ class SplashScreen(QWidget):
             try:
                 success = test_func()
                 result.finish(success)
+                if _sim_mode.is_active():
+                    time.sleep(0.45)
                 return result.to_dict()
             except Exception as exc:
                 if attempt < max_retries:
@@ -662,6 +769,8 @@ class SplashScreen(QWidget):
                     time.sleep(wait)
                 else:
                     result.finish(False, str(exc))
+                    if _sim_mode.is_active():
+                        time.sleep(0.45)
                     return result.to_dict()
 
         return result.to_dict()
@@ -696,8 +805,7 @@ class SplashScreen(QWidget):
 
         # Ticker
         short = self._TICKER_SHORT.get(test_name, test_name[:6])
-        mark  = "OK" if result.get("success") else "--"
-        self._sig_ticker.emit(f"{short} {mark}")
+        self._sig_ticker.emit(short, bool(result.get("success")))
 
         # Actualizar tarjetas de cámara
         cam_status = 'connected' if result.get('success') else 'disconnected'

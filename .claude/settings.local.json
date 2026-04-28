@@ -21,7 +21,9 @@
       "Bash(cp webfetch-1777291822487-wxm0vh.bin design.gz)",
       "Bash(gunzip -f design.gz)",
       "Bash(tar xf *)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('splash_screen.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(del design_file_decoded.txt)"
     ]
   }
 }

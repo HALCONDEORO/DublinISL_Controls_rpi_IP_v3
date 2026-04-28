@@ -244,7 +244,7 @@ class ConfigDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
+        layout.setSpacing(8)
 
         # ── Título + botón cerrar (X roja) ───────────────────────────────
         header_row = QHBoxLayout()
