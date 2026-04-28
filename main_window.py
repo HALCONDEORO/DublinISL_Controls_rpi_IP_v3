@@ -64,6 +64,7 @@ from seat_builder import build_special_seat_button
 from chairman_button import ChairmanButton
 from camera_indicator import CameraIndicator
 from auditorium_overlay import AuditoriumOverlay
+from mode_border_overlay import ModeBorderOverlay
 
 # ── Nueva arquitectura ────────────────────────────────────────────────────────
 from core.state import SystemState
@@ -146,6 +147,8 @@ class MainWindow(QMainWindow):
 
         self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
         self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
+        self._atem_monitor.program_changed.connect(self._right_panel.set_atem_program)
+        self._atem_monitor.atem_connected.connect(self._right_panel.set_atem_connected)
         self._atem_monitor.start()
 
         # Auto-apagado por inactividad (2 horas)
@@ -202,6 +205,11 @@ class MainWindow(QMainWindow):
         self.BtnNames.raise_()
         self.BtnNames.hide()
 
+        # _mode_border debe existir antes de conectar las señales porque
+        # _update_mode_indicator lo referencia en cada pulsación de modo.
+        self._mode_border = ModeBorderOverlay(self)
+        self._mode_border.raise_()
+
         self.BtnCall.clicked.connect(lambda: self._names_panel.set_edit_mode(False))
         self.BtnCall.clicked.connect(lambda: self._update_mode_indicator('call'))
         self.BtnSet.clicked.connect(lambda:  self._names_panel.set_edit_mode(True))
@@ -248,6 +256,7 @@ class MainWindow(QMainWindow):
 
     def _update_mode_indicator(self, mode: str):
         self._set_overlay.set_mode(mode)
+        self._mode_border.set_mode(mode)
         GoButton.set_call_mode(mode == 'call')
         for btn in self.findChildren(GoButton):
             btn._apply_style()
@@ -431,6 +440,14 @@ class MainWindow(QMainWindow):
 
     def _on_worker_ready(self, worker) -> None:
         worker.signals.visca_error.connect(self._on_visca_speed_error)
+        worker.signals.connection_changed.connect(
+            lambda ok, _ip=worker.ip: self._on_cam_connected(ok, _ip))
+
+    def _on_cam_connected(self, ok: bool, ip: str) -> None:
+        if not ok:
+            return
+        cam_id = CAM1.cam_id if ip == CAM1.ip else CAM2.cam_id
+        self._visca.refresh_ae_mode_async(ip, cam_id)
 
     def _on_visca_speed_error(self, ip: str, cmd_type: str) -> None:
         if cmd_type not in self._watchdog_state:
@@ -622,6 +639,8 @@ class MainWindow(QMainWindow):
         self._atem_monitor.wait(2000)
         self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
         self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
+        self._atem_monitor.program_changed.connect(self._right_panel.set_atem_program)
+        self._atem_monitor.atem_connected.connect(self._right_panel.set_atem_connected)
         self._atem_monitor.start()
         logger.info("ATEMMonitor reiniciado por el supervisor")
 

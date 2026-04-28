@@ -37,6 +37,8 @@ class ATEMMonitor(QThread):
     """
 
     switched_to_input2 = pyqtSignal()
+    program_changed    = pyqtSignal(int)   # emite el input de programa actual al cambiar
+    atem_connected     = pyqtSignal(bool)  # True = conectado, False = no alcanzable
 
     def __init__(self, ip: str, parent=None):
         super().__init__(parent)
@@ -51,6 +53,7 @@ class ATEMMonitor(QThread):
             import PyATEMMax
         except ImportError:
             logger.warning("PyATEMMax no instalado — monitorización ATEM desactivada")
+            self.atem_connected.emit(False)
             return
 
         atem = PyATEMMax.ATEMMax()
@@ -58,17 +61,22 @@ class ATEMMonitor(QThread):
             atem.connect(self._ip)
             if not atem.waitForConnection(timeout=10):
                 logger.warning("ATEM no responde en %s — monitorización desactivada", self._ip)
+                self.atem_connected.emit(False)
                 return
         except Exception as exc:
             logger.warning("Error conectando al ATEM (%s): %s", self._ip, exc)
+            self.atem_connected.emit(False)
             return
 
         logger.info("ATEM conectado en %s", self._ip)
+        self.atem_connected.emit(True)
         prev_input = None
 
         while not self.isInterruptionRequested():
             try:
                 cur = int(atem.programInput[0].videoSource)
+                if cur != prev_input:
+                    self.program_changed.emit(cur)
                 if prev_input == 3 and cur == 2:
                     logger.info("ATEM: canal 3->2 — enviando Comments a Home")
                     self.switched_to_input2.emit()
@@ -83,6 +91,7 @@ class ATEMMonitor(QThread):
         import hardware_simulator as _hw
 
         logger.info("ATEMMonitor: modo simulacion activo")
+        self.atem_connected.emit(True)
 
         while not self.isInterruptionRequested():
             try:
@@ -90,5 +99,9 @@ class ATEMMonitor(QThread):
                 if event == "switch_to_input2":
                     logger.info("ATEM sim: evento Input 3->2 recibido")
                     self.switched_to_input2.emit()
+                    self.program_changed.emit(2)
+                elif event == "switch_to_input3":
+                    logger.info("ATEM sim: evento Input 2->3 recibido")
+                    self.program_changed.emit(3)
             except _queue.Empty:
                 pass

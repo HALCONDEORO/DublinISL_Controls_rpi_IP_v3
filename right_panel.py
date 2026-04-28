@@ -183,6 +183,15 @@ class RightPanel:
 
     _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+    _ON_AIR_STYLE_STANDBY = (
+        "QLabel { font: 700 12px 'Inter Tight', 'Segoe UI'; color: #999999;"
+        " background: #EBEBEB; border-radius: 6px; padding: 0px; }"
+    )
+    _ON_AIR_STYLE_LIVE = (
+        "QLabel { font: 700 12px 'Inter Tight', 'Segoe UI'; color: white;"
+        " background: #CC2200; border-radius: 6px; padding: 0px; }"
+    )
+
     _MODE_STYLE_ACTIVE_CALL = (
         "QFrame { background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
         " stop:0 #B84A4A, stop:1 #7A2020);"
@@ -267,6 +276,14 @@ class RightPanel:
         row.addWidget(mw.Cam2)
         layout.addWidget(cam_row)
 
+        # ── ON AIR indicator (oculto hasta que ATEM confirme conexión) ──────
+        self._on_air_label = QLabel('● STANDBY', self._container)
+        self._on_air_label.setAlignment(Qt.AlignCenter)
+        self._on_air_label.setFixedHeight(34)
+        self._on_air_label.setStyleSheet(self._ON_AIR_STYLE_STANDBY)
+        self._on_air_label.hide()
+        layout.addWidget(self._on_air_label)
+
         mw.Camgroup = QButtonGroup(mw)
         mw.Camgroup.addButton(mw.Cam1)
         mw.Camgroup.addButton(mw.Cam2)
@@ -342,6 +359,24 @@ class RightPanel:
         joy_right_row.addSpacing(12)
         joy_right_row.addWidget(right_col, alignment=Qt.AlignVCenter)
         bl.addLayout(joy_right_row)
+
+        # ── HOME manual (solo visible si ATEM no detectado) ──────────────
+        self._home_btn = QPushButton('⌂   Comments → Home', block)
+        self._home_btn.setFixedHeight(44)
+        self._home_btn.setContentsMargins(0, 0, 0, 0)
+        self._home_btn.setStyleSheet(
+            "QPushButton {"
+            "  background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            "    stop:0 #E8A020, stop:1 #B06010);"
+            "  border: none; border-radius: 10px;"
+            "  font: 700 14px 'Inter Tight', 'Segoe UI'; color: white;"
+            "}"
+            "QPushButton:pressed { background: #805010; }"
+        )
+        self._home_btn.clicked.connect(mw._visca._send_comments_cam_home)
+        self._home_btn.hide()
+        bl.addSpacing(6)
+        bl.addWidget(self._home_btn)
 
         # Debounce: slider oculto → VISCA (lógica sin cambios)
         mw._zoom_timer = QtCore.QTimer(block)
@@ -497,6 +532,28 @@ class RightPanel:
         QtCore.QTimer.singleShot(
             duration_ms, lambda: btn.setStyleSheet(self._btn_focus_base_style))
 
+
+    def set_atem_connected(self, connected: bool):
+        """Muestra/oculta el indicador ON AIR y el botón HOME según si el ATEM está disponible."""
+        self._on_air_label.setVisible(connected)
+        self._home_btn.setVisible(not connected)
+        QtCore.QTimer.singleShot(0, self._fit_container_height)
+
+    def set_atem_program(self, input_num: int):
+        """Actualiza el indicador ON AIR según el input de programa del ATEM.
+        Input 3 = Platform (cam 1), Input 2 = Comments (cam 2).
+        """
+        if input_num == 3:
+            text  = '● ON AIR — Platform'
+            style = self._ON_AIR_STYLE_LIVE
+        elif input_num == 2:
+            text  = '● ON AIR — Comments'
+            style = self._ON_AIR_STYLE_LIVE
+        else:
+            text  = '● STANDBY'
+            style = self._ON_AIR_STYLE_STANDBY
+        self._on_air_label.setText(text)
+        self._on_air_label.setStyleSheet(style)
 
     def _add_config_buttons(self, layout: QVBoxLayout):
         mw = self._mw

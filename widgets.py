@@ -37,14 +37,15 @@
 #      contenía exactamente 'border: 0px solid black;' o 'border: none;'.
 
 import logging
+import math
 import os
 from typing import Optional  # reemplaza `int | None` (sintaxis 3.10+)
 
 logger = logging.getLogger(__name__)
 
 from PyQt5 import QtCore, QtGui
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QColor, QPainter, QPen, QPixmap
 from PyQt5.QtWidgets import (
     QApplication, QMessageBox, QPushButton, QToolButton,
 )
@@ -83,6 +84,11 @@ class DragDropButton:
     """
 
     _call_mode: bool = True  # compartida por todas las subclases (GoButton, SpecialDragButton)
+
+    # ── Pulso del asiento activo (clase GoButton lo usa) ─────────────────
+    _pulse_timer:   Optional[QTimer]    = None
+    _pulse_phase:   float               = 0.0
+    _active_button: Optional['GoButton'] = None
 
     def dragEnterEvent(self, event):
         """Acepta drops solo en modo SET. En modo CALL ignora el drag."""
@@ -199,10 +205,6 @@ class GoButton(DragDropButton, QPushButton):
 
     name_assigned = pyqtSignal(int, str)
 
-    @classmethod
-    def set_call_mode(cls, call: bool):
-        DragDropButton._call_mode = call  # propaga a GoButton y SpecialDragButton
-
     WIDTH  = 71
     HEIGHT = 82
 
@@ -218,6 +220,60 @@ class GoButton(DragDropButton, QPushButton):
     def _clear_confirm_msg(self) -> str:
         """Mensaje con el número de asiento — implementación requerida por DragDropButton."""
         return f'Clear "{self.assigned_name}" from seat {self.seat_number}?'
+
+    # ── Pulso del asiento activo ──────────────────────────────────────────
+
+    @classmethod
+    def set_call_mode(cls, call: bool):
+        DragDropButton._call_mode = call
+        if not call and cls._active_button is not None:
+            cls._active_button._deactivate()
+
+    @classmethod
+    def _ensure_pulse_timer(cls):
+        if cls._pulse_timer is None:
+            # Sin parent Qt: el timer vive mientras GoButton (clase) exista.
+            # Un único timer de clase dirige todas las instancias activas.
+            cls._pulse_timer = QTimer()
+            cls._pulse_timer.setInterval(30)
+            cls._pulse_timer.timeout.connect(cls._advance_pulse)
+            cls._pulse_timer.start()
+
+    @classmethod
+    def _advance_pulse(cls):
+        cls._pulse_phase = (cls._pulse_phase + 0.035) % 1.0
+        if cls._active_button is not None:
+            cls._active_button.update()
+
+    def activate(self):
+        GoButton._ensure_pulse_timer()
+        if GoButton._active_button is not None and GoButton._active_button is not self:
+            GoButton._active_button._deactivate()
+        GoButton._active_button = self
+        self.update()
+
+    def _deactivate(self):
+        if GoButton._active_button is self:
+            GoButton._active_button = None
+        self.update()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self._call_mode:
+            self.activate()
+        super().mousePressEvent(event)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if GoButton._active_button is not self:
+            return
+        alpha = int(90 + 110 * math.sin(GoButton._pulse_phase * 2 * math.pi))
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QColor(255, 210, 60, alpha), 3)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(2, 2, self.width() - 4, self.height() - 4, 4, 4)
+        painter.end()
 
     def _apply_style(self):
         """

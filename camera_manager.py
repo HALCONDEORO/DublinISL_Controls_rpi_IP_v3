@@ -55,6 +55,9 @@ class CameraManager:
         self.backlight_on:   dict[int, bool] = {1: False, 2: False}
         self.focus_mode:     dict[int, str]  = {1: 'auto', 2: 'auto'}
         self.exposure_level: dict[int, int]  = {1: 0,      2: 0     }
+        # 'auto' cubre Full Auto, Shutter Priority, Iris Priority.
+        # 'manual' y 'bright' usan CAM_Bright (0D) en lugar de CAM_ExpComp (0E).
+        self.ae_mode:        dict[int, str]  = {1: 'auto', 2: 'auto'}
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Identificación de cámara

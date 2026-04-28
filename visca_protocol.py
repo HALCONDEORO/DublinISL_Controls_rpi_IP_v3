@@ -350,6 +350,70 @@ class ViscaProtocol:
             return pan, tilt
         return None
 
+    def _query_ae_mode(self, ip: str, cam_id: str) -> str:
+        """
+        Consulta el modo AE de la cámara (CAM_AE_ModeInq 09 04 39 FF).
+        Devuelve 'manual', 'bright' o 'auto' (cubre Full Auto, Shutter/Iris Priority).
+        """
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(SOCKET_TIMEOUT)
+                s.connect((ip, VISCA_PORT))
+                s.send(binascii.unhexlify(cam_id + "090439FF"))
+                data = s.recv(64)
+            if len(data) >= 4 and (data[0] & 0xF0) == 0x90 and data[1] == 0x50:
+                pp = data[2]
+                if pp == 0x03:
+                    return 'manual'
+                if pp == 0x0D:
+                    return 'bright'
+        except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
+            logger.warning("_query_ae_mode %s: %s", ip, exc)
+        return 'auto'
+
+    def _query_exp_comp_level(self, ip: str, cam_id: str) -> Optional[int]:
+        """
+        Consulta el nivel ExpComp actual (CAM_ExpCompPosInq 09 04 4E FF).
+        Respuesta: y0 50 00 00 0p 0q FF  →  valor 0-14, centro = 7.
+        Devuelve el nivel mapeado a -7..+7, o None si falla.
+        """
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(SOCKET_TIMEOUT)
+                s.connect((ip, VISCA_PORT))
+                s.send(binascii.unhexlify(cam_id + "09044EFF"))
+                data = s.recv(64)
+            if len(data) >= 7 and (data[0] & 0xF0) == 0x90 and data[1] == 0x50:
+                val = (
+                    ((data[2] & 0x0F) << 12) |
+                    ((data[3] & 0x0F) <<  8) |
+                    ((data[4] & 0x0F) <<  4) |
+                     (data[5] & 0x0F)
+                )
+                return max(-7, min(7, val - 7))
+        except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
+            logger.warning("_query_exp_comp_level %s: %s", ip, exc)
+        return None
+
+    def refresh_ae_mode_async(self, ip: str, cam_id: str) -> None:
+        """
+        Consulta en background el modo AE y el nivel de exposición real de la cámara,
+        actualiza el cache y refresca la UI si la cámara es la activa.
+        """
+        cam_key = self._cam_key(ip)
+        def _fetch():
+            mode = self._query_ae_mode(ip, cam_id)
+            self._cameras.ae_mode[cam_key] = mode
+            logger.info("AE mode cam%d (%s): %s", cam_key, ip, mode)
+            if mode not in ('manual', 'bright'):
+                level = self._query_exp_comp_level(ip, cam_id)
+                if level is not None:
+                    self._cameras.exposure_level[cam_key] = level
+                    logger.info("ExpComp level cam%d (%s): %d", cam_key, ip, level)
+                    if self._active_cam()[0] == ip:
+                        self._ui(self._ui_cb.on_exposure_changed)
+        threading.Thread(target=_fetch, daemon=True).start()
+
     def _query_zoom(self, ip: str, cam_id: str) -> Optional[int]:
         """Consulta el zoom actual vía VISCA inquiry. Devuelve valor 0–0x4000 o None."""
         try:
@@ -500,6 +564,9 @@ class ViscaProtocol:
             # un nuevo evento para esta ip entre medias, no lo tocamos.
             if self._preset_stop_events.get(ip) is stop:
                 self._preset_stop_events.pop(ip, None)
+            # Los presets pueden cambiar el modo AE y el nivel de exposición
+            # guardados en cámara; refrescamos ambos tras la estabilización.
+            self.refresh_ae_mode_async(ip, cam_id)
 
     def cancel_preset_polls(self) -> None:
         """Cancela todos los polls activos. Llamar al terminar la sesión."""
@@ -557,9 +624,18 @@ class ViscaProtocol:
     # ─────────────────────────────────────────────────────────────────────────
 
     def BrightnessUp(self):
-        """Sube la exposición un paso (modo exposición manual)."""
+        """Sube la exposición un paso. Usa CAM_Bright en Manual/Bright, CAM_ExpComp en el resto."""
         ip, cam_id = self._active_cam()
         cam_key = self._cam_key(ip)
+        ae = self._cameras.ae_mode[cam_key]
+        if ae in ('manual', 'bright'):
+            up_suffix = "01040D02FF"
+        else:
+            self._dispatch(ViscaCommand(
+                camera=cam_key,
+                payload=bytes.fromhex(cam_id + "01043E02FF"),
+            ))
+            up_suffix = "01040E02FF"
         def _ok():
             self._cameras.exposure_level[cam_key] = min(
                 7, self._cameras.exposure_level[cam_key] + 1)
@@ -570,15 +646,24 @@ class ViscaProtocol:
             self._ui(self._ui_cb.show_error)
         self._dispatch(ViscaCommand(
             camera=cam_key,
-            payload=bytes.fromhex(cam_id + "01040D02FF"),
+            payload=bytes.fromhex(cam_id + up_suffix),
             on_success=_ok,
             on_failure=_fail,
         ))
 
     def BrightnessDown(self):
-        """Baja la exposición un paso."""
+        """Baja la exposición un paso. Usa CAM_Bright en Manual/Bright, CAM_ExpComp en el resto."""
         ip, cam_id = self._active_cam()
         cam_key = self._cam_key(ip)
+        ae = self._cameras.ae_mode[cam_key]
+        if ae in ('manual', 'bright'):
+            down_suffix = "01040D03FF"
+        else:
+            self._dispatch(ViscaCommand(
+                camera=cam_key,
+                payload=bytes.fromhex(cam_id + "01043E02FF"),
+            ))
+            down_suffix = "01040E03FF"
         def _ok():
             self._cameras.exposure_level[cam_key] = max(
                 -7, self._cameras.exposure_level[cam_key] - 1)
@@ -589,7 +674,7 @@ class ViscaProtocol:
             self._ui(self._ui_cb.show_error)
         self._dispatch(ViscaCommand(
             camera=cam_key,
-            payload=bytes.fromhex(cam_id + "01040D03FF"),
+            payload=bytes.fromhex(cam_id + down_suffix),
             on_success=_ok,
             on_failure=_fail,
         ))

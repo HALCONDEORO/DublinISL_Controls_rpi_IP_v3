@@ -23,7 +23,8 @@
       "Bash(tar xf *)",
       "Bash(python3 -c ' *)",
       "Bash(python -c \"import ast; ast.parse\\(open\\('splash_screen.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
-      "Bash(del design_file_decoded.txt)"
+      "Bash(del design_file_decoded.txt)",
+      "Bash(python -m py_compile widgets.py right_panel.py atem_monitor.py mode_border_overlay.py main_window.py)"
     ]
   }
 }
