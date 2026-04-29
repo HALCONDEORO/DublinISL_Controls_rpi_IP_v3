@@ -82,10 +82,8 @@ class VirtualKeyboard(QWidget):
             None,
             Qt.Tool
             | Qt.FramelessWindowHint
-            | Qt.WindowStaysOnTopHint
-            | Qt.WindowDoesNotAcceptFocus,
+            | Qt.WindowStaysOnTopHint,
         )
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
         self._target: QLineEdit | None = None
         self._shift = False
         self._letter_btns: dict[str, QPushButton] = {}
@@ -144,6 +142,7 @@ class VirtualKeyboard(QWidget):
         if ch == '⌫':
             if self._target:
                 self._target.backspace()
+                self._target.setFocus()
             return
         if ch == '↵':
             if self._target:
@@ -163,6 +162,7 @@ class VirtualKeyboard(QWidget):
             self._update_shift()
 
         self._target.insert(char)
+        self._target.setFocus()
 
     def _update_shift(self) -> None:
         if self._shift_btn:
@@ -199,11 +199,15 @@ class _KeyboardFilter(QObject):
             if event.type() == QEvent.FocusIn:
                 self._kb.show_for(obj)
             elif event.type() == QEvent.FocusOut:
-                QTimer.singleShot(150, self._maybe_hide)
+                QTimer.singleShot(300, self._maybe_hide)
         return False
 
     def _maybe_hide(self) -> None:
         focused = QApplication.focusWidget()
+        if focused is None:
+            if self._kb._target:
+                self._kb._target.setFocus()
+            return
         if not isinstance(focused, QLineEdit):
             self._kb.hide()
 

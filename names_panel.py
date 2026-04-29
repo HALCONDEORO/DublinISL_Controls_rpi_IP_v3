@@ -17,11 +17,21 @@ from PyQt5 import QtCore, QtGui
 from PyQt5.QtCore import Qt, QSize, pyqtSignal
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
-    QAbstractItemView, QHBoxLayout, QInputDialog, QLabel, QListWidget,
+    QAbstractItemView, QDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget,
     QListWidgetItem, QMessageBox, QPushButton, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from widgets import DragDropButton
+
+
+def _get_text(parent, title: str, label: str, text: str = '') -> tuple[str, bool]:
+    dlg = QInputDialog(parent)
+    dlg.setWindowTitle(title)
+    dlg.setLabelText(label)
+    dlg.setTextValue(text)
+    dlg.setWindowModality(Qt.WindowModal)
+    ok = dlg.exec_() == QDialog.Accepted
+    return dlg.textValue(), ok
 
 _EDIT_ICON = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'edit.svg')
 
@@ -372,7 +382,7 @@ class NamesPanel(QWidget):
         self._on_changed()
 
     def _add_name(self):
-        text, ok = QInputDialog.getText(self, "Add Name", "Full name:")
+        text, ok = _get_text(self, "Add Name", "Full name:")
         if not (ok and text.strip()):
             return
         name = text.strip()
@@ -398,8 +408,7 @@ class NamesPanel(QWidget):
 
     def _edit_name_direct(self, old_name: str):
         """Edita el nombre pasado directamente (llamado desde el botón ✏ inline)."""
-        new_name, ok = QInputDialog.getText(
-            self, "Edit Name", "New name:", text=old_name)
+        new_name, ok = _get_text(self, "Edit Name", "New name:", text=old_name)
         if not (ok and new_name.strip()):
             return
         new_name = new_name.strip()
@@ -415,8 +424,14 @@ class NamesPanel(QWidget):
     def _delete_name(self):
         if not self.names:
             return
-        name, ok = QInputDialog.getItem(
-            self, "Delete Name", "Select attendee to remove:", self.names, 0, False)
+        dlg = QInputDialog(self)
+        dlg.setWindowTitle("Delete Name")
+        dlg.setLabelText("Select attendee to remove:")
+        dlg.setComboBoxItems(self.names)
+        dlg.setComboBoxEditable(False)
+        dlg.setWindowModality(Qt.WindowModal)
+        ok = dlg.exec_() == QDialog.Accepted
+        name = dlg.textValue()
         if not ok:
             return
         reply = QMessageBox.question(

@@ -350,68 +350,96 @@ class ViscaProtocol:
             return pan, tilt
         return None
 
-    def _query_ae_mode(self, ip: str, cam_id: str) -> str:
+    @staticmethod
+    def _find_inquiry_response(data: bytes, payload_len: int) -> Optional[bytes]:
         """
-        Consulta el modo AE de la cámara (CAM_AE_ModeInq 09 04 39 FF).
-        Devuelve 'manual', 'bright' o 'auto' (cubre Full Auto, Shutter/Iris Priority).
-        """
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(SOCKET_TIMEOUT)
-                s.connect((ip, VISCA_PORT))
-                s.send(binascii.unhexlify(cam_id + "090439FF"))
-                data = s.recv(64)
-            if len(data) >= 4 and (data[0] & 0xF0) == 0x90 and data[1] == 0x50:
-                pp = data[2]
-                if pp == 0x03:
-                    return 'manual'
-                if pp == 0x0D:
-                    return 'bright'
-        except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
-            logger.warning("_query_ae_mode %s: %s", ip, exc)
-        return 'auto'
+        Busca una trama VISCA Completion-with-data en el buffer recibido.
 
-    def _query_exp_comp_level(self, ip: str, cam_id: str) -> Optional[int]:
+        Formato: 9x 50 [payload_len bytes] FF
+        Escanea en lugar de asumir offset fijo, porque algunas cámaras
+        (PTZOptics, Datavideo, etc.) envían ACK + Completion en el mismo
+        paquete TCP: "9x 4y FF 9x 50 ... FF". Con offset fijo se leería
+        el byte equivocado.
+
+        Devuelve el slice de la trama si se encuentra, None si no.
         """
-        Consulta el nivel ExpComp actual (CAM_ExpCompPosInq 09 04 4E FF).
-        Respuesta: y0 50 00 00 0p 0q FF  →  valor 0-14, centro = 7.
-        Devuelve el nivel mapeado a -7..+7, o None si falla.
+        frame_len = payload_len + 3  # 9x  50  [payload]  FF
+        for i in range(len(data) - frame_len + 1):
+            if ((data[i] & 0xF0) == 0x90
+                    and data[i + 1] == 0x50
+                    and data[i + frame_len - 1] == 0xFF):
+                return data[i: i + frame_len]
+        return None
+
+    def _query_ae_and_exp_comp(self, ip: str, cam_id: str) -> tuple[str, Optional[int]]:
         """
+        Consulta modo AE y nivel ExpComp en una sola sesión TCP.
+
+        Envía dos inquiries en secuencia sobre la misma conexión, igual que
+        _query_position_and_zoom. Usar una sola conexión evita fallos en cámaras
+        que limitan conexiones simultáneas (algunos modelos admiten solo 1-2).
+
+        Devuelve (ae_mode, exp_comp_level):
+          ae_mode:         'auto' | 'manual' | 'bright'  — 'auto' como fallback seguro
+          exp_comp_level:  -7..+7 mapeado desde 0-14, o None si la query falla
+                           (cámara no soporta ExpComp inquiry, o modo no es auto)
+        """
+        ae_mode = 'auto'
+        exp_level: Optional[int] = None
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(SOCKET_TIMEOUT)
                 s.connect((ip, VISCA_PORT))
-                s.send(binascii.unhexlify(cam_id + "09044EFF"))
-                data = s.recv(64)
-            if len(data) >= 7 and (data[0] & 0xF0) == 0x90 and data[1] == 0x50:
-                val = (
-                    ((data[2] & 0x0F) << 12) |
-                    ((data[3] & 0x0F) <<  8) |
-                    ((data[4] & 0x0F) <<  4) |
-                     (data[5] & 0x0F)
-                )
-                return max(-7, min(7, val - 7))
+
+                s.send(binascii.unhexlify(cam_id + "090439FF"))  # CAM_AE_ModeInq
+                ae_data = s.recv(64)
+                frame = self._find_inquiry_response(ae_data, payload_len=1)
+                if frame is not None:
+                    pp = frame[2]
+                    if pp == 0x03:
+                        ae_mode = 'manual'
+                    elif pp == 0x0D:
+                        ae_mode = 'bright'
+
+                if ae_mode not in ('manual', 'bright'):
+                    s.send(binascii.unhexlify(cam_id + "09044EFF"))  # CAM_ExpCompPosInq
+                    ec_data = s.recv(64)
+                    frame = self._find_inquiry_response(ec_data, payload_len=4)
+                    if frame is not None:
+                        val = (
+                            ((frame[2] & 0x0F) << 12) |
+                            ((frame[3] & 0x0F) <<  8) |
+                            ((frame[4] & 0x0F) <<  4) |
+                             (frame[5] & 0x0F)
+                        )
+                        exp_level = max(-7, min(7, val - 7))
+
         except (socket.timeout, socket.error, OSError, binascii.Error) as exc:
-            logger.warning("_query_exp_comp_level %s: %s", ip, exc)
-        return None
+            logger.warning("_query_ae_and_exp_comp %s: %s", ip, exc)
+
+        return ae_mode, exp_level
 
     def refresh_ae_mode_async(self, ip: str, cam_id: str) -> None:
         """
-        Consulta en background el modo AE y el nivel de exposición real de la cámara,
-        actualiza el cache y refresca la UI si la cámara es la activa.
+        Consulta en background el modo AE y el nivel ExpComp real de la cámara
+        en una sola sesión TCP, actualiza el cache y refresca la UI si es la activa.
+        Descarta si ya hay un query en vuelo (guard atómico, evita TOCTOU).
         """
+        if not self._cameras.ae_query_try_acquire(ip):
+            return
         cam_key = self._cam_key(ip)
         def _fetch():
-            mode = self._query_ae_mode(ip, cam_id)
-            self._cameras.ae_mode[cam_key] = mode
-            logger.info("AE mode cam%d (%s): %s", cam_key, ip, mode)
-            if mode not in ('manual', 'bright'):
-                level = self._query_exp_comp_level(ip, cam_id)
+            try:
+                mode, level = self._query_ae_and_exp_comp(ip, cam_id)
+                self._cameras.ae_mode[cam_key] = mode
+                logger.info("AE mode cam%d (%s): %s", cam_key, ip, mode)
                 if level is not None:
                     self._cameras.exposure_level[cam_key] = level
                     logger.info("ExpComp level cam%d (%s): %d", cam_key, ip, level)
                     if self._active_cam()[0] == ip:
                         self._ui(self._ui_cb.on_exposure_changed)
+            finally:
+                self._cameras.ae_query_release(ip)
         threading.Thread(target=_fetch, daemon=True).start()
 
     def _query_zoom(self, ip: str, cam_id: str) -> Optional[int]:

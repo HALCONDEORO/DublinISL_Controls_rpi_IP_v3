@@ -197,8 +197,10 @@ class CameraWorker:
         Usa select() con timeout cero para ver si el descriptor tiene datos
         listos para leer. En TCP, readable sin haber enviado nada significa
         que el par envió EOF (FIN) o RST, es decir, la conexión está cerrada.
-        Si no hay nada legible, intenta send(b"") — una escritura vacía no
-        transmite bytes pero sí detecta si el descriptor local es válido.
+        Si no hay nada legible el socket se considera vivo: select() confirma
+        que el descriptor local es válido y no hay FIN pendiente de leer.
+        No se usa send(b"") porque su comportamiento varía entre OS y algunos
+        firmwares de cámara lo rechazan con EINVAL o RST inesperado.
         """
         try:
             readable, _, _ = select.select([sock], [], [], 0)
@@ -208,8 +210,6 @@ class CameraWorker:
                 # la conexión (recv devuelve b"") o llegó basura → desconectado.
                 data = sock.recv(1)
                 return len(data) > 0
-            # Sin datos pendientes → verificar que el descriptor local sigue abierto
-            sock.send(b"")
             return True
         except (OSError, socket.error):
             return False

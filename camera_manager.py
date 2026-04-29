@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Callable, Optional
 
 from config import CAM1, CAM2, CameraConfig
@@ -47,9 +48,13 @@ class CameraManager:
         # Clave: cam_key (1 o 2). Valor: último porcentaje enviado a la cámara.
         self._zoom_cache: dict[int, Optional[int]] = {1: None, 2: None}
 
-        # Flag de query en vuelo: evita lanzar un segundo thread si ya hay uno
-        # consultando el zoom de esa cámara (race condition tras preset recall).
+        # Flags de query en vuelo: evitan lanzar un segundo thread si ya hay uno
+        # consultando zoom o AE de esa cámara (race condition tras preset recall).
+        # _inflight_lock protege el check-and-set de ambos flags: sin lock, dos
+        # threads pueden leer False simultáneamente y ambos proceder (TOCTOU).
+        self._inflight_lock:      threading.Lock  = threading.Lock()
         self._zoom_query_inflight: dict[int, bool] = {1: False, 2: False}
+        self._ae_query_inflight:   dict[int, bool] = {1: False, 2: False}
 
         # Estado por cámara. Clave: cam_key (1 o 2).
         self.backlight_on:   dict[int, bool] = {1: False, 2: False}
@@ -109,13 +114,35 @@ class CameraManager:
         Intenta reservar el slot de query de zoom para esta cámara.
         Devuelve True (y marca inflight) si no había query en vuelo.
         Devuelve False si ya hay uno activo: el llamador debe descartarse.
+        Operación atómica mediante _inflight_lock para evitar TOCTOU.
         """
-        key = self.cam_key(ip)
-        if self._zoom_query_inflight[key]:
-            return False
-        self._zoom_query_inflight[key] = True
-        return True
+        with self._inflight_lock:
+            key = self.cam_key(ip)
+            if self._zoom_query_inflight[key]:
+                return False
+            self._zoom_query_inflight[key] = True
+            return True
 
     def zoom_query_release(self, ip: str):
         """Libera el slot de query de zoom tras completarse el thread."""
-        self._zoom_query_inflight[self.cam_key(ip)] = False
+        with self._inflight_lock:
+            self._zoom_query_inflight[self.cam_key(ip)] = False
+
+    def ae_query_try_acquire(self, ip: str) -> bool:
+        """
+        Intenta reservar el slot de query de AE para esta cámara.
+        Devuelve True (y marca inflight) si no había query en vuelo.
+        Devuelve False si ya hay uno activo: el llamador debe descartarse.
+        Operación atómica mediante _inflight_lock para evitar TOCTOU.
+        """
+        with self._inflight_lock:
+            key = self.cam_key(ip)
+            if self._ae_query_inflight[key]:
+                return False
+            self._ae_query_inflight[key] = True
+            return True
+
+    def ae_query_release(self, ip: str):
+        """Libera el slot de query de AE tras completarse el thread."""
+        with self._inflight_lock:
+            self._ae_query_inflight[self.cam_key(ip)] = False

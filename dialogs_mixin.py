@@ -46,7 +46,7 @@ class ChangePasswordDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Change Password')
-        self.setModal(True)
+        self.setWindowModality(Qt.WindowModal)
         self.setFixedSize(340, 230)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.new_password = ''
@@ -210,11 +210,13 @@ class DialogsController:
             return
 
         # Paso 2: pedir nuevo valor
-        text, ok = QInputDialog.getText(
-            self._w, title,
-            f'New {field} for {cam_name} Camera (current: {current}):',
-            text=current,
-        )
+        dlg = QInputDialog(self._w)
+        dlg.setWindowTitle(title)
+        dlg.setLabelText(f'New {field} for {cam_name} Camera (current: {current}):')
+        dlg.setTextValue(current)
+        dlg.setWindowModality(Qt.WindowModal)
+        ok = dlg.exec_() == QDialog.Accepted
+        text = dlg.textValue()
         if not (ok and text.strip()):
             return  # Usuario canceló o dejó vacío
 

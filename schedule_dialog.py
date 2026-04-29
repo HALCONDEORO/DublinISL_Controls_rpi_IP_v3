@@ -35,7 +35,7 @@ class ScheduleDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Weekly Schedule')
-        self.setModal(True)
+        self.setWindowModality(Qt.WindowModal)
         self.setFixedSize(440, 530)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setStyleSheet(

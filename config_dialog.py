@@ -32,8 +32,6 @@
 import os
 import sys
 import socket
-import subprocess
-import platform
 from datetime import datetime
 from pathlib import Path
 import threading
@@ -75,7 +73,6 @@ class _CamEditDialog(QDialog):
 
     def __init__(self, parent, mw, cam_num: int, config_type: str):
         super().__init__(parent)
-        self._kb_proc    = None
         self._mw         = mw
         self._cam_num    = cam_num
         self._config_type = config_type
@@ -95,7 +92,7 @@ class _CamEditDialog(QDialog):
             hint      = 'e.g. 81'
 
         self.setWindowTitle(f'Edit {cam_name} {field}')
-        self.setModal(True)
+        self.setWindowModality(Qt.WindowModal)
         self.setFixedSize(360, 170)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
 
@@ -148,32 +145,7 @@ class _CamEditDialog(QDialog):
             "QDialog { background: white; border: 2px solid #9e9e9e; border-radius: 10px; }"
         )
 
-        self._launch_keyboard()
         QTimer.singleShot(0, self._input.setFocus)
-
-    def _launch_keyboard(self):
-        if platform.system() != 'Linux':
-            return
-        for kb in ('onboard', 'matchbox-keyboard', 'florence'):
-            try:
-                self._kb_proc = subprocess.Popen(
-                    [kb], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
-                break
-            except FileNotFoundError:
-                continue
-
-    def _close_keyboard(self):
-        if self._kb_proc is not None:
-            try:
-                self._kb_proc.terminate()
-            except Exception:
-                pass
-            self._kb_proc = None
-
-    def closeEvent(self, event):
-        self._close_keyboard()
-        super().closeEvent(event)
 
     def _apply(self):
         text = self._input.text().strip()
@@ -210,7 +182,6 @@ class _CamEditDialog(QDialog):
         with open(self._filename, 'w', encoding='utf-8') as f:
             f.write(text)
 
-        self._close_keyboard()
         self.accept()
 
 
@@ -225,9 +196,7 @@ class ConfigDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Camera Configuration')
-        # Modal: bloquea la ventana principal mientras está abierto.
-        # Evita que el operador mueva cámaras mientras el técnico cambia IPs.
-        self.setModal(True)
+        self.setWindowModality(Qt.WindowModal)
         self.setFixedSize(400, 940)
         # Sin barra de título del SO en pantalla táctil (RPi fullscreen)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
