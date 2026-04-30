@@ -47,7 +47,8 @@ from PyQt5.QtWidgets import (
 from schedule_dialog import ScheduleDialog
 import sim_mode as _sim_mode
 
-from config import CAM1, CAM2, ATEMAddress, is_valid_ip, is_valid_cam_id
+from config import CAM1, CAM2, ATEM, is_valid_ip, is_valid_cam_id
+from ptz.visca import commands as vcmd
 
 
 def _make_pencil_icon(size=18):
@@ -182,6 +183,86 @@ class _CamEditDialog(QDialog):
         with open(self._filename, 'w', encoding='utf-8') as f:
             f.write(text)
 
+        self.accept()
+
+
+class _ATEMEditDialog(QDialog):
+    """Diálogo de edición de IP del switcher ATEM."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        import config as _cfg
+        self._filename = 'ATEMIP.txt'
+
+        self.setWindowTitle('Edit ATEM IP')
+        self.setWindowModality(Qt.WindowModal)
+        self.setFixedSize(360, 170)
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(10)
+
+        title_lbl = QLabel('ATEM Switcher  —  IP address')
+        title_lbl.setStyleSheet("font: bold 14px 'Inter Tight', 'Segoe UI'; color: #222;")
+        layout.addWidget(title_lbl)
+
+        self._input = QLineEdit(_cfg.ATEM.ip)
+        self._input.setPlaceholderText('e.g. 176.16.1.10')
+        self._input.setStyleSheet(
+            "QLineEdit { border: 2px solid #1976D2; border-radius: 6px;"
+            " padding: 6px 10px; font: 14px 'Inter Tight', 'Segoe UI'; }"
+            "QLineEdit:focus { border-color: #0d47a1; }"
+        )
+        self._input.selectAll()
+        layout.addWidget(self._input)
+
+        self._err = QLabel('')
+        self._err.setStyleSheet("color: #c62828; font: 11px 'Inter Tight', 'Segoe UI';")
+        layout.addWidget(self._err)
+
+        btn_row = QHBoxLayout()
+        btn_ok = QPushButton('OK')
+        btn_ok.setFixedHeight(34)
+        btn_ok.setStyleSheet(
+            "QPushButton { background: #1976D2; border: none; border-radius: 6px;"
+            " font: bold 13px 'Inter Tight', 'Segoe UI'; color: white; }"
+            "QPushButton:pressed { background: #1251a0; }"
+        )
+        btn_ok.clicked.connect(self._apply)
+
+        btn_cancel = QPushButton('Cancel')
+        btn_cancel.setFixedHeight(34)
+        btn_cancel.setStyleSheet(
+            "QPushButton { background: #e0e0e0; border: none; border-radius: 6px;"
+            " font: 13px 'Inter Tight', 'Segoe UI'; color: #333; }"
+            "QPushButton:pressed { background: #bdbdbd; }"
+        )
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_row.addWidget(btn_ok)
+        btn_row.addWidget(btn_cancel)
+        layout.addLayout(btn_row)
+
+        self.setStyleSheet(
+            "QDialog { background: white; border: 2px solid #9e9e9e; border-radius: 10px; }"
+        )
+
+        QTimer.singleShot(0, self._input.setFocus)
+
+    def _apply(self):
+        text = self._input.text().strip()
+        if not text:
+            self._err.setText('Value cannot be empty.')
+            return
+        if not is_valid_ip(text):
+            self._err.setText(f'Invalid value. Expected format: {self._input.placeholderText()}')
+            return
+
+        import config as _cfg
+        _cfg.ATEM.ip = text
+        with open(self._filename, 'w', encoding='utf-8') as f:
+            f.write(text)
         self.accept()
 
 
@@ -340,6 +421,34 @@ class ConfigDialog(QDialog):
             cam_row.addWidget(id_lbl, stretch=1)
             cam_row.addWidget(btn_id)
             layout.addLayout(cam_row)
+
+        # ── Sección: ATEM ─────────────────────────────────────────────────
+        layout.addWidget(self._section_label('ATEM Switcher'))
+
+        atem_row = QHBoxLayout()
+        atem_row.setSpacing(6)
+
+        atem_ip_lbl = QLabel(f'IP:  {ATEM.ip}')
+        atem_ip_lbl.setStyleSheet(
+            "font: 13px 'Inter Tight', 'Segoe UI'; color: #444;"
+            " background: #f5f5f5; border-radius: 6px; padding: 4px 8px;"
+        )
+        btn_atem_ip = _pencil_btn()
+
+        def _edit_atem_ip(_, lbl=atem_ip_lbl):
+            _ATEMEditDialog(self).exec_()
+            import config as _cfg
+            lbl.setText(f'IP:  {_cfg.ATEM.ip}')
+
+        btn_atem_ip.clicked.connect(_edit_atem_ip)
+        atem_row.addWidget(atem_ip_lbl, stretch=1)
+        atem_row.addWidget(btn_atem_ip)
+        layout.addLayout(atem_row)
+
+        line_atem = QFrame()
+        line_atem.setFrameShape(QFrame.HLine)
+        line_atem.setStyleSheet("color: #ccc;")
+        layout.addWidget(line_atem)
 
         # ── Sección: Camera Discovery ─────────────────────────────────────
         layout.addWidget(self._section_label('Camera Discovery'))
@@ -653,13 +762,14 @@ class ConfigDialog(QDialog):
         layout.addWidget(btn_run_test)
 
         def _test_atem_connection():
+            import config as _cfg
             if sim_active:
                 import hardware_simulator as _hw
                 _hw.atem_event_queue.put("switch_to_input2")
                 color = '#3d9e3d'
             else:
                 try:
-                    with socket.create_connection((ATEMAddress, 9910), timeout=3):
+                    with socket.create_connection((_cfg.ATEM.ip, 9910), timeout=3):
                         ok = True
                 except OSError as exc:
                     import logging as _log
@@ -675,25 +785,25 @@ class ConfigDialog(QDialog):
                 dot.setStyleSheet("color: #AAAAAA; font: 14px;")
             btn_run_test.setEnabled(False)
             btn_run_test.setText('Testing...')
-            commands = [
-                ("01043802FF", 0),   # Auto Focus
-                ("01041801FF", 1),   # One Push AF
-                ("01043803FF", 2),   # Manual Focus
-                ("01040D03FF", 3),   # Darker
-                ("01040D02FF", 4),   # Brighter
-                ("01043302FF", 5),   # Backlight ON
+            test_cmds = [
+                (vcmd.focus_auto,            0),   # Auto Focus
+                (vcmd.one_push_af,           1),   # One Push AF
+                (vcmd.focus_manual,          2),   # Manual Focus
+                (vcmd.brightness_down_direct, 3),  # Darker
+                (vcmd.brightness_up_direct,   4),  # Brighter
+                (vcmd.backlight_on,           5),   # Backlight ON
             ]
 
             def _after_visca():
                 threading.Thread(target=_test_atem_connection, daemon=True).start()
 
             def _run_with_atem(step):
-                if step >= len(commands):
+                if step >= len(test_cmds):
                     QTimer.singleShot(100, _after_visca)
                     return
-                cmd, idx = commands[step]
+                cmd_fn, idx = test_cmds[step]
                 ip, cam_id = mw._visca._active_cam()
-                ok = mw._visca._send_cmd(ip, cam_id, cmd)
+                ok = mw._visca._send_cmd(ip, cmd_fn(cam_id))
                 color = '#3d9e3d' if ok else '#b33030'
                 test_indicators[idx].setStyleSheet(f"color: {color}; font: 14px;")
                 QTimer.singleShot(500, lambda: _run_with_atem(step + 1))

@@ -27,7 +27,7 @@ import os
 import time
 
 from PyQt5 import QtGui, QtCore
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, pyqtSlot
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import (
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 from config import (
     CAM1, CAM2,
-    ATEMAddress,
+    ATEM,
     SEAT_POSITIONS,
     load_names_data,
     PRESET_MAP,
@@ -49,10 +49,10 @@ from config import (
     ZOOM_DRIVE_MAX,
 )
 from atem_monitor import ATEMMonitor
-from camera_manager import CameraManager
+from ptz.visca import CameraManager
 from widgets import GoButton, SpecialDragButton
 from names_panel import NamesPanel
-from visca_mixin import ViscaController
+from ptz.visca.controller import ViscaController
 from session_mixin import SessionController
 from dialogs_mixin import DialogsController
 from config_dialog import ConfigDialog
@@ -75,6 +75,7 @@ from application.preset_service import PresetService
 from application.camera_service import CameraService
 from application.session_service import SessionService
 from domain.preset import PRESET_CHAIRMAN_GENERIC
+from ptz.visca import commands as vcmd
 
 
 class MainWindow(QMainWindow):
@@ -145,7 +146,7 @@ class MainWindow(QMainWindow):
             from simulation.sim_worker import start_simulation
             start_simulation(CAM1.ip, CAM2.ip)
 
-        self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
+        self._atem_monitor = ATEMMonitor(ATEM.ip, parent=self)
         self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
         self._atem_monitor.program_changed.connect(self._right_panel.set_atem_program)
         self._atem_monitor.atem_connected.connect(self._right_panel.set_atem_connected)
@@ -637,7 +638,7 @@ class MainWindow(QMainWindow):
             return
         self._atem_monitor.requestInterruption()
         self._atem_monitor.wait(2000)
-        self._atem_monitor = ATEMMonitor(ATEMAddress, parent=self)
+        self._atem_monitor = ATEMMonitor(ATEM.ip, parent=self)
         self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
         self._atem_monitor.program_changed.connect(self._right_panel.set_atem_program)
         self._atem_monitor.atem_connected.connect(self._right_panel.set_atem_connected)
@@ -655,8 +656,8 @@ class MainWindow(QMainWindow):
         if time.time() - self._last_activity < self._INACTIVITY_TIMEOUT:
             return
         logger.info("Auto power-off: 2 horas sin actividad")
-        self._visca._send_cmd(CAM1.ip, CAM1.cam_id, "01040003FF")
-        self._visca._send_cmd(CAM2.ip, CAM2.cam_id, "01040003FF")
+        self._visca._send_cmd(CAM1.ip, vcmd.power_off(CAM1.cam_id))
+        self._visca._send_cmd(CAM2.ip, vcmd.power_off(CAM2.cam_id))
         self.session_active = False
         self.BtnSession.setStyleSheet(SessionController._STYLE_BTN_OFF)
         self.BtnSession.setToolTip('Start Session: Power ON both cameras and go Home')
@@ -673,8 +674,8 @@ class MainWindow(QMainWindow):
         self._atem_monitor.wait(2000)
 
         # Power OFF ambas cámaras al salir (VISCA 01 04 00 03 FF)
-        self._visca._send_cmd(CAM1.ip, CAM1.cam_id, "01040003FF")
-        self._visca._send_cmd(CAM2.ip, CAM2.cam_id, "01040003FF")
+        self._visca._send_cmd(CAM1.ip, vcmd.power_off(CAM1.cam_id))
+        self._visca._send_cmd(CAM2.ip, vcmd.power_off(CAM2.cam_id))
 
         event.accept()
 
@@ -699,3 +700,10 @@ class MainWindow(QMainWindow):
             self.BtnBacklight.setText('Backlight\nOFF')
             self.BtnBacklight.setStyleSheet(self._backlight_style_off)
         self._cam_indicator.set_mode('platform' if cam_key == 1 else 'comments')
+
+    @pyqtSlot(int)
+    def _set_zoom_feedback(self, pct: int):
+        """Actualiza el slider desde el feedback de red sin disparar ZoomAbsolute."""
+        self._zoom_feedback = True
+        self.ZoomSlider.setValue(pct)
+        self._zoom_feedback = False

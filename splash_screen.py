@@ -28,7 +28,7 @@ from PyQt5.QtGui import (
     QFont, QPainter, QColor, QRadialGradient, QPen, QBrush, QLinearGradient
 )
 
-from config import CAM1, CAM2, SOCKET_TIMEOUT, VISCA_PORT, SEAT_POSITIONS, ATEMAddress
+from config import CAM1, CAM2, SOCKET_TIMEOUT, VISCA_PORT, SEAT_POSITIONS, ATEM
 import sim_mode as _sim_mode
 
 
@@ -858,7 +858,7 @@ class SplashScreen(QWidget):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.settimeout(SOCKET_TIMEOUT)
-                return sock.connect_ex((ATEMAddress, 9910)) == 0
+                return sock.connect_ex((ATEM.ip, 9910)) == 0
         except OSError:
             return False
 

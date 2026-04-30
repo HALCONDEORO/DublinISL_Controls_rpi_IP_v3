@@ -22,6 +22,7 @@ from PyQt5.QtWidgets import QMessageBox
 
 from config import CAM1, CAM2, PRESET_MAP
 from domain.preset import PRESET_CHAIRMAN_GENERIC
+from ptz.visca import commands as vcmd
 
 
 class SessionController:
@@ -81,8 +82,8 @@ class SessionController:
             self._w.SessionStatus.setStyleSheet("font: bold 12px; color: #888")
 
             # Power ON ambas cámaras: 8x 01 04 00 02 FF
-            self._w._visca._send_cmd(CAM1.ip, CAM1.cam_id, "01040002FF")
-            self._w._visca._send_cmd(CAM2.ip, CAM2.cam_id, "01040002FF")
+            self._w._visca._send_cmd(CAM1.ip, vcmd.power_on(CAM1.cam_id))
+            self._w._visca._send_cmd(CAM2.ip, vcmd.power_on(CAM2.cam_id))
 
             # Esperar 8 s antes de enviar Home: los motores PTZ necesitan
             # este tiempo para inicializarse después de encenderse.
@@ -99,8 +100,8 @@ class SessionController:
                 self._w._visca.cancel_preset_polls()
 
                 # Standby ambas cámaras: 8x 01 04 00 03 FF
-                self._w._visca._send_cmd(CAM1.ip, CAM1.cam_id, "01040003FF")
-                self._w._visca._send_cmd(CAM2.ip, CAM2.cam_id, "01040003FF")
+                self._w._visca._send_cmd(CAM1.ip, vcmd.power_off(CAM1.cam_id))
+                self._w._visca._send_cmd(CAM2.ip, vcmd.power_off(CAM2.cam_id))
 
                 self._w.session_active = False
                 self._w.BtnSession.setStyleSheet(self._STYLE_BTN_OFF)  # rojo: apagado
@@ -114,8 +115,8 @@ class SessionController:
         Cam1 → posición chairman (preset 1). Cam2 → Home.
         """
         chairman_hex = PRESET_MAP[PRESET_CHAIRMAN_GENERIC]
-        self._w._visca._send_cmd(CAM1.ip, CAM1.cam_id, f"01043f02{chairman_hex}ff")
-        self._w._visca._send_cmd(CAM2.ip, CAM2.cam_id, "010604FF")
+        self._w._visca._send_cmd(CAM1.ip, vcmd.preset_recall(CAM1.cam_id, chairman_hex))
+        self._w._visca._send_cmd(CAM2.ip, vcmd.home(CAM2.cam_id))
 
         self._w.BtnSession.setStyleSheet(self._STYLE_BTN_ON)  # verde: sesión activa
         self._w.BtnSession.setToolTip('End Session: Power OFF (standby) both cameras')

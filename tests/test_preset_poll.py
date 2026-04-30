@@ -42,8 +42,8 @@ sys.modules.setdefault("PyQt5",          pyqt5_stub)
 sys.modules.setdefault("PyQt5.QtCore",   qtcore_stub)
 sys.modules.setdefault("PyQt5.QtWidgets", qtwidgets_stub)
 
-# camera_worker stub
-cw_stub = types.ModuleType("camera_worker")
+# ptz.visca.worker stub (el módulo real vive ahora en ptz/visca/worker.py)
+cw_stub = types.ModuleType("ptz.visca.worker")
 
 class _ViscaCommand:
     def __init__(self, camera, payload, priority=False, on_success=None, on_failure=None):
@@ -70,20 +70,29 @@ class _CameraWorker:
 
 cw_stub.CameraWorkerSignals = _CameraWorkerSignals
 cw_stub.CameraWorker        = _CameraWorker
-sys.modules["camera_worker"] = cw_stub
+sys.modules["ptz.visca.worker"] = cw_stub
 
-# camera_manager stub
-cm_stub = types.ModuleType("camera_manager")
+# ptz.visca.manager stub (el módulo real vive ahora en ptz/visca/manager.py)
+cm_stub = types.ModuleType("ptz.visca.manager")
 
 class _CameraManager:
     def __init__(self):
         self._zoom: dict[str, int] = {}
         self.focus_mode: dict[int, str] = {}
+        self.ae_mode: dict[int, str] = {1: 'auto', 2: 'auto'}
+        self.exposure_level: dict[int, int] = {1: 0, 2: 0}
+        self.backlight_on: dict[int, bool] = {1: False, 2: False}
     def set_zoom(self, ip, pct): self._zoom[ip] = pct
     def get_zoom(self, ip):      return self._zoom.get(ip, 0)
+    def cam_key(self, ip):       return 1 if ip == IP1 else 2
+    def ae_query_try_acquire(self, ip): return False  # no lanzar threads AE en tests
+    def ae_query_release(self, ip):     pass
+    def zoom_query_try_acquire(self, ip): return False
+    def zoom_query_release(self, ip):     pass
+    def worker(self, ip):        return _CameraWorker(ip)
 
 cm_stub.CameraManager = _CameraManager
-sys.modules["camera_manager"] = cm_stub
+sys.modules["ptz.visca.manager"] = cm_stub
 
 # secret_manager stub (requerido por config.py)
 sm_stub = types.ModuleType("secret_manager")
@@ -111,7 +120,7 @@ import importlib
 import inspect
 
 # Importar ViscaProtocol directamente
-vp_module = importlib.import_module("visca_protocol")
+vp_module = importlib.import_module("ptz.visca.protocol")
 ViscaProtocol = vp_module.ViscaProtocol
 
 
@@ -146,7 +155,7 @@ def _make_protocol(query_fn=None, active_ip=IP1):
     proto._cameras              = cameras
     proto._ui_cb                = ui_cb
     proto._preset_stop_events   = {}
-    proto._ZOOM_MAX             = ZOOM_MAX
+    proto._stop_lock            = threading.Lock()
     proto._worker               = {1: w1, 2: w2}
     proto._active_cam_idx       = 0
     proto._active_ip            = active_ip
@@ -163,11 +172,11 @@ def _make_protocol(query_fn=None, active_ip=IP1):
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-def _run_poll(proto, ip, cam_id, ceiling, stop):
+def _run_poll(proto, ip, cam_id, active_ip, ceiling, stop):
     """Arranca el loop en un thread y devuelve el thread."""
     t = threading.Thread(
         target=proto._preset_poll_loop,
-        args=(ip, cam_id, ceiling, stop),
+        args=(ip, cam_id, active_ip, ceiling, stop),
         daemon=True,
     )
     t.start()
@@ -193,7 +202,7 @@ class TestPresetPollStability(unittest.TestCase):
         ceiling = 5.0  # margen generoso
 
         t0 = time.monotonic()
-        t = _run_poll(proto, IP1, CAM_ID1, ceiling, stop)
+        t = _run_poll(proto, IP1, CAM_ID1, IP1, ceiling, stop)
         t.join(timeout=3.0)
         elapsed = time.monotonic() - t0
 
@@ -219,7 +228,7 @@ class TestPresetPollStability(unittest.TestCase):
         proto, slider_calls = _make_protocol(_query, active_ip=IP2)  # activa = CAM2
         stop = threading.Event()
 
-        t = _run_poll(proto, IP1, CAM_ID1, 3.0, stop)
+        t = _run_poll(proto, IP1, CAM_ID1, IP2, 3.0, stop)  # active_ip=IP2 ≠ IP1
         t.join(timeout=3.0)
 
         # El zoom del cache de CAM1 sí se actualiza
@@ -244,7 +253,7 @@ class TestPresetPollRapidFire(unittest.TestCase):
         events_created = []
         for _ in range(20):
             ceiling = 2.0
-            proto._start_preset_poll(IP1, CAM_ID1, ceiling)
+            proto._start_preset_poll(IP1, CAM_ID1, IP1, ceiling)
             if IP1 in proto._preset_stop_events:
                 events_created.append(proto._preset_stop_events[IP1])
 
@@ -269,7 +278,7 @@ class TestPresetPollCancellation(unittest.TestCase):
 
         stop = threading.Event()
         proto._preset_stop_events[IP1] = stop
-        t = _run_poll(proto, IP1, CAM_ID1, ceiling, stop)
+        t = _run_poll(proto, IP1, CAM_ID1, IP1, ceiling, stop)
 
         # Dejar que al menos un ciclo corra
         time.sleep(PRESET_ZOOM_POLL_INTERVAL + 0.1)
@@ -294,7 +303,7 @@ class TestPresetPollCancellation(unittest.TestCase):
         proto._active_ip = IP1
 
         for ip, cam_id in [(IP1, CAM_ID1), (IP2, CAM_ID2)]:
-            proto._start_preset_poll(ip, cam_id, 60.0)
+            proto._start_preset_poll(ip, cam_id, IP1, 60.0)
 
         time.sleep(0.2)
         # Ambos eventos deben existir antes de cancelar
@@ -320,7 +329,7 @@ class TestPresetPollNetworkFailure(unittest.TestCase):
         stop = threading.Event()
 
         t0 = time.monotonic()
-        t = _run_poll(proto, IP1, CAM_ID1, ceiling, stop)
+        t = _run_poll(proto, IP1, CAM_ID1, IP1, ceiling, stop)
         t.join(timeout=ceiling + 1.0)
         elapsed = time.monotonic() - t0
 
@@ -351,8 +360,8 @@ class TestPresetPollConcurrent(unittest.TestCase):
         proto._preset_stop_events[IP1] = stop1
         proto._preset_stop_events[IP2] = stop2
 
-        t1 = _run_poll(proto, IP1, CAM_ID1, 5.0, stop1)
-        t2 = _run_poll(proto, IP2, CAM_ID2, 5.0, stop2)
+        t1 = _run_poll(proto, IP1, CAM_ID1, IP1, 5.0, stop1)
+        t2 = _run_poll(proto, IP2, CAM_ID2, IP1, 5.0, stop2)
 
         t1.join(timeout=3.0)
         t2.join(timeout=3.0)
@@ -382,7 +391,7 @@ class TestPresetPollExceptionSafety(unittest.TestCase):
         stop = threading.Event()
         proto._preset_stop_events[IP1] = stop
 
-        t = _run_poll(proto, IP1, CAM_ID1, 5.0, stop)
+        t = _run_poll(proto, IP1, CAM_ID1, IP1, 5.0, stop)
         t.join(timeout=2.0)
 
         self.assertFalse(t.is_alive(), "Poll no terminó tras excepción")
@@ -407,8 +416,8 @@ class TestPresetPollExceptionSafety(unittest.TestCase):
         proto._preset_stop_events[IP1] = stop1
         proto._preset_stop_events[IP2] = stop2
 
-        t1 = _run_poll(proto, IP1, CAM_ID1, 5.0, stop1)
-        t2 = _run_poll(proto, IP2, CAM_ID2, 5.0, stop2)
+        t1 = _run_poll(proto, IP1, CAM_ID1, IP1, 5.0, stop1)
+        t2 = _run_poll(proto, IP2, CAM_ID2, IP1, 5.0, stop2)
 
         t1.join(timeout=2.0)
         t2.join(timeout=3.0)
@@ -417,6 +426,79 @@ class TestPresetPollExceptionSafety(unittest.TestCase):
         self.assertFalse(t2.is_alive(), "Poll CAM2 no terminó")
         self.assertNotIn(IP1, proto._preset_stop_events)
         self.assertNotIn(IP2, proto._preset_stop_events)
+
+
+class TestRefreshAEActiveIP(unittest.TestCase):
+    """Bug B: refresh_ae_mode_async recibe active_ip como parámetro cuando se llama
+    desde un thread de background, evitando leer widgets Qt fuera del hilo principal."""
+
+    def test_active_ip_param_skips_get_active_cam(self):
+        """Si se pasa active_ip, _active_cam no debe invocarse."""
+        proto, _ = _make_protocol()
+        # ae_query_try_acquire devuelve True para que el thread se lance
+        proto._cameras.ae_query_try_acquire = lambda ip: True
+        proto._cameras.ae_query_release     = lambda ip: None
+
+        # _query_ae_and_exp_comp devuelve siempre fallo → thread termina rápido
+        proto._query_ae_and_exp_comp = lambda ip, cam_id: ('auto', None)
+
+        get_active_cam_called = [False]
+        original = proto._active_cam
+        def _spy():
+            get_active_cam_called[0] = True
+            return original()
+        proto._active_cam = _spy
+
+        # Llamar con active_ip explícito → no debe llamar _active_cam
+        proto.refresh_ae_mode_async(IP1, CAM_ID1, active_ip=IP1)
+        time.sleep(0.2)
+
+        self.assertFalse(get_active_cam_called[0],
+                         "_active_cam fue invocado aunque se pasó active_ip explícito")
+
+    def test_active_ip_none_calls_get_active_cam(self):
+        """Si no se pasa active_ip (None), sí debe invocar _active_cam."""
+        proto, _ = _make_protocol()
+        proto._cameras.ae_query_try_acquire = lambda ip: True
+        proto._cameras.ae_query_release     = lambda ip: None
+        proto._query_ae_and_exp_comp        = lambda ip, cam_id: ('auto', None)
+
+        get_active_cam_called = [False]
+        original = proto._active_cam
+        def _spy():
+            get_active_cam_called[0] = True
+            return original()
+        proto._active_cam = _spy
+
+        proto.refresh_ae_mode_async(IP1, CAM_ID1)  # sin active_ip
+        time.sleep(0.2)
+
+        self.assertTrue(get_active_cam_called[0],
+                        "_active_cam no fue invocado cuando active_ip es None")
+
+    def test_poll_loop_passes_active_ip_to_refresh(self):
+        """_preset_poll_loop pasa active_ip capturado a refresh_ae_mode_async
+        en lugar de dejar que refresh lo capture desde el thread de background."""
+        refresh_received_active_ip = [None]
+
+        def _query(ip, cam_id):
+            return (100, 50), round(0.5 * ZOOM_MAX)
+
+        proto, _ = _make_protocol(_query, active_ip=IP2)
+
+        original_refresh = proto.refresh_ae_mode_async
+        def _spy_refresh(ip, cam_id, active_ip=None):
+            refresh_received_active_ip[0] = active_ip
+        proto.refresh_ae_mode_async = _spy_refresh
+
+        stop = threading.Event()
+        # Pasar active_ip=IP2 al poll: debe llegar a refresh_ae_mode_async
+        t = _run_poll(proto, IP1, CAM_ID1, IP2, 3.0, stop)
+        t.join(timeout=3.0)
+
+        self.assertEqual(refresh_received_active_ip[0], IP2,
+                         f"refresh recibió active_ip={refresh_received_active_ip[0]!r} "
+                         f"en lugar de IP2={IP2!r}")
 
 
 class TestComputePresetCeiling(unittest.TestCase):

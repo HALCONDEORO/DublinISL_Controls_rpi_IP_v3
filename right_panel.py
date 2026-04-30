@@ -383,8 +383,10 @@ class RightPanel:
         mw._zoom_timer.setSingleShot(True)
         mw._zoom_timer.setInterval(150)
         mw._zoom_timer.timeout.connect(mw._visca.ZoomAbsolute)
+        mw._zoom_feedback = False
         mw.ZoomSlider.valueChanged.connect(
-            lambda v: (mw.ZoomValueLabel.setText(f"{v}%"), mw._zoom_timer.start()))
+            lambda v: (mw.ZoomValueLabel.setText(f"{v}%"),
+                       None if mw._zoom_feedback else mw._zoom_timer.start()))
 
         mw.Cam1.clicked.connect(mw._visca._refresh_zoom_slider)
         mw.Cam2.clicked.connect(mw._visca._refresh_zoom_slider)

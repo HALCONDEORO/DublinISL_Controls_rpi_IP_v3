@@ -3,19 +3,18 @@
 # Software propietario y de uso privado exclusivo. Queda prohibida su copia,
 # distribución, modificación o uso sin autorización escrita del autor.
 # devices/__init__.py — Re-exports del paquete de dispositivos
-#
-# Los archivos fuente viven en la raíz durante la migración.
-# Este paquete los re-exporta para que el código nuevo use
-# `from devices import CameraManager` manteniendo compatibilidad.
 
-from camera_worker import CameraWorker, ViscaCommand
-from camera_manager import CameraManager
-from visca_protocol import ViscaProtocol, ViscaUICallbacks
+from ptz.visca import CameraWorker, CameraWorkerSignals, ViscaCommand
+from ptz.visca import CameraManager
+from ptz.visca import ViscaProtocol, ViscaUICallbacks
+from ptz.visca.controller import ViscaController
 
 __all__ = [
     "CameraWorker",
+    "CameraWorkerSignals",
     "ViscaCommand",
     "CameraManager",
     "ViscaProtocol",
     "ViscaUICallbacks",
+    "ViscaController",
 ]

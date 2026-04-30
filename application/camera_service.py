@@ -16,11 +16,11 @@ import logging
 import socket
 from typing import TYPE_CHECKING
 
-from camera_worker import ViscaCommand
+from ptz.visca import ViscaCommand
 from config import CAM1, CAM2, PRESET_MAP, PAN_SPEED_MAX, TILT_SPEED_MAX, ZOOM_DRIVE_MAX, VISCA_PORT, SOCKET_TIMEOUT
 
 if TYPE_CHECKING:
-    from camera_manager import CameraManager
+    from ptz.visca import CameraManager
 
 logger = logging.getLogger(__name__)
 

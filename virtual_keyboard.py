@@ -82,7 +82,8 @@ class VirtualKeyboard(QWidget):
             None,
             Qt.Tool
             | Qt.FramelessWindowHint
-            | Qt.WindowStaysOnTopHint,
+            | Qt.WindowStaysOnTopHint
+            | Qt.WindowDoesNotAcceptFocus,
         )
         self._target: QLineEdit | None = None
         self._shift = False
@@ -142,11 +143,11 @@ class VirtualKeyboard(QWidget):
         if ch == '⌫':
             if self._target:
                 self._target.backspace()
-                self._target.setFocus()
             return
         if ch == '↵':
             if self._target:
                 self._target.returnPressed.emit()
+            self.hide()
             return
         if ch == '⇧':
             self._shift = not self._shift
@@ -162,7 +163,6 @@ class VirtualKeyboard(QWidget):
             self._update_shift()
 
         self._target.insert(char)
-        self._target.setFocus()
 
     def _update_shift(self) -> None:
         if self._shift_btn:
@@ -174,8 +174,8 @@ class VirtualKeyboard(QWidget):
 
     def show_for(self, widget: QLineEdit) -> None:
         self._target = widget
-        self._reposition()
         if not self.isVisible():
+            self._reposition()
             self.show()
 
     def _reposition(self) -> None:
@@ -193,22 +193,24 @@ class _KeyboardFilter(QObject):
     def __init__(self, keyboard: VirtualKeyboard) -> None:
         super().__init__(QApplication.instance())
         self._kb = keyboard
+        # Un solo timer reutilizable: FocusIn lo para, FocusOut lo (re)arranca.
+        # Evita la acumulación de QTimer.singleShot que causaba ocultaciones espurias.
+        self._hide_timer = QTimer(self)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.setInterval(250)
+        self._hide_timer.timeout.connect(self._maybe_hide)
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if isinstance(obj, QLineEdit):
             if event.type() == QEvent.FocusIn:
+                self._hide_timer.stop()
                 self._kb.show_for(obj)
             elif event.type() == QEvent.FocusOut:
-                QTimer.singleShot(300, self._maybe_hide)
+                self._hide_timer.start()
         return False
 
     def _maybe_hide(self) -> None:
-        focused = QApplication.focusWidget()
-        if focused is None:
-            if self._kb._target:
-                self._kb._target.setFocus()
-            return
-        if not isinstance(focused, QLineEdit):
+        if not isinstance(QApplication.focusWidget(), QLineEdit):
             self._kb.hide()
 
 
