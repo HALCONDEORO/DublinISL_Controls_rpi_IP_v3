@@ -344,9 +344,15 @@ class CameraWorker:
 
                 # --- Fase 1: obtener referencia del socket (con lock breve) ---
                 with self._lock:
-                    if self._sock is None:
-                        self._sock = self._connect()
-                    sock_ref = self._sock  # copia local: lock se libera aquí
+                    sock_ref = self._sock
+
+                if sock_ref is None:
+                    # _connect() puede bloquear hasta SOCKET_TIMEOUT: NO dentro del lock.
+                    # Igual que en _ping(): mantener el lock durante connect() impediría
+                    # que _close_socket()/restart() desde la UI pudieran ejecutarse.
+                    sock_ref = self._connect()
+                    with self._lock:
+                        self._sock = sock_ref  # None si falló
 
                 if sock_ref is None:
                     break  # Sin conexión disponible: descartar comando
