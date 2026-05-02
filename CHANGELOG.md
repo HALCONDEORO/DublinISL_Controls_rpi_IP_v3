@@ -8,6 +8,12 @@ This project uses a simple versioning approach while it is still in early produc
 - Minor version: new features or significant refactors.
 - Major version: breaking changes for installation, configuration or customer deployments.
 
+## 3.0.4
+
+### Added
+
+- Added `THIRD_PARTY_NOTICES.md` listing runtime, optional and development dependencies with their licences and a PyQt5 commercial-distribution warning (closes #24).
+
 ## 3.0.3
 
 ### Changed
