@@ -1,0 +1,9 @@
+# Runtime dependencies for DublinISL Controls
+#
+# PyQt5 is required for the GUI. On Raspberry Pi OS, installing PyQt5 via apt
+# is usually more reliable than pip; see requirements-rpi.txt and README.md.
+PyQt5>=5.15,<6
+
+# Optional ATEM integration.
+# The app can run without this package; ATEM monitoring will be disabled if missing.
+PyATEMMax
