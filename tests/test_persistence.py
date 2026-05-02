@@ -86,14 +86,14 @@ class TestChairmanPresets:
         assert 'Bob' not in result    # 5 — por debajo de CHAIRMAN_PRESET_START (10)
         assert 'Carol' not in result  # 90 — por encima de CHAIRMAN_PRESET_MAX (89)
 
-    def test_bak_created_on_second_save(self, preset_file):
-        from chairman_presets import save_chairman_presets
-        save_chairman_presets({'Alice': 10})
-        save_chairman_presets({'Alice': 10, 'Bob': 11})
-        bak = preset_file.with_suffix('.bak')
-        assert bak.exists()
-        assert json.loads(bak.read_text()) == {'Alice': 10}
+    def test_second_save_overwrites_without_legacy_bak(self, preset_file):
+        from chairman_presets import save_chairman_presets, load_chairman_presets
+        assert save_chairman_presets({'Alice': 10}) is True
+        assert save_chairman_presets({'Alice': 10, 'Bob': 11}) is True
 
+        assert load_chairman_presets() == {'Alice': 10, 'Bob': 11}
+        assert not preset_file.with_suffix('.bak').exists()
+        assert list(preset_file.parent.glob('.tmp_*.json')) == []
     def test_no_bak_on_first_save(self, preset_file):
         from chairman_presets import save_chairman_presets
         save_chairman_presets({'Alice': 10})
@@ -211,14 +211,16 @@ class TestScheduleConfig:
         assert result['monday']['enabled'] is True
         assert result['tuesday']['enabled'] is False  # default
 
-    def test_bak_created_on_second_save(self, schedule_file):
-        from schedule_config import save_schedule
-        save_schedule(self._sample())
+    def test_second_save_overwrites_without_legacy_bak(self, schedule_file):
+        from schedule_config import save_schedule, load_schedule
+        assert save_schedule(self._sample()) is True
         updated = {**self._sample(), 'wednesday': {'enabled': True, 'start': '10:00', 'end': '18:00'}}
-        save_schedule(updated)
-        bak = schedule_file.with_suffix('.bak')
-        assert bak.exists()
+        assert save_schedule(updated) is True
 
+        result = load_schedule()
+        assert result['wednesday']['enabled'] is True
+        assert not schedule_file.with_suffix('.bak').exists()
+        assert list(schedule_file.parent.glob('.tmp_*.json')) == []
     def test_no_bak_on_first_save(self, schedule_file):
         from schedule_config import save_schedule
         save_schedule(self._sample())
@@ -263,23 +265,19 @@ class TestDataPaths:
         assert not (isolated / 'schedule.json').exists()
 
     def test_migrate_does_not_overwrite_existing(self, tmp_path, isolated):
-        import shutil as _shutil
+        import data_paths
         app_dir = tmp_path / 'app'
         app_dir.mkdir()
-        (app_dir / 'chairman_presets.json').write_text('{"legacy": 99}', encoding='utf-8')
+        legacy = app_dir / 'chairman_presets.json'
+        legacy.write_text('{"legacy": 99}', encoding='utf-8')
 
         existing_dst = isolated / 'chairman_presets.json'
         existing_dst.write_text('{"current": 10}', encoding='utf-8')
 
-        # La migración no debe sobreescribir el destino existente
-        for filename in ('chairman_presets.json',):
-            src = app_dir / filename
-            dst = isolated / filename
-            if src.exists() and not dst.exists():
-                _shutil.copy2(src, dst)
+        data_paths.migrate_legacy_files(app_dir=app_dir)
 
         assert json.loads(existing_dst.read_text()) == {'current': 10}
-
+        assert json.loads(legacy.read_text()) == {}
     def test_export_creates_zip_with_existing_files(self, tmp_path, isolated, monkeypatch):
         import data_paths
         (isolated / 'chairman_presets.json').write_text('{"Alice": 10}', encoding='utf-8')
@@ -476,11 +474,11 @@ class TestChairmanPresetsReturnValue:
 
     def test_save_returns_false_on_io_error(self, tmp_path, monkeypatch):
         import chairman_presets as cp
-        # Apuntar a un directorio inexistente para forzar IOError
+        blocker = tmp_path / 'not_a_dir'
+        blocker.write_text('bloqueo', encoding='utf-8')
         monkeypatch.setattr(cp, 'CHAIRMAN_PRESETS_FILE',
-                            tmp_path / 'nonexistent_dir' / 'chairman_presets.json')
+                            blocker / 'chairman_presets.json')
         assert cp.save_chairman_presets({'Alice': 10}) is False
-
 
 class TestImportBackupAtomic:
     """import_backup usa escritura atómica (.tmp → replace)."""

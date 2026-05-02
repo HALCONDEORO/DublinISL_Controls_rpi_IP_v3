@@ -23,6 +23,7 @@ from PyQt5.QtWidgets import QApplication, QMessageBox
 from data_paths import migrate_legacy_files
 from main_window import MainWindow
 from virtual_keyboard import install_virtual_keyboard
+import sim_mode as _sim_mode
 
 # def _setup_logging():
 #     Path("logs").mkdir(exist_ok=True)
@@ -58,7 +59,10 @@ def main():
         install_virtual_keyboard(app)
 
         main_win = MainWindow()
-        main_win.show()
+        if _sim_mode.is_active():
+            main_win.show()
+        else:
+            main_win.showFullScreen()
 
         logger.info("Application started")
         sys.exit(app.exec_())

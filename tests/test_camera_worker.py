@@ -47,6 +47,10 @@ dp_stub.SEAT_NAMES_FILE       = Path("seat_names_test.json")
 dp_stub.CHAIRMAN_PRESETS_FILE = Path("chairman_presets_test.json")
 dp_stub.SCHEDULE_FILE         = Path("schedule_test.json")
 dp_stub.CONFIG_DIR            = Path(".")
+dp_stub._DATA_FILES           = (dp_stub.CHAIRMAN_PRESETS_FILE, dp_stub.SEAT_NAMES_FILE, dp_stub.SCHEDULE_FILE)
+dp_stub._LEGACY_FILES         = tuple(f.name for f in dp_stub._DATA_FILES)
+dp_stub._CONFIG_TXT_FILES     = ("PTZ1IP.txt", "PTZ2IP.txt", "Cam1ID.txt", "Cam2ID.txt", "ATEMIP.txt", "Contact.txt")
+_prev_data_paths = sys.modules.get("data_paths")
 sys.modules.setdefault("data_paths", dp_stub)
 
 sm_stub = types.ModuleType("secret_manager")
@@ -56,6 +60,11 @@ sys.modules.setdefault("secret_manager", sm_stub)
 # Forzar recarga del módulo real en lugar de cualquier stub inyectado por otros tests
 sys.modules.pop("ptz.visca.worker", None)
 from ptz.visca.worker import CameraWorker, ViscaCommand
+
+if _prev_data_paths is None:
+    sys.modules.pop("data_paths", None)
+else:
+    sys.modules["data_paths"] = _prev_data_paths
 
 
 # ─── Subclases de test: sustituyen red real con comportamiento controlado ─────
@@ -87,6 +96,9 @@ class _OKWorker(CameraWorker):
     def _read_visca_response(self, sock):
         return bytes([0x90, 0x50, 0xFF])  # Completion VISCA
 
+    def _ping(self):
+        pass  # Evita heartbeats sobre MagicMock cuando el test deja el hilo vivo.
+
     def _set_connected(self, connected: bool):
         self._is_connected = connected  # sin señales Qt
 
@@ -110,6 +122,9 @@ class _FailWorker(CameraWorker):
 
     def _connect(self):
         return None  # sin conexión disponible
+
+    def _ping(self):
+        pass  # Mantiene el hilo inactivo sin intentar red real entre asserts.
 
     def _set_connected(self, connected: bool):
         self._is_connected = connected

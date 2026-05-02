@@ -46,11 +46,20 @@ _dp.SEAT_NAMES_FILE       = Path("seat_names_test.json")
 _dp.CHAIRMAN_PRESETS_FILE = Path("chairman_presets_test.json")
 _dp.SCHEDULE_FILE         = Path("schedule_test.json")
 _dp.CONFIG_DIR            = Path(".")
+_dp._DATA_FILES           = (_dp.CHAIRMAN_PRESETS_FILE, _dp.SEAT_NAMES_FILE, _dp.SCHEDULE_FILE)
+_dp._LEGACY_FILES         = tuple(f.name for f in _dp._DATA_FILES)
+_dp._CONFIG_TXT_FILES     = ("PTZ1IP.txt", "PTZ2IP.txt", "Cam1ID.txt", "Cam2ID.txt", "ATEMIP.txt", "Contact.txt")
+_prev_data_paths = sys.modules.get("data_paths")
 sys.modules.setdefault("data_paths", _dp)
 
 # Asegurar módulo real
 sys.modules.pop("ptz.visca.worker", None)
 from ptz.visca.worker import CameraWorker, ViscaCommand
+
+if _prev_data_paths is None:
+    sys.modules.pop("data_paths", None)
+else:
+    sys.modules["data_paths"] = _prev_data_paths
 
 
 # ─── Subclases de worker controlables ────────────────────────────────────────
@@ -72,6 +81,9 @@ class _BaseTestWorker(CameraWorker):
 
     def _connect(self):
         return self._connect_result
+
+    def _ping(self):
+        pass  # Los tests controlan la cola; el heartbeat real solo mete ruido aqui.
 
     def _set_connected(self, connected: bool):
         self._is_connected = connected

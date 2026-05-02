@@ -99,16 +99,19 @@ sm_stub = types.ModuleType("secret_manager")
 sm_stub.decrypt_password = lambda: "test"
 sys.modules["secret_manager"] = sm_stub
 
-# data_paths stub — incluye todos los atributos que otros módulos importan al nivel de módulo,
-# para que la sustitución en sys.modules no rompa imports de chairman_presets o schedule_config.
+# data_paths stub: incluye todos los atributos que otros modulos importan al nivel de modulo,
+# para que la sustitucion temporal en sys.modules no rompa imports de config durante este archivo.
 dp_stub = types.ModuleType("data_paths")
 from pathlib import Path
 dp_stub.SEAT_NAMES_FILE        = Path("seat_names_test.json")
 dp_stub.CHAIRMAN_PRESETS_FILE  = Path("chairman_presets_test.json")
 dp_stub.SCHEDULE_FILE          = Path("schedule_test.json")
 dp_stub.CONFIG_DIR             = Path(".")
+dp_stub._DATA_FILES            = (dp_stub.CHAIRMAN_PRESETS_FILE, dp_stub.SEAT_NAMES_FILE, dp_stub.SCHEDULE_FILE)
+dp_stub._LEGACY_FILES          = tuple(f.name for f in dp_stub._DATA_FILES)
+dp_stub._CONFIG_TXT_FILES      = ("PTZ1IP.txt", "PTZ2IP.txt", "Cam1ID.txt", "Cam2ID.txt", "ATEMIP.txt", "Contact.txt")
+_prev_data_paths = sys.modules.get("data_paths")
 sys.modules["data_paths"] = dp_stub
-
 # ─── Ahora podemos importar el módulo real ────────────────────────────────────
 from config import (
     PRESET_ZOOM_SETTLE_BASE, PRESET_ZOOM_SETTLE_MARGIN,
@@ -123,6 +126,12 @@ import inspect
 vp_module = importlib.import_module("ptz.visca.protocol")
 ViscaProtocol = vp_module.ViscaProtocol
 
+# Evitar que el stub de data_paths contamine otros modulos de test que importan
+# data_paths directamente durante su propia ejecucion.
+if _prev_data_paths is None:
+    sys.modules.pop("data_paths", None)
+else:
+    sys.modules["data_paths"] = _prev_data_paths
 
 # ─── Fixture: instancia de ViscaProtocol con callbacks stubbed ───────────────
 

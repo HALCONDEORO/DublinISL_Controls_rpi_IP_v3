@@ -53,6 +53,13 @@ SCHEDULE_FILE         = CONFIG_DIR / 'schedule.json'
 _DATA_FILES   = (CHAIRMAN_PRESETS_FILE, SEAT_NAMES_FILE, SCHEDULE_FILE)
 _LEGACY_FILES = ('chairman_presets.json', 'seat_names.json', 'schedule.json')
 
+# Contenido por defecto para resetear los archivos legacy del directorio de la app
+_LEGACY_DEFAULTS = {
+    'chairman_presets.json': '{}',
+    'seat_names.json':       '{"names": [], "seats": {}}',
+    'schedule.json':         '{}',
+}
+
 # Archivos de configuración de red — viven en el directorio de la app
 _CONFIG_TXT_FILES = (
     'PTZ1IP.txt',
@@ -72,9 +79,9 @@ def _app_dir() -> Path:
 def migrate_legacy_files(app_dir: Path | None = None) -> None:
     """
     Migra archivos desde el directorio de la app al CONFIG_DIR si no existen ya.
-    Una vez migrados (ambos lados existen), renombra el archivo del directorio de
-    la app a .legacy para evitar confusión: el archivo activo es siempre el de
-    CONFIG_DIR.
+    Una vez migrados (ambos lados existen), resetea el del directorio de la app
+    a valores por defecto para evitar confusión: el archivo activo es siempre
+    el de CONFIG_DIR.
 
     Llamar una vez al arrancar la aplicación (desde main.py), antes de que
     cualquier módulo intente leer los archivos de datos.
@@ -93,17 +100,15 @@ def migrate_legacy_files(app_dir: Path | None = None) -> None:
                 logger.warning("No se pudo migrar %s: %s", src, exc)
                 continue
         # Si el archivo ya existe en CONFIG_DIR y también en el directorio de la
-        # app, renombrar el de la app a .legacy para evitar confusión.
+        # app, resetear el de la app a contenido vacío/por defecto para evitar
+        # confusión: el archivo activo es siempre el de CONFIG_DIR.
         if src.exists() and dst.exists():
-            legacy = src.with_suffix('.legacy')
+            default = _LEGACY_DEFAULTS.get(filename, '{}')
             try:
-                if legacy.exists():
-                    src.unlink()  # .legacy ya existe de un arranque anterior, borrar directamente
-                else:
-                    src.rename(legacy)
-                logger.info("Archivo legacy eliminado del directorio de la app: %s", src.name)
+                src.write_text(default, encoding='utf-8')
+                logger.info("Archivo legacy reseteado a valores por defecto: %s", src.name)
             except OSError as exc:
-                logger.warning("No se pudo limpiar legacy %s: %s", src, exc)
+                logger.warning("No se pudo resetear legacy %s: %s", src, exc)
 
 
 def export_backup(dest_zip: Path, app_dir: Path | None = None) -> list[str]:
