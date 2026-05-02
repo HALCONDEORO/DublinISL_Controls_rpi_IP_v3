@@ -111,6 +111,17 @@ pip3 install -r requirements-dev.txt
 pytest
 ```
 
+On Windows, the repeatable verification command is:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify.ps1
+```
+
+Use it after each change before shipping or committing. It runs the full pytest
+suite with Qt in offscreen mode and test data isolated from the real
+`~/.config/dublinisl/` directory. Add `-InstallDeps` the first time on a fresh
+environment.
+
 If using a real Blackmagic ATEM switcher:
 
 ```bash
