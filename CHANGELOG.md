@@ -13,6 +13,7 @@ This project uses a simple versioning approach while it is still in early produc
 ### Added
 
 - Added `requirements.txt`, `requirements-dev.txt` and `requirements-rpi.txt`.
+- Added `requirements-atem.txt` for optional Blackmagic ATEM monitoring dependencies.
 - Added README documentation aligned with the current implementation.
 - Added Raspberry Pi dependency guidance.
 - Added this changelog.
@@ -20,6 +21,12 @@ This project uses a simple versioning approach while it is still in early produc
 - Added example configuration files under `config.example/`.
 - Added pytest configuration.
 - Added GitHub Actions test workflow.
+
+### Changed
+
+- Kept `requirements.txt` focused on core runtime dependencies.
+- Removed optional ATEM dependency from default runtime/dev install path so CI and tests do not depend on `PyATEMMax`.
+- Kept `requirements-rpi.txt` minimal; install `requirements-atem.txt` separately only on systems using a real ATEM.
 
 ### Notes
 
