@@ -1,77 +1,72 @@
 # DublinISL Controls — PTZ Camera Control System
 
-> Version 3.0 — Tested on Raspberry Pi OS
+> Version 3.0 — current README aligned with the implementation in `main`.
 
-Control system for two IP PTZ cameras in the **Kingdom Hall of Jehovah's Witnesses for the deaf in Dublin** (Dublin ISL congregation — Irish Sign Language).
+DublinISL Controls is a Raspberry Pi application for operating two VISCA-over-IP PTZ cameras from a touchscreen interface. It is designed around a visual seating layout: the operator clicks a seat or platform position and the matching camera preset is recalled.
 
-Because the congregation is deaf, **audio and microphones play no role whatsoever.** Everything that matters is what the cameras show. The system is built around giving the operator precise, fast visual control: clicking a seat instantly moves the camera to the preset for that speaker, and the ATEM switcher cuts to the correct camera automatically.
+The current implementation is for a two-camera setup:
 
-The application runs on a Raspberry Pi 4. It controls two PTZ cameras via VISCA over TCP/IP and integrates with a BlackMagic ATEM video switcher for automated camera switching during live sessions.
+- **Camera 1 / Platform** — platform, chairman, left and right stage positions.
+- **Camera 2 / Comments** — audience / seating area positions.
 
----
-
-## Table of Contents
-
-1. [Features](#features)
-2. [Hardware Requirements](#hardware-requirements)
-3. [Software Requirements](#software-requirements)
-4. [Installation](#installation)
-5. [Usage Guide](#usage-guide)
-6. [Backup](#backup)
-7. [Updating](#updating)
-8. [Network Architecture](#network-architecture)
-9. [File Reference](#file-reference)
-10. [Security](#security)
-11. [Troubleshooting](#troubleshooting)
-12. [Architecture](#architecture)
-13. [License](#license)
-14. [Contact](#contact)
+Audio and microphones are not part of this application.
 
 ---
 
-## Features
+## Current Implementation Status
 
-- **Dual PTZ camera control** — Pan, tilt, zoom, focus, and exposure via VISCA over TCP/IP (port 5678)
-- **131-seat auditorium layout** — Visual seat grid with a per-seat saved camera preset
-- **Speaker management** — Drag-and-drop name assignment to seats; chairman gets individual saved positions per speaker
-- **ATEM switcher integration** — Monitors program output and auto-switches between camera inputs
-- **Session management** — Coordinated camera power-on/off with motor initialisation sequence
-- **Async event bus** — Thread-safe `AsyncEventBus`; events are queued and dispatched without blocking the UI
-- **Worker supervisor** — Background watchdog checks camera and ATEM threads every 10 s and restarts them automatically if they fail
-- **Simulation mode** — Virtual VISCA servers and ATEM for development without hardware
-- **Network discovery** — TCP/ARP scan to auto-detect camera IPs on the LAN
-- **Operating schedule** — Per-weekday enable/disable with configurable start and end times
-- **Touchscreen interface** — Optimised for 1920×1080 with virtual keyboard support
-- **Machine-locked login** — PBKDF2-HMAC-SHA256 password; progressive lockout after failed attempts; audit log
-- **Persistent data** — JSON files stored in `~/.config/dublinisl/`; survive reinstalls and `git pull`
-- **Atomic JSON writes** — Temp-file + rename prevents corruption on power loss; automatic `.bak` copy on every save
-- **ZIP export / import** — One-click full backup and restore (data + config files) via Settings
+### Implemented
 
-> Screenshots of the interface will be added in a future release.
+- Two VISCA-over-IP camera control over TCP port `5678`.
+- Pan, tilt, zoom, focus, backlight and exposure controls.
+- Visual auditorium layout with seat buttons from `4` to `131` plus platform controls for presets `1`, `2` and `3`.
+- Drag-and-drop speaker assignment to seats.
+- Chairman personal preset allocation using reserved VISCA slots `10` to `89`.
+- Session button for camera power-on, delayed initialisation and standby.
+- Optional ATEM monitoring through `PyATEMMax`.
+- Simulation mode for VISCA cameras.
+- Persistent data stored outside the app folder in `~/.config/dublinisl/` by default.
+- Backup export/import for JSON data files and plain-text config files.
+- `AsyncEventBus`, `SystemState`, application services and domain modules exist and are used for part of the app.
+- Worker supervisor monitors camera workers and the ATEM monitor thread.
+
+### Partially Implemented / Important Limitations
+
+- The architecture is currently **hybrid**. The newer `core/`, `application/`, `domain/` and `adapters/` layers exist, but `MainWindow` still uses legacy Qt controllers such as `ViscaController`, `SessionController`, `DialogsController` and `SeatNamesController`.
+- ATEM support currently monitors program changes. It does **not** fully control or switch the ATEM. The implemented behaviour is: when ATEM program changes from input `3` to input `2`, the Comments camera is sent Home.
+- Simulation mode starts virtual VISCA camera servers. ATEM simulation is internal/event-based, not a full standalone ATEM network simulator.
+- Login audit code exists, but audit logging is currently commented out in `login_screen.py`. `audit_log.json` is not written during normal login flow unless that code is re-enabled.
+- `password.enc` is encrypted using PBKDF2-derived key material, but the current fallback behaviour is permissive: if `password.enc` is missing or cannot be decrypted, the app falls back to the default password `dublin2024`.
+- JSON writes are atomic through `json_io.py`, but automatic `.bak` creation is not universal for every save path.
+- There is no `requirements.txt`, `pyproject.toml` or packaged installer yet. Dependencies are installed manually.
 
 ---
 
 ## Hardware Requirements
 
-| Component | Details |
-|-----------|---------|
-| **Computer** | Raspberry Pi 4 (4 GB RAM recommended) |
-| **PTZ Cameras** | 2 × VISCA-over-IP cameras, TCP port **5678** |
-| **Video Switcher** | BlackMagic ATEM (optional), TCP port **9910** |
-| **Display** | 1920×1080 touchscreen (recommended); mouse + keyboard also supported |
-| **Network** | All devices on the same LAN; static IPs strongly recommended |
+| Component | Current expectation |
+|-----------|---------------------|
+| Computer | Raspberry Pi 4 recommended |
+| Cameras | 2 × VISCA-over-IP PTZ cameras using TCP port `5678` |
+| Video switcher | Blackmagic ATEM, optional, monitored via `PyATEMMax` |
+| Display | 1920×1080 touchscreen recommended |
+| Network | Raspberry Pi, cameras and ATEM on reachable LAN addresses |
 
-> Developed and tested on **Raspberry Pi OS**. It may work on other Linux distributions or Windows, but these are not officially supported.
+Static IPs are strongly recommended for the two cameras and the ATEM.
 
 ---
 
 ## Software Requirements
 
-| Software | Version | Notes |
-|----------|---------|-------|
-| Python | 3.8 or newer | Pre-installed on Raspberry Pi OS |
-| PyQt5 | Latest | GUI framework |
-| PyATEMMax | Latest | Optional — only needed for ATEM integration |
+| Software | Notes |
+|----------|-------|
+| Python | Python 3.8+ intended; test on the target Raspberry Pi image before production use |
+| PyQt5 | Required for the GUI |
+| PyQt5 QtSvg support | Required because the UI renders SVG icons |
+| PyATEMMax | Optional; required only for real ATEM monitoring |
+| git | Required for clone/update workflow |
+
+There is currently no dependency lock file. Install dependencies explicitly on the target system.
 
 ---
 
@@ -80,19 +75,20 @@ The application runs on a Raspberry Pi 4. It controls two PTZ cameras via VISCA 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/halcondeoro/dublinisl_controls_rpi_ip_v3.git
-cd dublinisl_controls_rpi_ip_v3
+git clone https://github.com/HALCONDEORO/DublinISL_Controls_rpi_IP_v3.git
+cd DublinISL_Controls_rpi_IP_v3
 ```
 
-> If git is not installed: `sudo apt-get install git`
+### 2. Install dependencies
 
-### 2. Install Python dependencies
+On Raspberry Pi OS, prefer system packages for PyQt5:
 
 ```bash
-pip3 install PyQt5
+sudo apt update
+sudo apt install -y git python3-pyqt5 python3-pyqt5.qtsvg
 ```
 
-If you are using a BlackMagic ATEM switcher, also install:
+If using a Blackmagic ATEM:
 
 ```bash
 pip3 install PyATEMMax
@@ -100,18 +96,18 @@ pip3 install PyATEMMax
 
 ### 3. Create configuration files
 
-Create the following plain-text files in the project folder with your actual network values:
+The app reads these plain-text files from the project folder:
 
-| File | Contents | Example |
-|------|----------|---------|
-| `PTZ1IP.txt` | IP address of the Platform camera | `172.16.1.11` |
-| `PTZ2IP.txt` | IP address of the Audience camera | `172.16.1.12` |
-| `Cam1ID.txt` | VISCA device ID for Camera 1 (hex) | `81` |
-| `Cam2ID.txt` | VISCA device ID for Camera 2 (hex) | `82` |
-| `ATEMIP.txt` | IP address of the BlackMagic ATEM | `192.168.1.240` |
-| `Contact.txt` | Support contact shown on the Help screen | `IT Support: ext. 123` |
+| File | Purpose | Example |
+|------|---------|---------|
+| `PTZ1IP.txt` | Platform camera IP | `172.16.1.11` |
+| `PTZ2IP.txt` | Comments/audience camera IP | `172.16.1.12` |
+| `Cam1ID.txt` | VISCA device ID for camera 1 | `81` |
+| `Cam2ID.txt` | VISCA device ID for camera 2 | `82` |
+| `ATEMIP.txt` | ATEM IP address | `192.168.1.240` |
+| `Contact.txt` | Text shown on the Help button | `IT Support` |
 
-Quick creation:
+Quick setup example:
 
 ```bash
 echo "172.16.1.11"   > PTZ1IP.txt
@@ -122,17 +118,21 @@ echo "192.168.1.240" > ATEMIP.txt
 echo "IT Support"    > Contact.txt
 ```
 
-> All values can also be edited from inside the app via **Settings → Camera Configuration**.
+If a file is missing, `config.py` uses built-in fallback values. Check the files explicitly before production use instead of relying on defaults.
 
-### 4. Set the login password
+### 4. Set or change the login password
 
 ```bash
 python3 setup_password.py
 ```
 
-Enter and confirm your new password. The file `password.enc` is written and locked to this machine.
+Current behaviour:
 
-> **Default password (first run):** `dublin2024` — change it immediately.
+- If `password.txt` exists and `password.enc` does not exist, the script migrates `password.txt` into `password.enc` and deletes `password.txt`.
+- If `password.enc` already exists, the current password is required before setting a new one.
+- If `password.enc` is missing or unreadable during app login, the application currently falls back to `dublin2024`.
+
+For production, change the password before delivery and consider hardening the fallback behaviour.
 
 ### 5. Run the application
 
@@ -140,13 +140,58 @@ Enter and confirm your new password. The file `password.enc` is written and lock
 python3 main.py
 ```
 
-**Auto-start on boot (Raspberry Pi):**
+Runtime window behaviour:
 
-Add to `/etc/rc.local` before `exit 0`:
+- Normal mode: opens full-screen.
+- Simulation mode: opens as a normal window.
+
+---
+
+## Auto-start on Raspberry Pi
+
+Recommended approach: use `systemd`.
+
+Create a service file:
 
 ```bash
-su pi -c "cd /home/pi/dublinisl_controls_rpi_ip_v3 && python3 main.py &"
+sudo nano /etc/systemd/system/dublinisl.service
 ```
+
+Example:
+
+```ini
+[Unit]
+Description=DublinISL Controls
+After=graphical.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/DublinISL_Controls_rpi_IP_v3
+ExecStart=/usr/bin/python3 /home/pi/DublinISL_Controls_rpi_IP_v3/main.py
+Restart=on-failure
+Environment=DISPLAY=:0
+
+[Install]
+WantedBy=graphical.target
+```
+
+Enable it:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable dublinisl.service
+sudo systemctl start dublinisl.service
+```
+
+Check logs:
+
+```bash
+journalctl -u dublinisl.service -f
+```
+
+`rc.local` can still be used on older systems, but `systemd` is clearer and easier to support.
 
 ---
 
@@ -154,368 +199,380 @@ su pi -c "cd /home/pi/dublinisl_controls_rpi_ip_v3 && python3 main.py &"
 
 ### Login Screen
 
-| Element | Description |
-|---------|-------------|
-| **Password field** | Type the login password (input is hidden) |
-| **ACCESS** | Submit — or press **Enter** |
-| **? Help** | Displays the support contact from `Contact.txt` |
-| **Status message** | Green on success; amber/red on failure |
+| Element | Current behaviour |
+|---------|-------------------|
+| Password field | Hidden text input |
+| ACCESS | Checks the typed password |
+| Enter key | Same as ACCESS |
+| ? Help | Shows the contents of `Contact.txt` |
+| Status message | Shows success, warning or lockout state |
 
-Failed login lockout:
+Lockout schedule after failed attempts:
 
-| Attempt | Lockout |
-|---------|---------|
-| 1st | No lockout |
-| 2nd | 10 seconds |
-| 3rd | 30 seconds |
-| 4th | 60 seconds |
-| 5th+ | 1 hour |
+| Failed attempt | Lockout |
+|----------------|---------|
+| 1st | none |
+| 2nd | none |
+| 3rd | 10 seconds |
+| 4th | 10 seconds |
+| 5th | 30 seconds |
+| 6th | 30 seconds |
+| 7th | 60 seconds |
+| 8th | 60 seconds |
+| 9th+ | 3600 seconds |
 
-All attempts are recorded in `audit_log.json` with timestamps.
+Schedule bypass:
 
----
+- If the weekly schedule says the current time is allowed, login is bypassed automatically.
+- The schedule is stored in `schedule.json` under the persistent data directory.
 
-### Splash Screen — System Check
+Audit note:
 
-After login, 12 automated checks run before the main window opens. Each component shows **OK** if reachable or **--** if unavailable (the app continues regardless). Press **Ctrl+D** for diagnostic detail.
-
----
-
-### Main Window Overview
-
-The window has two areas:
-
-| Area | Description |
-|------|-------------|
-| **Seat grid (left)** | One button per seat (1–131); click to recall that seat's camera preset |
-| **Right panel** | Camera controls: mode toggle, camera select, joystick, zoom, focus, exposure |
-
-Platform buttons at the top of the grid:
-
-| Button | Preset |
-|--------|--------|
-| **Left** | Left side of the stage |
-| **Chairman** | Chairman desk — per-speaker personal presets |
-| **Right** | Right side |
+- `LoginAudit` exists in code.
+- Login audit calls are currently commented out, so normal login attempts are not written to `audit_log.json`.
 
 ---
 
-### CALL Mode vs SET Mode
+### Splash Screen
+
+After successful login, the splash screen runs startup checks and then opens the main interface. The app continues even if optional components are unavailable.
+
+---
+
+### Main Window
+
+The main window is designed for 1920×1080.
+
+| Area | Purpose |
+|------|---------|
+| Auditorium layout | Seat buttons and platform buttons |
+| Right panel | Camera selection, joystick, zoom, focus, exposure and ATEM status |
+| Names panel | Speaker list and seat assignment, visible in SET mode |
+
+Platform controls:
+
+| Control | Preset |
+|---------|--------|
+| Chairman | `1` |
+| Left | `2` |
+| Right | `3` |
+
+Seat controls:
+
+- Seats `4` to `131` are mapped to saved camera presets.
+- Platform presets `1` to `3` always use Camera 1.
+- Seat presets normally use Camera 2.
+
+---
+
+### CALL Mode and SET Mode
 
 | Mode | Purpose |
 |------|---------|
-| **CALL** (red) | Live operation — click a seat to recall its preset and switch the ATEM input |
-| **SET** (green) | Setup — drag speaker names to seats, save chairman positions |
+| CALL | Live operation. Clicking a button recalls its preset. |
+| SET | Setup. Speaker names can be assigned to seats and chairman positions can be configured. |
 
-Use **SET mode** before the meeting to assign attendees. Switch to **CALL mode** when the meeting starts.
-
----
-
-### Controlling a Camera
-
-**Select camera:** Use the Platform / Audience toggle buttons. A green LED means reachable; red means offline.
-
-**Joystick — pan and tilt:** Click and drag toward any of 8 directions. Camera moves while the knob is held; release to stop.
-
-**Zoom:** Vertical slider to the right of the joystick. Drag up to zoom in, down to zoom out.
-
-**Focus:**
-
-| Button | Action |
-|--------|--------|
-| Auto Focus | Continuous auto-focus (default) |
-| One Push AF | Single trigger, then holds |
-| Manual Focus | Disables auto-focus |
-
-**Exposure:**
-
-| Button | Action |
-|--------|--------|
-| Darker | Decreases exposure |
-| Backlight | Toggles backlight compensation (glows orange when ON) |
-| Brighter | Increases exposure |
+The visual border and button styling change with the selected mode.
 
 ---
 
-### Assigning Speakers to Seats
+### Camera Control
 
-Done in **SET mode** before the meeting.
+| Control | Current behaviour |
+|---------|-------------------|
+| Platform / Comments selector | Chooses the active camera for manual control |
+| Joystick | Sends pan/tilt commands while held; sends stop on release |
+| Zoom slider | Sends absolute zoom percentage |
+| Auto Focus | Enables continuous autofocus |
+| One Push AF | Triggers one-shot autofocus |
+| Manual Focus | Switches to manual focus |
+| Darker / Brighter | Adjusts brightness or exposure compensation depending on AE mode |
+| Backlight | Toggles backlight compensation state tracked per camera |
 
-1. Click the **Attendees** button (person icon)
-2. In the floating panel, click and hold a name
-3. Drag it onto the desired seat button
-4. The button updates to show the speaker's first name
-
-**Remove an assignment:** Drag the seat back to the Attendees panel, or double-tap the seat and confirm.
-
-**Attendees panel buttons:**
-
-| Button | Action |
-|--------|--------|
-| Pencil | Rename the speaker |
-| Bin | Delete the speaker permanently |
-| + Add | Add a new speaker |
-| Bring All Back | Clear all seat assignments at once |
+The app uses a camera worker thread and command queue for frequent VISCA commands.
 
 ---
 
-### Chairman Presets
+### Session Control
 
-Saves a personalised camera position per speaker for the chairman seat.
+The session button controls camera power state.
 
-1. Drag a speaker's name onto the Chairman button
-2. Position the camera with the joystick and zoom
-3. Click **Save position**
+Start session:
 
-In CALL mode, clicking Chairman recalls that speaker's saved position automatically. Click **Edit** to re-position and save again.
+1. Marks the session active.
+2. Resets activity and VISCA speed watchdog state.
+3. Sends Power ON to both cameras.
+4. Waits 8 seconds for motor initialisation.
+5. Sends Camera 1 to chairman preset `1`.
+6. Sends Camera 2 Home.
+7. Marks the UI as ON.
+
+End session:
+
+1. Asks for confirmation.
+2. Cancels active preset polling.
+3. Sends Standby to both cameras.
+4. Marks the UI as OFF.
+
+There is also an inactivity timer. If a session is active and there is no recorded camera/seat/zoom activity for 2 hours, both cameras are sent to standby.
 
 ---
 
-### Configuration Dialog
+### Chairman Personal Presets
 
-Open via **Settings** at the bottom of the right panel.
+Chairman personal presets are managed by `PresetService` and persisted in `chairman_presets.json`.
 
-| Section | Description |
-|---------|-------------|
-| **Session** | Start or end the camera session (powers cameras on/off) |
-| **Camera** | Edit IP / VISCA ID; green = reachable, red = offline |
-| **Camera Discovery** | LAN scan — assign found IPs directly |
-| **Access** | Change the login password |
-| **Schedule** | Open the weekly schedule editor |
-| **Simulation Mode** | Toggle real hardware vs virtual cameras |
-| **Close Program** | Shut down the application |
+Current slot range:
+
+- First personal chairman slot: `10`
+- Last personal chairman slot: `89`
+- Generic chairman fallback preset: `1`
+
+If a speaker has no personal preset, the generic chairman preset is used.
+
+---
+
+### ATEM Monitoring
+
+ATEM support is optional.
+
+Current real-hardware behaviour:
+
+- `ATEMMonitor` imports `PyATEMMax` only when needed.
+- If `PyATEMMax` is missing, ATEM monitoring is disabled and the app continues.
+- If the ATEM cannot be reached, the app continues.
+- When program input changes from `3` to `2`, the app sends the Comments camera to Home.
+
+Current limitation:
+
+- The app monitors ATEM program state; it does not currently perform general ATEM switching control.
 
 ---
 
 ### Weekly Schedule
 
-Open via **Settings → Weekly Schedule**.
+The weekly schedule controls password bypass.
 
-- Check a day to enable it; set start and end times
-- During scheduled hours the login screen requires no password
-- Saved to `schedule.json`
+Stored file:
+
+```text
+~/.config/dublinisl/schedule.json
+```
+
+Each day has:
+
+- `enabled`: true/false
+- `start`: `HH:MM`
+- `end`: `HH:MM`
+
+Overnight windows are supported. Example: `22:00` to `06:00`.
 
 ---
 
-### Simulation Mode
+## Simulation Mode
 
-Runs the full application without physical hardware.
+Enable:
 
 ```bash
 python3 sim_mode.py on
 python3 main.py
 ```
 
-Or from inside the app: **Settings → Enable Simulation Mode**.
-
-To restore real hardware:
+Disable:
 
 ```bash
 python3 sim_mode.py off
 ```
 
+Show current state:
+
+```bash
+python3 sim_mode.py show
+```
+
+Current simulation behaviour:
+
+- Creates `sim_ip_backup.json` in the app directory.
+- Saves original values from `PTZ1IP.txt`, `PTZ2IP.txt` and `ATEMIP.txt`.
+- Rewrites:
+  - `PTZ1IP.txt` → `127.0.0.1`
+  - `PTZ2IP.txt` → `127.0.0.2`
+- Starts virtual VISCA servers for the two cameras.
+- ATEM simulation uses `hardware_simulator.atem_event_queue` when `sim_ip_backup.json` exists.
+
+Important:
+
+- Simulation mode changes the `.txt` config files and restores them when turned off.
+- If `sim_ip_backup.json` is deleted manually, restore the real IP files yourself.
+
 ---
 
-## Backup
+## Backup and Data Storage
 
-### Data files (stored in `~/.config/dublinisl/` — survive reinstalls)
+### Persistent data directory
 
-| File | Contents |
-|------|----------|
+Default:
+
+```text
+~/.config/dublinisl/
+```
+
+Override:
+
+```bash
+DUBLINISL_DATA_DIR=/mnt/usb/dublinisl python3 main.py
+```
+
+Data files:
+
+| File | Purpose |
+|------|---------|
 | `seat_names.json` | Speaker names and seat assignments |
-| `chairman_presets.json` | Per-speaker camera presets |
-| `schedule.json` | Weekly operating schedule |
+| `chairman_presets.json` | Chairman personal preset map |
+| `schedule.json` | Weekly login bypass schedule |
 
-Each JSON file has an automatic `.bak` sibling. If a file becomes corrupt, rename the `.bak` to restore the previous save.
+On startup, legacy JSON files from the app directory are migrated into the persistent data directory if needed.
 
-> The data directory can be overridden with `DUBLINISL_DATA_DIR`, e.g. `DUBLINISL_DATA_DIR=/mnt/usb python3 main.py`.
+### App-directory config files
 
-### Configuration files (in the app directory)
+| File | Purpose |
+|------|---------|
+| `PTZ1IP.txt` | Camera 1 IP |
+| `PTZ2IP.txt` | Camera 2 IP |
+| `Cam1ID.txt` | Camera 1 VISCA ID |
+| `Cam2ID.txt` | Camera 2 VISCA ID |
+| `ATEMIP.txt` | ATEM IP |
+| `Contact.txt` | Help/contact text |
+| `password.enc` | Login password storage |
+| `sim_ip_backup.json` | Simulation mode backup flag and original IP values |
 
-| File | Contents |
-|------|----------|
-| `PTZ1IP.txt`, `PTZ2IP.txt` | Camera IP addresses |
-| `Cam1ID.txt`, `Cam2ID.txt` | VISCA device IDs |
-| `ATEMIP.txt` | ATEM IP address |
-| `Contact.txt` | Support contact |
+### ZIP export/import
 
-> `password.enc` is machine-locked — it cannot be used on a different machine and does not need to be backed up.
+The backup system in `data_paths.py` supports:
 
-### ZIP export / import (built-in)
+- Exporting JSON data files from the persistent data directory.
+- Exporting config `.txt` files from the app directory.
+- Importing both groups back to their correct locations.
+- Creating `.bak` files during import when replacing existing files.
 
-- **Export Backup** — creates a `.zip` with all JSON data files and all `.txt` config files
-- **Import Backup** — restores both groups from a previously exported `.zip`
-
-This is the recommended way to migrate to a new Raspberry Pi.
-
-### Recommended: automatic daily backup to USB drive
-
-```bash
-#!/bin/bash
-# /home/pi/backup_dublinisl.sh
-DEST="/media/pi/BACKUP/dublinisl_$(date +%Y%m%d)"
-mkdir -p "$DEST"
-cp "$HOME/.config/dublinisl"/*.json "$DEST"/
-cp /home/pi/dublinisl_controls_rpi_ip_v3/*.txt "$DEST"/
-echo "Backup completed: $DEST"
-```
-
-Schedule daily at 02:00:
-
-```bash
-chmod +x /home/pi/backup_dublinisl.sh
-crontab -e
-# Add:
-0 2 * * * /home/pi/backup_dublinisl.sh
-```
+Note: `.bak` creation is not currently guaranteed for every normal runtime save.
 
 ---
 
 ## Updating
 
-Data files and `.txt` config files are never touched by git. Pull the latest code and restart:
+Typical update workflow:
 
 ```bash
-cd /home/pi/dublinisl_controls_rpi_ip_v3
+cd /home/pi/DublinISL_Controls_rpi_IP_v3
 git pull origin main
 python3 main.py
 ```
 
-If new Python dependencies were added:
+Persistent data in `~/.config/dublinisl/` should survive a `git pull`.
 
-```bash
-pip3 install PyQt5
-pip3 install PyATEMMax   # only if using ATEM
+Before updating a production installation:
+
+1. Export a ZIP backup from the app.
+2. Copy the app directory `.txt` files.
+3. Check whether new Python dependencies were added.
+4. Test simulation mode before using live hardware.
+
+---
+
+## Network Behaviour
+
+Production mode:
+
+```text
+Raspberry Pi  ->  PTZ Camera 1  TCP 5678
+Raspberry Pi  ->  PTZ Camera 2  TCP 5678
+Raspberry Pi  ->  ATEM          via PyATEMMax, optional
 ```
 
-> Always check the release notes before updating on a production system.
+The production app normally makes outbound TCP connections to cameras and ATEM.
 
----
+Simulation mode:
 
-## Network Architecture
-
-```
-                    LAN
-+---------------+  TCP:5678  +----------+
-| Raspberry Pi  | ---------> | PTZ Cam1 |
-| (this app)    | ---------> | PTZ Cam2 |
-|               |  TCP:9910  +----------+
-|               | ---------> |   ATEM   |
-+---------------+            +----------+
-```
-
-- All connections are **outbound TCP** from the Raspberry Pi
-- No incoming connections required — no firewall rules needed
-- Static IPs are strongly recommended for all devices
-
----
-
-## File Reference
-
-### Configuration files (plain text, created manually)
-
-| File | Description |
-|------|-------------|
-| `PTZ1IP.txt` | Platform camera IP address |
-| `PTZ2IP.txt` | Audience camera IP address |
-| `Cam1ID.txt` | Camera 1 VISCA device ID (hex) |
-| `Cam2ID.txt` | Camera 2 VISCA device ID (hex) |
-| `ATEMIP.txt` | BlackMagic ATEM IP address |
-| `Contact.txt` | Support contact shown in Help |
-
-### Data files (auto-managed, stored in `~/.config/dublinisl/`)
-
-| File | Description |
-|------|-------------|
-| `seat_names.json` | Speaker names and seat assignments |
-| `chairman_presets.json` | Per-speaker camera presets for the chairman seat |
-| `schedule.json` | Weekly operating schedule |
-
-### Runtime files (in the app directory)
-
-| File | Description |
-|------|-------------|
-| `password.enc` | Machine-locked encrypted login password |
-| `audit_log.json` | Timestamped log of all login attempts |
-| `sim_ip_backup.json` | Backup of real IPs while simulation mode is active |
-
----
-
-## Security
-
-- **Machine-locked encryption:** `password.enc` is encrypted with a key derived from the machine's hardware identifier — unusable on any other machine.
-- **PBKDF2-HMAC-SHA256:** 200,000 iterations with a 16-byte random salt.
-- **Progressive lockout:** 10 s, 30 s, 60 s, and 1 hour after repeated failed logins.
-- **Audit logging:** Every login attempt recorded in `audit_log.json`.
-- **No network listener:** Only outbound TCP connections — no open ports.
-
----
-
-## Troubleshooting
-
-| Symptom | Likely cause | Solution |
-|---------|-------------|----------|
-| Camera LED shows red | Camera unreachable | Check IP in `PTZ1IP.txt` / `PTZ2IP.txt`; verify camera is on and on the LAN |
-| Wrong password on first run | Default not yet set | Run `python3 setup_password.py` |
-| `password.enc` rejected after moving to new Pi | Machine-lock mismatch | Run `python3 setup_password.py` on the new machine |
-| ATEM shows "--" in splash | ATEM offline or wrong IP | Check `ATEMIP.txt`; the app works without ATEM |
-| Joystick has no effect | Session not started | Settings → **Start Session** |
-| App crashes at startup | PyQt5 not installed | Run `pip3 install PyQt5` |
-| Seat assignments lost after reboot | `seat_names.json` missing | Check `~/.config/dublinisl/`; rename `.bak` to `.json` or restore from ZIP |
-| Chairman preset slot collision warning | Two speakers share a slot | Click OK to reassign automatically, or clear the old entry first in SET mode |
-| JSON file corrupt after power cut | Incomplete write | Rename `<file>.json.bak` → `<file>.json` in `~/.config/dublinisl/` |
+- The app starts local VISCA server sockets for simulated cameras.
+- This is different from production mode and is intended for development/testing.
 
 ---
 
 ## Architecture
 
-The codebase is split into five layers. Each layer only imports from layers below it — no circular dependencies.
+The target architecture is layered, but the current implementation is still mixed.
 
-```
-┌──────────────────────────────────────┐
-│  UI Layer (Qt)                       │
-│  main_window, right_panel,           │
-│  login_screen, splash_screen, …      │
-├──────────────────────────────────────┤
-│  Adapters  (adapters/input/)         │
-│  joystick_adapter, seat_adapter      │
-├──────────────────────────────────────┤
-│  Application  (application/)         │
-│  CameraService, PresetService,       │
-│  SessionService                      │
-├──────────────────────────────────────┤
-│  Core  (core/)                       │
-│  AsyncEventBus, SystemState,         │
-│  Controller, Supervisor              │
-├──────────────────────────────────────┤
-│  Domain  (domain/)                   │
-│  Camera, Preset, Seat  (data only)   │
-└──────────────────────────────────────┘
+### Existing newer layers
+
+```text
+domain/          Data constants and domain models
+core/            Event bus, state, controller, supervisor
+application/     Camera, preset and session services
+adapters/        Input adapters
+ptz/visca/       VISCA commands, parser, manager, worker and protocol
 ```
 
-| Layer | Qt? | I/O? | Responsibility |
-|-------|-----|------|----------------|
-| **Domain** | No | No | Data shapes and constants |
-| **Core** | No | No | State, events, orchestration, thread supervision |
-| **Application** | No | JSON / TCP | Business logic services |
-| **Adapters** | Yes | No | Bridge Qt signals → AsyncEventBus |
-| **UI** | Yes | No | Render state, capture user input |
+### Existing legacy/Qt controllers still in use
 
-Key modules:
+```text
+main_window.py
+ptz/visca/controller.py
+session_mixin.py
+dialogs_mixin.py
+seat_names_mixin.py
+```
 
-| Module | Description |
-|--------|-------------|
-| `core/events.py` | `AsyncEventBus` — thread-safe queue; dispatches events without blocking the UI |
-| `core/supervisor.py` | `Supervisor` — polls registered workers every 10 s; restarts any that have died |
-| `core/state.py` | `SystemState` — single source of truth for runtime state |
-| `core/controller.py` | Central coordinator wiring all services together |
-| `visca_protocol.py` | Pure VISCA command encoding (no Qt dependency) |
-| `camera_worker.py` | Daemon thread per camera; persistent TCP socket |
-| `atem_monitor.py` | Background thread monitoring ATEM program output |
-| `data_paths.py` | Persistent data directory path + ZIP export/import |
-| `json_io.py` | Atomic JSON read/write with `.bak` copies |
-| `secret_manager.py` | PBKDF2 + machine-locked password encryption |
-| `hardware_simulator.py` | Virtual VISCA servers + ATEM for simulation mode |
+### Key modules
+
+| Module | Current role |
+|--------|--------------|
+| `main.py` | App entry point; creates `QApplication`, virtual keyboard and `MainWindow` |
+| `main_window.py` | Main UI composition and hybrid wiring |
+| `ptz/visca/commands.py` | Pure VISCA command builders |
+| `ptz/visca/parser.py` | Pure VISCA response parsers |
+| `ptz/visca/worker.py` | Persistent TCP worker and command queue per camera |
+| `ptz/visca/manager.py` | Camera workers and per-camera state/cache |
+| `ptz/visca/protocol.py` | VISCA logic separated from direct Qt widget calls through callbacks |
+| `ptz/visca/controller.py` | Qt-facing VISCA controller used by `MainWindow` |
+| `atem_monitor.py` | ATEM monitor thread; optional PyATEMMax integration |
+| `secret_manager.py` | Password encryption/decryption helper |
+| `setup_password.py` | Password setup/change utility |
+| `json_io.py` | Atomic JSON load/save helper |
+| `data_paths.py` | Persistent data paths and ZIP backup/import |
+| `hardware_simulator.py` | VISCA camera simulation and ATEM event queue |
+| `sim_mode.py` | Toggles simulation mode by rewriting camera IP files |
+
+---
+
+## Known Technical Gaps Before Customer Deployment
+
+These are current implementation gaps, not feature promises:
+
+1. Harden login so missing/corrupt `password.enc` does not fall back to `dublin2024`.
+2. Enable audit logging safely, without storing attempted passwords.
+3. Add `requirements.txt` or `pyproject.toml` with pinned dependencies.
+4. Make `.bak` behaviour consistent across all JSON save paths.
+5. Finish the architecture migration or document the legacy controllers as permanent.
+6. Expand tests around real VISCA response formats, especially ACK + Completion in the same TCP packet.
+7. Decide whether ATEM control is monitoring-only or should become full switcher control.
+8. Add a tested installer/systemd setup script for Raspberry Pi deployments.
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Action |
+|---------|--------------|--------|
+| App crashes at startup | Missing PyQt5 or QtSvg support | Install `python3-pyqt5 python3-pyqt5.qtsvg` |
+| Camera indicator red | Camera unreachable or wrong IP | Check `PTZ1IP.txt` / `PTZ2IP.txt`, power and network |
+| Joystick does nothing | Camera unreachable or session/camera state issue | Start session, check camera indicator, check logs |
+| ATEM shows disconnected | PyATEMMax missing, wrong IP or ATEM offline | Install `PyATEMMax`, check `ATEMIP.txt`, verify network |
+| Login accepts default password | `password.enc` missing/unreadable | Run `python3 setup_password.py` and harden fallback before production |
+| Schedule bypass logs in automatically | Current time is inside enabled schedule | Edit weekly schedule or disable the day |
+| Simulation still active | `sim_ip_backup.json` exists | Run `python3 sim_mode.py off` |
+| Real camera IPs lost after simulation | Backup file removed or restore failed | Recreate `PTZ1IP.txt` and `PTZ2IP.txt` manually |
+| Seat/chairman data missing | Wrong `DUBLINISL_DATA_DIR` or missing JSON | Check `~/.config/dublinisl/` and restore from ZIP backup |
 
 ---
 
@@ -531,5 +588,5 @@ Este software es propietario y de uso privado exclusivo. Queda prohibida su copi
 
 For technical support or installation assistance:
 
-**Marco Tevar** — +353 085 236 8581
+**Marco Tevar** — +353 085 236 8581  
 **Carol Torres** — +353 89 975 2890
