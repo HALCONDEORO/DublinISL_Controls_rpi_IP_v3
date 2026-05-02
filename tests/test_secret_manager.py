@@ -19,10 +19,11 @@ import pytest
 from pathlib import Path
 import secret_manager as _sm
 
-_xor_stream      = _sm._xor_stream
-encrypt_password = _sm.encrypt_password
-decrypt_password = _sm.decrypt_password
-_DEFAULT_PASSWORD = _sm._DEFAULT_PASSWORD
+_xor_stream              = _sm._xor_stream
+encrypt_password         = _sm.encrypt_password
+decrypt_password         = _sm.decrypt_password
+password_is_configured   = _sm.password_is_configured
+PasswordNotConfiguredError = _sm.PasswordNotConfiguredError
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -113,9 +114,14 @@ class TestEncryptDecryptRoundtrip:
         encrypt_password(pw)
         assert decrypt_password() == pw
 
-    def test_missing_file_returns_default(self):
+    def test_missing_file_raises(self):
         assert not self.enc_file.exists()
-        assert decrypt_password() == _DEFAULT_PASSWORD
+        with pytest.raises(PasswordNotConfiguredError):
+            decrypt_password()
+
+    def test_missing_file_not_configured(self):
+        assert not self.enc_file.exists()
+        assert password_is_configured() is False
 
     def test_enc_file_created_after_encrypt(self):
         encrypt_password("test")
@@ -142,19 +148,31 @@ class TestEncryptDecryptRoundtrip:
         blob2 = self.enc_file.read_text()
         assert blob1 != blob2
 
-    def test_corrupted_file_returns_default(self):
+    def test_corrupted_file_raises(self):
         self.enc_file.write_text("not_valid_blob", encoding="ascii")
-        assert decrypt_password() == _DEFAULT_PASSWORD
+        with pytest.raises(PasswordNotConfiguredError):
+            decrypt_password()
 
-    def test_truncated_file_returns_default(self):
-        """Un archivo con solo el salt (sin ':cipher') devuelve el default."""
+    def test_corrupted_file_not_configured(self):
+        self.enc_file.write_text("not_valid_blob", encoding="ascii")
+        assert password_is_configured() is False
+
+    def test_truncated_file_raises(self):
+        """Un archivo con solo el salt (sin ':cipher') lanza PasswordNotConfiguredError."""
         self.enc_file.write_text("a" * 32, encoding="ascii")
-        assert decrypt_password() == _DEFAULT_PASSWORD
+        with pytest.raises(PasswordNotConfiguredError):
+            decrypt_password()
 
-    def test_decrypted_value_differs_from_default_when_set(self):
-        """Confirma que decrypt devuelve la contraseña real, no siempre el default."""
+    def test_truncated_file_not_configured(self):
+        self.enc_file.write_text("a" * 32, encoding="ascii")
+        assert password_is_configured() is False
+
+    def test_decrypted_value_matches_encrypted(self):
+        """Confirma que decrypt devuelve exactamente la contraseña cifrada."""
         custom = "mi_password_especifico_12345"
         encrypt_password(custom)
-        result = decrypt_password()
-        assert result == custom
-        assert result != _DEFAULT_PASSWORD
+        assert decrypt_password() == custom
+
+    def test_configured_returns_true_after_encrypt(self):
+        encrypt_password("cualquier_clave")
+        assert password_is_configured() is True

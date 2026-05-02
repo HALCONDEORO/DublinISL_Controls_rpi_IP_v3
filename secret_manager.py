@@ -19,7 +19,10 @@ import socket
 from pathlib import Path
 
 _ENC_FILE = Path("password.enc")
-_DEFAULT_PASSWORD = "dublin2024"
+
+
+class PasswordNotConfiguredError(Exception):
+    """Raised when password.enc is missing, corrupt, or unreadable."""
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -80,16 +83,36 @@ def encrypt_password(plaintext: str) -> None:
     _ENC_FILE.write_text(blob, encoding="ascii")
 
 
-def decrypt_password() -> str:
-    """Descifrar contraseña desde password.enc. Devuelve el default si falla."""
+def password_is_configured() -> bool:
+    """Return True only if password.enc exists and can be decrypted successfully."""
     try:
-        if not _ENC_FILE.exists():
-            return _DEFAULT_PASSWORD
+        decrypt_password()
+        return True
+    except PasswordNotConfiguredError:
+        return False
+
+
+def decrypt_password() -> str:
+    """Descifrar contraseña desde password.enc.
+
+    Raises PasswordNotConfiguredError if the file is missing, corrupt, or
+    unreadable — never falls back to a hardcoded default.
+    """
+    if not _ENC_FILE.exists():
+        raise PasswordNotConfiguredError(
+            "password.enc not found. Run: python3 setup_password.py"
+        )
+    try:
         blob = _ENC_FILE.read_text(encoding="ascii").strip()
         salt_hex, enc_hex = blob.split(":", 1)
         salt = bytes.fromhex(salt_hex)
         encrypted = bytes.fromhex(enc_hex)
         key = _derive_key(salt)
         return _xor_stream(encrypted, key).decode("utf-8")
-    except Exception:
-        return _DEFAULT_PASSWORD
+    except PasswordNotConfiguredError:
+        raise
+    except Exception as exc:
+        raise PasswordNotConfiguredError(
+            f"password.enc is corrupt or unreadable: {exc}. "
+            "Run: python3 setup_password.py"
+        ) from exc

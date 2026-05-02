@@ -14,7 +14,7 @@ import getpass
 import sys
 from pathlib import Path
 
-from secret_manager import encrypt_password, decrypt_password, _ENC_FILE
+from secret_manager import encrypt_password, decrypt_password, _ENC_FILE, PasswordNotConfiguredError
 
 
 def main() -> None:
@@ -35,11 +35,17 @@ def main() -> None:
 
     # Cambio manual de contraseña
     if _ENC_FILE.exists():
-        current = decrypt_password()
-        confirm = getpass.getpass("\nContraseña actual: ")
-        if confirm != current:
-            print("✗ Contraseña actual incorrecta.")
-            sys.exit(1)
+        try:
+            current = decrypt_password()
+        except PasswordNotConfiguredError:
+            print("[AVISO] password.enc existe pero no se puede descifrar.")
+            print("        Se establecerá una contraseña nueva sin verificar la actual.")
+            current = None
+        if current is not None:
+            confirm = getpass.getpass("\nContraseña actual: ")
+            if confirm != current:
+                print("✗ Contraseña actual incorrecta.")
+                sys.exit(1)
 
     while True:
         new_pwd = getpass.getpass("\nNueva contraseña: ")

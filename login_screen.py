@@ -17,7 +17,7 @@ from pathlib import Path
 from json_io import load_json, save_json
 
 from config import Contact
-from secret_manager import decrypt_password as _get_password
+from secret_manager import decrypt_password as _get_password, PasswordNotConfiguredError, password_is_configured
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -154,7 +154,18 @@ class LoginScreen(QWidget):
         # self.audit = LoginAudit()
 
         self._build_ui()
+        QTimer.singleShot(0, self._check_password_configured)
         QTimer.singleShot(0, self._check_schedule_bypass)
+
+    def _check_password_configured(self):
+        """Block login with a clear message if no valid password is configured."""
+        if not password_is_configured():
+            self.password_input.setEnabled(False)
+            self.login_btn.setEnabled(False)
+            self._set_status(
+                '⚠ No password configured — run: python3 setup_password.py',
+                'error'
+            )
 
     def _check_schedule_bypass(self):
         """Auto-login si la hora actual está dentro del horario configurado."""
@@ -373,7 +384,18 @@ class LoginScreen(QWidget):
             return
 
         # Comparar con contraseña correcta
-        if pwd == _get_password():
+        try:
+            correct = _get_password()
+        except PasswordNotConfiguredError:
+            self.password_input.setEnabled(False)
+            self.login_btn.setEnabled(False)
+            self._set_status(
+                '⚠ No password configured — run: python3 setup_password.py',
+                'error'
+            )
+            return
+
+        if pwd == correct:
             self._on_login_success()
         else:
             self._on_login_failure(pwd)
