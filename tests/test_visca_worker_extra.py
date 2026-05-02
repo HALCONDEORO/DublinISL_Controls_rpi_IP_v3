@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. All rights reserved.
+# Proprietary software — use, copying, distribution or modification requires written permission.
 # tests/test_visca_worker_extra.py — Tests adicionales de CameraWorker
 #
 # Cubre: send_priority, heartbeat_age, _has_final_visca_frame, _classify_payload,

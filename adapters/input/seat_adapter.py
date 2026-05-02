@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
-# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
-# distribución, modificación o uso sin autorización escrita del autor.
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. All rights reserved.
+# Proprietary software — use, copying, distribution or modification requires written permission.
 # adapters/input/seat_adapter.py — Traduce presión de botón de asiento al EventBus
 
 from __future__ import annotations

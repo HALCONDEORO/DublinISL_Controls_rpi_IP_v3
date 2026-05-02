@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. All rights reserved.
+# Proprietary software — use, copying, distribution or modification requires written permission.
 # tests/test_visca_pure.py — Tests unitarios para ptz.visca.commands y ptz.visca.parser
 #
 # No requiere Qt ni red: todo es lógica pura sobre bytes.

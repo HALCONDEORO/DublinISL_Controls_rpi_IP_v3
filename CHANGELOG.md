@@ -8,6 +8,12 @@ This project uses a simple versioning approach while it is still in early produc
 - Minor version: new features or significant refactors.
 - Major version: breaking changes for installation, configuration or customer deployments.
 
+## 3.0.3
+
+### Changed
+
+- Standardised copyright headers across all 82 Python source files: replaced verbose Spanish-language "uso privado exclusivo" notices with a concise two-line English header (closes #25).
+
 ## 3.0.2
 
 ### Added

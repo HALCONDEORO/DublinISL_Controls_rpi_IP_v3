@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. All rights reserved.
+# Proprietary software — use, copying, distribution or modification requires written permission.
 # ptz/visca/commands.py — Constructores puros de comandos VISCA
 #
 # Todas las funciones son puras: reciben parámetros, devuelven bytes.

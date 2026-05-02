@@ -1,2 +1,3 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. All rights reserved.
+# Proprietary software — use, copying, distribution or modification requires written permission.

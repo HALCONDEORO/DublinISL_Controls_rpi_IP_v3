@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
-# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
-# distribución, modificación o uso sin autorización escrita del autor.
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. All rights reserved.
+# Proprietary software — use, copying, distribution or modification requires written permission.
 # config_dialog.py — Diálogo modal de configuración técnica
 #
 # Responsabilidad única: mostrar en un diálogo modal todos los controles
@@ -701,7 +700,9 @@ class ConfigDialog(QDialog):
         # ── Versión y ayuda ───────────────────────────────────────────────
         bottom = QHBoxLayout()
 
-        version = QLabel('v3 — IP RPI — March 2026')
+        _ver_file = Path(__file__).parent / 'VERSION'
+        _ver_text = _ver_file.read_text(encoding='utf-8').strip() if _ver_file.exists() else 'unknown'
+        version = QLabel(f'v{_ver_text}')
         version.setStyleSheet("font: 11px; color: #888;")
         bottom.addWidget(version)
 

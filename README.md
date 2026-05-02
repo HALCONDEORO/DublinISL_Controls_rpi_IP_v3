@@ -36,7 +36,7 @@ Audio and microphones are not part of this application.
 - ATEM support currently monitors program changes. It does **not** fully control or switch the ATEM. The implemented behaviour is: when ATEM program changes from input `3` to input `2`, the Comments camera is sent Home.
 - Simulation mode starts virtual VISCA camera servers. ATEM simulation is internal/event-based, not a full standalone ATEM network simulator.
 - Login audit code exists, but audit logging is currently commented out in `login_screen.py`. `audit_log.json` is not written during normal login flow unless that code is re-enabled.
-- `password.enc` is encrypted using PBKDF2-derived key material, but the current fallback behaviour is permissive: if `password.enc` is missing or cannot be decrypted, the app falls back to the default password `dublin2024`.
+- `password.enc` is encrypted using PBKDF2-derived key material. If `password.enc` is missing or cannot be decrypted, login is blocked until `python3 setup_password.py` creates a valid password file.
 - JSON writes are atomic through `json_io.py`. Every runtime save also creates a `.bak` of the previous file before replacing it.
 - Dependency files now exist, but there is still no packaged installer, `pyproject.toml` or pinned lock file.
 
@@ -164,9 +164,9 @@ Current behaviour:
 
 - If `password.txt` exists and `password.enc` does not exist, the script migrates `password.txt` into `password.enc` and deletes `password.txt`.
 - If `password.enc` already exists, the current password is required before setting a new one.
-- If `password.enc` is missing or unreadable during app login, the application currently falls back to `dublin2024`.
+- If `password.enc` is missing or unreadable during app login, access is blocked and the operator must run `python3 setup_password.py`.
 
-For production, change the password before delivery and consider hardening the fallback behaviour.
+For production, create or change the password before delivery and verify that `password.enc` exists.
 
 ### 5. Run the application
 
@@ -582,13 +582,12 @@ seat_names_mixin.py
 
 These are current implementation gaps, not feature promises:
 
-1. Harden login so missing/corrupt `password.enc` does not fall back to `dublin2024`.
-2. Enable audit logging safely, without storing attempted passwords.
-3. Add a pinned dependency lock file or packaged installer for repeatable deployments.
-4. Finish the architecture migration or document the legacy controllers as permanent.
-6. Expand tests around real VISCA response formats, especially ACK + Completion in the same TCP packet.
-7. Decide whether ATEM control is monitoring-only or should become full switcher control.
-8. Add a tested installer/systemd setup script for Raspberry Pi deployments.
+1. Enable audit logging safely, without storing attempted passwords.
+2. Add a pinned dependency lock file or packaged installer for repeatable deployments.
+3. Finish the architecture migration or document the legacy controllers as permanent.
+4. Expand tests around real VISCA response formats, especially ACK + Completion in the same TCP packet.
+5. Decide whether ATEM control is monitoring-only or should become full switcher control.
+6. Add a tested installer/systemd setup script for Raspberry Pi deployments.
 
 ---
 
@@ -600,7 +599,7 @@ These are current implementation gaps, not feature promises:
 | Camera indicator red | Camera unreachable or wrong IP | Check `PTZ1IP.txt` / `PTZ2IP.txt`, power and network |
 | Joystick does nothing | Camera unreachable or session/camera state issue | Start session, check camera indicator, check logs |
 | ATEM shows disconnected | PyATEMMax missing, wrong IP or ATEM offline | Install `pip3 install -r requirements-atem.txt`, check `ATEMIP.txt`, verify network |
-| Login accepts default password | `password.enc` missing/unreadable | Run `python3 setup_password.py` and harden fallback before production |
+| Login is blocked with password setup warning | `password.enc` missing/unreadable | Run `python3 setup_password.py` |
 | Schedule bypass logs in automatically | Current time is inside enabled schedule | Edit weekly schedule or disable the day |
 | Simulation still active | `sim_ip_backup.json` exists | Run `python3 sim_mode.py off` |
 | Real camera IPs lost after simulation | Backup file removed or restore failed | Recreate `PTZ1IP.txt` and `PTZ2IP.txt` manually |

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
-# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
-# distribuciÃ³n, modificaciÃ³n o uso sin autorizaciÃ³n escrita del autor.
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. All rights reserved.
+# Proprietary software — use, copying, distribution or modification requires written permission.
 # camera_discovery.py â€” Descubrimiento de IPs de cÃ¡maras en la red local
 #
 # Expone tres funciones independientes del framework UI:

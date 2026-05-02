@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
-# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
-# distribución, modificación o uso sin autorización escrita del autor.
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. All rights reserved.
+# Proprietary software — use, copying, distribution or modification requires written permission.
 """
 test_secret_manager.py — Tests de la capa de cifrado XOR-stream y del ciclo
 encrypt/decrypt. Lógica pura: sin Qt, sin hardware, sin red.
@@ -156,6 +155,37 @@ class TestEncryptDecryptRoundtrip:
     def test_corrupted_file_not_configured(self):
         self.enc_file.write_text("not_valid_blob", encoding="ascii")
         assert password_is_configured() is False
+
+    def test_unreadable_file_raises_configured_error(self, monkeypatch):
+        class UnreadableFile:
+            def exists(self):
+                return True
+
+            def read_text(self, *_args, **_kwargs):
+                raise OSError("read failed")
+
+        monkeypatch.setattr(_sm, "_ENC_FILE", UnreadableFile())
+
+        with pytest.raises(PasswordNotConfiguredError):
+            decrypt_password()
+
+    def test_unreadable_file_not_configured(self, monkeypatch):
+        class UnreadableFile:
+            def exists(self):
+                return True
+
+            def read_text(self, *_args, **_kwargs):
+                raise OSError("read failed")
+
+        monkeypatch.setattr(_sm, "_ENC_FILE", UnreadableFile())
+
+        assert password_is_configured() is False
+
+    def test_invalid_hex_file_raises_configured_error(self):
+        self.enc_file.write_text("zzzz:nothex", encoding="ascii")
+
+        with pytest.raises(PasswordNotConfiguredError):
+            decrypt_password()
 
     def test_truncated_file_raises(self):
         """Un archivo con solo el salt (sin ':cipher') lanza PasswordNotConfiguredError."""

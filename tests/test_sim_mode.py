@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
-# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
-# distribucion, modificacion o uso sin autorizacion escrita del autor.
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. All rights reserved.
+# Proprietary software — use, copying, distribution or modification requires written permission.
 """
 Tests de sim_mode aislando todos los archivos en un directorio temporal local.
 """
 
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -15,9 +16,12 @@ from json_io import load_json
 import sim_mode
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 @pytest.fixture()
 def isolated_sim_mode(monkeypatch):
-    root = Path(__file__).resolve().parents[1] / ".test_tmp" / f"sim_mode_{uuid.uuid4().hex}"
+    root = ROOT / ".test_tmp" / f"sim_mode_{uuid.uuid4().hex}"
     root.mkdir(parents=True)
     monkeypatch.setattr(sim_mode, "BACKUP", root / "sim_ip_backup.json")
 
@@ -116,11 +120,67 @@ class TestSimMode:
         with pytest.raises(RuntimeError):
             sim_mode.activate()
 
-        # Las IPs reales no deben haberse sobreescrito
+        # Las IPs reales no deben haberse sobreescrito.
         assert (isolated_sim_mode / "PTZ1IP.txt").read_text(encoding="utf-8") == "172.16.1.11"
         assert (isolated_sim_mode / "PTZ2IP.txt").read_text(encoding="utf-8") == "172.16.1.12"
         assert (isolated_sim_mode / "ATEMIP.txt").read_text(encoding="utf-8") == "192.168.1.240"
 
 
+class TestSimModeCli:
 
+    def _run_cli(self, tmp_path, *args):
+        return subprocess.run(
+            [sys.executable, str(ROOT / "sim_mode.py"), *args],
+            cwd=tmp_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
 
+    def test_cli_on_activates_simulation_files(self, tmp_path):
+        (tmp_path / "PTZ1IP.txt").write_text("172.16.1.11", encoding="utf-8")
+        (tmp_path / "PTZ2IP.txt").write_text("172.16.1.12", encoding="utf-8")
+        (tmp_path / "ATEMIP.txt").write_text("192.168.1.240", encoding="utf-8")
+
+        result = self._run_cli(tmp_path, "on")
+
+        assert result.returncode == 0
+        assert "ACTIVADO" in result.stdout
+        assert (tmp_path / "PTZ1IP.txt").read_text(encoding="utf-8") == "127.0.0.1"
+        assert (tmp_path / "PTZ2IP.txt").read_text(encoding="utf-8") == "127.0.0.2"
+        assert load_json(tmp_path / "sim_ip_backup.json")["ATEMIP.txt"] == "192.168.1.240"
+
+    def test_cli_off_restores_real_values(self, tmp_path):
+        (tmp_path / "PTZ1IP.txt").write_text("127.0.0.1", encoding="utf-8")
+        (tmp_path / "sim_ip_backup.json").write_text(
+            '{"PTZ1IP.txt": "172.16.1.11", "PTZ2IP.txt": "172.16.1.12"}',
+            encoding="utf-8",
+        )
+
+        result = self._run_cli(tmp_path, "off")
+
+        assert result.returncode == 0
+        assert "DESACTIVADO" in result.stdout
+        assert (tmp_path / "PTZ1IP.txt").read_text(encoding="utf-8") == "172.16.1.11"
+        assert (tmp_path / "PTZ2IP.txt").read_text(encoding="utf-8") == "172.16.1.12"
+        assert not (tmp_path / "sim_ip_backup.json").exists()
+
+    def test_cli_show_reports_active_state_and_saved_backup(self, tmp_path):
+        (tmp_path / "PTZ1IP.txt").write_text("127.0.0.1", encoding="utf-8")
+        (tmp_path / "sim_ip_backup.json").write_text(
+            '{"PTZ1IP.txt": "172.16.1.11"}',
+            encoding="utf-8",
+        )
+
+        result = self._run_cli(tmp_path, "show")
+
+        assert result.returncode == 0
+        assert "ACTIVO" in result.stdout
+        assert "IPs reales guardadas" in result.stdout
+        assert "172.16.1.11" in result.stdout
+
+    def test_cli_invalid_command_prints_usage_and_exits_1(self, tmp_path):
+        result = self._run_cli(tmp_path, "invalid")
+
+        assert result.returncode == 1
+        assert "Uso: python sim_mode.py [on|off|show]" in result.stdout

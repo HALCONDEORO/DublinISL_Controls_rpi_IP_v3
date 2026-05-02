@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
-# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
-# distribución, modificación o uso sin autorización escrita del autor.
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. All rights reserved.
+# Proprietary software — use, copying, distribution or modification requires written permission.
 # seat_builder.py — Factory para botones de asientos especiales
 #
 # Centraliza la creación de los 4 asientos especiales (128-131) que antes

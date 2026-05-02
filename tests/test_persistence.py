@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
-# Software propietario y de uso privado exclusivo. Queda prohibida su copia,
-# distribución, modificación o uso sin autorización escrita del autor.
+# Copyright (c) 2026 Marco Antonio Tevar Asensio. All rights reserved.
+# Proprietary software — use, copying, distribution or modification requires written permission.
 """
 test_persistence.py — Tests unitarios para la capa de persistencia de datos.
 
@@ -349,6 +348,15 @@ class TestDataPaths:
         with pytest.raises(json.JSONDecodeError):
             data_paths.import_backup(zip_path)
 
+    def test_import_raises_on_empty_recognized_json(self, tmp_path, isolated, monkeypatch):
+        import data_paths
+        zip_path = tmp_path / 'empty_json.zip'
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr('chairman_presets.json', '')
+
+        with pytest.raises(json.JSONDecodeError):
+            data_paths.import_backup(zip_path)
+
     def test_import_raises_on_valid_json_with_wrong_shape(self, tmp_path, isolated, monkeypatch):
         import data_paths
         existing = isolated / 'seat_names.json'
@@ -369,6 +377,14 @@ class TestDataPaths:
             zf.writestr('unrelated.txt', 'hello')
 
         with pytest.raises(ValueError, match="reconocidos"):
+            data_paths.import_backup(zip_path)
+
+    def test_import_raises_on_bad_zip_file(self, tmp_path, isolated, monkeypatch):
+        import data_paths
+        zip_path = tmp_path / 'corrupt.zip'
+        zip_path.write_text('esto no es un zip', encoding='utf-8')
+
+        with pytest.raises(zipfile.BadZipFile):
             data_paths.import_backup(zip_path)
 
     def test_export_then_import_roundtrip(self, tmp_path, isolated, monkeypatch):
@@ -525,6 +541,56 @@ class TestImportBackupAtomic:
 
         data_paths.import_backup(zip_path)
         assert not (isolated / 'chairman_presets.tmp').exists()
+
+    def test_tmp_not_left_when_json_replace_fails(self, tmp_path, isolated, monkeypatch):
+        import data_paths, zipfile
+        zip_path = tmp_path / 'backup.zip'
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr('chairman_presets.json', '{"Alice": 10}')
+
+        def fail_replace(_src, _dst):
+            raise OSError("replace failed")
+
+        monkeypatch.setattr(data_paths.os, 'replace', fail_replace)
+
+        assert data_paths.import_backup(zip_path) == []
+        assert not (isolated / 'chairman_presets.tmp').exists()
+        assert not (isolated / 'chairman_presets.json').exists()
+
+    def test_existing_json_backup_survives_when_replace_fails(self, tmp_path, isolated, monkeypatch):
+        import data_paths, zipfile
+        existing = isolated / 'chairman_presets.json'
+        existing.write_text('{"original": 10}', encoding='utf-8')
+        zip_path = tmp_path / 'backup.zip'
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr('chairman_presets.json', '{"new": 20}')
+
+        def fail_replace(_src, _dst):
+            raise OSError("replace failed")
+
+        monkeypatch.setattr(data_paths.os, 'replace', fail_replace)
+
+        assert data_paths.import_backup(zip_path) == []
+        assert json.loads(existing.read_text(encoding='utf-8')) == {'original': 10}
+        assert json.loads(existing.with_suffix('.bak').read_text(encoding='utf-8')) == {'original': 10}
+        assert not existing.with_suffix('.tmp').exists()
+
+    def test_tmp_not_left_when_txt_replace_fails(self, tmp_path, isolated, monkeypatch):
+        import data_paths, zipfile
+        app_dir = tmp_path / 'app'
+        app_dir.mkdir()
+        zip_path = tmp_path / 'backup.zip'
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr('config/PTZ1IP.txt', '172.16.1.11')
+
+        def fail_replace(_src, _dst):
+            raise OSError("replace failed")
+
+        monkeypatch.setattr(data_paths.os, 'replace', fail_replace)
+
+        assert data_paths.import_backup(zip_path, app_dir=app_dir) == []
+        assert not (app_dir / 'PTZ1IP.tmp').exists()
+        assert not (app_dir / 'PTZ1IP.txt').exists()
 
     def test_import_does_not_corrupt_on_partial_zip(self, tmp_path, isolated):
         """Si un archivo del ZIP es JSON inválido, los anteriores ya restaurados
