@@ -1,9 +1,69 @@
-password.enc
-password.txt
+# Python bytecode and caches
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Virtual environments
+.venv/
 venv/
+env/
+ENV/
+
+# Test and coverage output
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# Logs and runtime diagnostics
+logs/
+*.log
 audit_log.json
 boot_stats.json
+
+# Local security files - never commit real credentials
+/password.enc
+/password.txt
+.env
+.env.*
+!.env.example
+
+# Local customer/site configuration - keep examples in config.example/ tracked
+/PTZ1IP.txt
+/PTZ2IP.txt
+/Cam1ID.txt
+/Cam2ID.txt
+/ATEMIP.txt
+/Contact.txt
+
+# Local runtime state
+/sim_ip_backup.json
+/chairman_presets.json
+/seat_names.json
+/schedule.json
+
+# Backups, temporary files and exported archives
 *.bak
 *.tmp
+.tmp_*.json
+*.swp
+*.swo
+*.zip
+*.tar
+*.tar.gz
+
+# Build/package output
+build/
+dist/
+*.egg-info/
+*.spec
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
