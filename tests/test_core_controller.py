@@ -54,6 +54,9 @@ class _PresetSvc:
 
     def assign_slot(self, name):
         self.calls.append(("assign_slot", name))
+        slot, is_new = self.assign_result
+        if slot is not None and is_new:
+            self.map[name] = slot
         return self.assign_result
 
     def persist(self):
@@ -61,6 +64,7 @@ class _PresetSvc:
 
     def release_slot(self, name):
         self.calls.append(("release_slot", name))
+        self.map.pop(name, None)
 
 
 class _SessionSvc:
@@ -195,6 +199,24 @@ class TestControllerChairmanAndPresets:
         assert h.presets.calls == [("assign_slot", "Bob"), ("persist",)]
         assert h.saved_events == [{"camera": 2, "name": "Bob", "slot": 12}]
 
+    def test_saved_new_preset_can_be_recalled_by_later_seat_selection(self):
+        with _Harness() as h:
+            h.presets.assign_result = (12, True)
+            h.emit(EventType.PRESET_SAVE_REQUESTED, camera=2, name="Bob")
+            h.emit(EventType.SEAT_SELECTED, name="Bob", camera=2, seat_number=4)
+
+        assert h.camera.calls == [
+            ("save_preset", 2, 12),
+            ("recall_preset", 2, 12),
+            ("invalidate_zoom", 2),
+        ]
+        assert h.presets.calls == [
+            ("assign_slot", "Bob"),
+            ("persist",),
+            ("get_preset_for_name", "Bob"),
+        ]
+        assert h.state.cam2.active_preset == 12
+        assert h.saved_events == [{"camera": 2, "name": "Bob", "slot": 12}]
     def test_preset_save_existing_slot_does_not_persist_again(self):
         with _Harness() as h:
             h.presets.assign_result = (10, False)

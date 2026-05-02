@@ -86,14 +86,17 @@ class TestChairmanPresets:
         assert 'Bob' not in result    # 5 — por debajo de CHAIRMAN_PRESET_START (10)
         assert 'Carol' not in result  # 90 — por encima de CHAIRMAN_PRESET_MAX (89)
 
-    def test_second_save_overwrites_without_legacy_bak(self, preset_file):
+    def test_second_save_creates_bak(self, preset_file):
         from chairman_presets import save_chairman_presets, load_chairman_presets
         assert save_chairman_presets({'Alice': 10}) is True
         assert save_chairman_presets({'Alice': 10, 'Bob': 11}) is True
 
         assert load_chairman_presets() == {'Alice': 10, 'Bob': 11}
-        assert not preset_file.with_suffix('.bak').exists()
+        bak = preset_file.with_suffix('.bak')
+        assert bak.exists()
+        assert json.loads(bak.read_text()) == {'Alice': 10}
         assert list(preset_file.parent.glob('.tmp_*.json')) == []
+
     def test_no_bak_on_first_save(self, preset_file):
         from chairman_presets import save_chairman_presets
         save_chairman_presets({'Alice': 10})
@@ -211,7 +214,7 @@ class TestScheduleConfig:
         assert result['monday']['enabled'] is True
         assert result['tuesday']['enabled'] is False  # default
 
-    def test_second_save_overwrites_without_legacy_bak(self, schedule_file):
+    def test_second_save_creates_bak(self, schedule_file):
         from schedule_config import save_schedule, load_schedule
         assert save_schedule(self._sample()) is True
         updated = {**self._sample(), 'wednesday': {'enabled': True, 'start': '10:00', 'end': '18:00'}}
@@ -219,8 +222,10 @@ class TestScheduleConfig:
 
         result = load_schedule()
         assert result['wednesday']['enabled'] is True
-        assert not schedule_file.with_suffix('.bak').exists()
+        bak = schedule_file.with_suffix('.bak')
+        assert bak.exists()
         assert list(schedule_file.parent.glob('.tmp_*.json')) == []
+
     def test_no_bak_on_first_save(self, schedule_file):
         from schedule_config import save_schedule
         save_schedule(self._sample())
@@ -343,6 +348,19 @@ class TestDataPaths:
 
         with pytest.raises(json.JSONDecodeError):
             data_paths.import_backup(zip_path)
+
+    def test_import_raises_on_valid_json_with_wrong_shape(self, tmp_path, isolated, monkeypatch):
+        import data_paths
+        existing = isolated / 'seat_names.json'
+        existing.write_text('{"names": ["Original"], "seats": {}}', encoding='utf-8')
+        zip_path = tmp_path / 'wrong_shape.zip'
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr('seat_names.json', '["Alice"]')
+
+        with pytest.raises(ValueError, match="objeto JSON"):
+            data_paths.import_backup(zip_path)
+        assert json.loads(existing.read_text()) == {"names": ["Original"], "seats": {}}
+        assert not existing.with_suffix('.bak').exists()
 
     def test_import_raises_on_no_recognized_files(self, tmp_path, isolated, monkeypatch):
         import data_paths

@@ -127,6 +127,60 @@ class TestSaveJson:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  Backup
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TestSaveJsonBackup:
+
+    def test_no_bak_on_first_save(self, tmp_path):
+        f = tmp_path / "data.json"
+        save_json(f, {"v": 1})
+        assert not f.with_suffix('.bak').exists()
+
+    def test_bak_created_on_second_save(self, tmp_path):
+        f = tmp_path / "data.json"
+        save_json(f, {"v": 1})
+        save_json(f, {"v": 2})
+        assert f.with_suffix('.bak').exists()
+
+    def test_bak_contains_previous_content(self, tmp_path):
+        f = tmp_path / "data.json"
+        save_json(f, {"v": 1})
+        save_json(f, {"v": 2})
+        bak_data = load_json(f.with_suffix('.bak'))
+        assert bak_data == {"v": 1}
+
+    def test_bak_updated_on_third_save(self, tmp_path):
+        f = tmp_path / "data.json"
+        save_json(f, {"v": 1})
+        save_json(f, {"v": 2})
+        save_json(f, {"v": 3})
+        bak_data = load_json(f.with_suffix('.bak'))
+        assert bak_data == {"v": 2}
+        assert load_json(f) == {"v": 3}
+
+    def test_main_file_updated_correctly(self, tmp_path):
+        f = tmp_path / "data.json"
+        save_json(f, {"v": 1})
+        save_json(f, {"v": 2})
+        assert load_json(f) == {"v": 2}
+
+    def test_save_succeeds_even_if_bak_dir_is_read_only(self, tmp_path, monkeypatch):
+        """Un fallo al crear el .bak no debe impedir el guardado principal."""
+        import shutil as _shutil
+        f = tmp_path / "data.json"
+        save_json(f, {"v": 1})
+
+        def _fail_copy(*_args, **_kwargs):
+            raise OSError("disco lleno")
+
+        monkeypatch.setattr(_shutil, "copy2", _fail_copy)
+        result = save_json(f, {"v": 2})
+        assert result is True
+        assert load_json(f) == {"v": 2}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  Concurrencia
 # ═══════════════════════════════════════════════════════════════════════════════
 

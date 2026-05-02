@@ -268,6 +268,18 @@ class TestSocketAlive(unittest.TestCase):
         self.assertFalse(self._sa(sock))
 
     @patch('select.select')
+    def test_invalid_socket_from_select_means_dead(self, mock_sel):
+        sock = MagicMock()
+        mock_sel.side_effect = TypeError("fileno() returned a non-integer")
+        self.assertFalse(self._sa(sock))
+
+    @patch('select.select')
+    def test_valueerror_from_select_means_dead(self, mock_sel):
+        sock = MagicMock()
+        mock_sel.side_effect = ValueError("file descriptor cannot be a negative integer")
+        self.assertFalse(self._sa(sock))
+
+    @patch('select.select')
     def test_oserror_on_recv_means_dead(self, mock_sel):
         sock = MagicMock()
         mock_sel.return_value = ([sock], [], [])

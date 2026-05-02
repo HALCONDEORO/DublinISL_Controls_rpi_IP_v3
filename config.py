@@ -6,10 +6,8 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import re
-import shutil
 import socket
 import binascii
 import threading
@@ -17,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from data_paths import SEAT_NAMES_FILE as NAMES_FILE
+from json_io import load_json, save_json
 
 logger = logging.getLogger(__name__)
 
@@ -239,57 +238,27 @@ def is_valid_cam_id(text: str) -> bool:
 
 def load_names_data() -> dict:
     """Cargar nombres de asistentes y asignaciones de asientos desde JSON."""
-    try:
-        names_path = Path(NAMES_FILE)
-        # Si el archivo no existe, retornar estructura vacía
-        if not names_path.exists():
-            return {"names": [], "seats": {}}
-        
-        # Parsear JSON
-        data = json.loads(names_path.read_text(encoding='utf-8'))
-        
-        # Validar estructura del JSON
-        if not isinstance(data, dict):
-            raise ValueError("Root must be dict")
-
-        names = data.get("names", [])
-        seats = data.get("seats", {})
-
-        if not isinstance(names, list):
-            names = []
-        if not isinstance(seats, dict):
-            seats = {}
-
-        return {"names": names, "seats": seats}
-
-    except (json.JSONDecodeError, OSError, ValueError, UnicodeDecodeError) as exc:
-        logger.warning("Error loading %s: %s", NAMES_FILE, exc)
+    data = load_json(NAMES_FILE)
+    if not isinstance(data, dict):
         return {"names": [], "seats": {}}
+    names = data.get("names", [])
+    seats = data.get("seats", {})
+    if not isinstance(names, list):
+        names = []
+    if not isinstance(seats, dict):
+        seats = {}
+    return {"names": names, "seats": seats}
 
 
 def save_names_data(names_list: list, seat_assignments: dict) -> bool:
-    """Guardar nombres de asistentes y asignaciones en JSON (escritura atómica)."""
+    """Guardar nombres de asistentes y asignaciones en JSON (escritura atómica con backup)."""
     if not isinstance(names_list, list) or not isinstance(seat_assignments, dict):
         logger.warning("save_names_data: names must be list, seats must be dict")
         return False
-
-    try:
-        data = {"names": names_list, "seats": seat_assignments}
-        content = json.dumps(data, ensure_ascii=False, indent=2)
-
-        # Backup: intentamos, pero si falla no bloqueamos el guardado principal
-        if NAMES_FILE.exists():
-            try:
-                shutil.copy2(NAMES_FILE, NAMES_FILE.with_suffix('.bak'))
-            except OSError as bak_exc:
-                logger.warning("No se pudo crear backup de %s: %s", NAMES_FILE, bak_exc)
-
-        NAMES_FILE.write_text(content, encoding='utf-8')
-        return True
-
-    except (OSError, TypeError, ValueError) as exc:
-        logger.error("Error saving %s: %s", NAMES_FILE, exc)
-        return False
+    result = save_json(NAMES_FILE, {"names": names_list, "seats": seat_assignments})
+    if not result:
+        logger.error("Error saving %s", NAMES_FILE)
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

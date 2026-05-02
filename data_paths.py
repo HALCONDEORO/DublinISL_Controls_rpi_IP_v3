@@ -185,7 +185,9 @@ def import_backup(zip_path: Path, app_dir: Path | None = None) -> list[str]:
         # Restaurar JSON de datos → CONFIG_DIR
         for name in json_found:
             raw = zf.read(name).decode('utf-8')
-            json.loads(raw)  # valida JSON antes de tocar disco
+            decoded = json.loads(raw)  # valida JSON antes de tocar disco
+            if not isinstance(decoded, dict):
+                raise ValueError(f"{name} debe contener un objeto JSON")
 
             dst = CONFIG_DIR / name
             if dst.exists():

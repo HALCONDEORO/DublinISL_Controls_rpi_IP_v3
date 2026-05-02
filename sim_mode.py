@@ -46,12 +46,14 @@ def activate() -> bool:
     """
     Guarda las IPs reales en sim_ip_backup.json y escribe las IPs del simulador.
     Devuelve True si se activó, False si ya estaba activo.
+    Lanza RuntimeError si el backup no se puede escribir.
     """
     if BACKUP.exists():
         return False  # ya activo
 
     backup = {f: _read(f) for f in BACKUP_FILES}
-    save_json(BACKUP, backup)
+    if not save_json(BACKUP, backup):
+        raise RuntimeError("No se pudo escribir sim_ip_backup.json; activación cancelada")
 
     for filename, sim_val in SIM_VALUES.items():
         _write(filename, sim_val)

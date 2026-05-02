@@ -37,7 +37,7 @@ Audio and microphones are not part of this application.
 - Simulation mode starts virtual VISCA camera servers. ATEM simulation is internal/event-based, not a full standalone ATEM network simulator.
 - Login audit code exists, but audit logging is currently commented out in `login_screen.py`. `audit_log.json` is not written during normal login flow unless that code is re-enabled.
 - `password.enc` is encrypted using PBKDF2-derived key material, but the current fallback behaviour is permissive: if `password.enc` is missing or cannot be decrypted, the app falls back to the default password `dublin2024`.
-- JSON writes are atomic through `json_io.py`, but automatic `.bak` creation is not universal for every save path.
+- JSON writes are atomic through `json_io.py`. Every runtime save also creates a `.bak` of the previous file before replacing it.
 - Dependency files now exist, but there is still no packaged installer, `pyproject.toml` or pinned lock file.
 
 ---
@@ -477,8 +477,7 @@ The backup system in `data_paths.py` supports:
 - Exporting config `.txt` files from the app directory.
 - Importing both groups back to their correct locations.
 - Creating `.bak` files during import when replacing existing files.
-
-Note: `.bak` creation is not currently guaranteed for every normal runtime save.
+- Creating `.bak` files on every normal runtime save (via `json_io.save_json`).
 
 ---
 
@@ -575,8 +574,7 @@ These are current implementation gaps, not feature promises:
 1. Harden login so missing/corrupt `password.enc` does not fall back to `dublin2024`.
 2. Enable audit logging safely, without storing attempted passwords.
 3. Add a pinned dependency lock file or packaged installer for repeatable deployments.
-4. Make `.bak` behaviour consistent across all JSON save paths.
-5. Finish the architecture migration or document the legacy controllers as permanent.
+4. Finish the architecture migration or document the legacy controllers as permanent.
 6. Expand tests around real VISCA response formats, especially ACK + Completion in the same TCP packet.
 7. Decide whether ATEM control is monitoring-only or should become full switcher control.
 8. Add a tested installer/systemd setup script for Raspberry Pi deployments.

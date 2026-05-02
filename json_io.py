@@ -7,11 +7,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import shutil
 import tempfile
 import threading
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 _locks: dict[str, threading.Lock] = {}
 _registry_lock = threading.Lock()
@@ -41,8 +45,9 @@ def load_json(path: Path | str, default: Any = None) -> Any:
 
 def save_json(path: Path | str, data: Any, indent: int = 2) -> bool:
     """
-    Escribe `data` en `path` de forma atómica (temp-file + os.replace)
-    con bloqueo por archivo. Devuelve True si tuvo éxito.
+    Escribe `data` en `path` de forma atómica (temp-file + os.replace) con backup
+    y bloqueo por archivo. Si el archivo ya existe, crea `.bak` antes de reemplazarlo.
+    Devuelve True si tuvo éxito.
     """
     p = Path(path)
     lock = _lock_for(p)
@@ -51,10 +56,23 @@ def save_json(path: Path | str, data: Any, indent: int = 2) -> bool:
             text = json.dumps(data, ensure_ascii=False, indent=indent)
             dir_ = p.parent
             dir_.mkdir(parents=True, exist_ok=True)
+
+            if p.exists():
+                bak = p.with_suffix('.bak')
+                try:
+                    shutil.copy2(p, bak)
+                except OSError as exc:
+                    logger.warning("No se pudo crear backup de %s: %s", p, exc)
+
             fd, tmp = tempfile.mkstemp(dir=dir_, prefix=".tmp_", suffix=".json")
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as fh:
                     fh.write(text)
+                    fh.flush()
+                    try:
+                        os.fsync(fh.fileno())
+                    except OSError:
+                        pass
                 os.replace(tmp, p)
             except Exception:
                 try:

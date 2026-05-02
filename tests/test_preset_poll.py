@@ -302,6 +302,23 @@ class TestPresetPollCancellation(unittest.TestCase):
                         f"cancel tardó demasiado: {elapsed:.3f}s")
         self.assertNotIn(IP1, proto._preset_stop_events)
 
+    def test_cancel_refreshes_ae_mode(self):
+        def _query(ip, cam_id):
+            return None, None
+
+        proto, _ = _make_protocol(_query)
+        received = []
+        proto.refresh_ae_mode_async = lambda ip, cam_id, active_ip: received.append((ip, cam_id, active_ip))
+        stop = threading.Event()
+        proto._preset_stop_events[IP1] = stop
+
+        t = _run_poll(proto, IP1, CAM_ID1, IP2, 60.0, stop)
+        time.sleep(PRESET_ZOOM_POLL_INTERVAL / 2)
+        proto.cancel_preset_polls()
+        t.join(timeout=PRESET_ZOOM_POLL_INTERVAL + 0.5)
+
+        self.assertFalse(t.is_alive(), "Poll no se canceló a tiempo")
+        self.assertEqual(received, [(IP1, CAM_ID1, IP2)])
     def test_cancel_all_two_cameras(self):
         """cancel_preset_polls() cancela CAM1 y CAM2 simultáneamente."""
         def _query(ip, cam_id):

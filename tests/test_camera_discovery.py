@@ -44,6 +44,21 @@ Interface: 172.16.1.10 --- 0x8
 
         assert cd.arp_scan("172.16.1") == ["172.16.1.11", "172.16.1.12"]
 
+    def test_arp_scan_ignores_interface_headers_and_deduplicates(self, monkeypatch):
+        stdout = """
+Interface: 172.16.1.10 --- 0x8
+  Internet Address      Physical Address      Type
+  172.16.1.20           aa-bb-cc-dd-ee-20     dynamic
+  172.16.1.20           aa-bb-cc-dd-ee-20     dynamic
+Interface: 172.16.1.254 --- 0x9
+  Internet Address      Physical Address      Type
+  172.16.1.21           aa-bb-cc-dd-ee-21     dynamic
+  172.16.2.22           aa-bb-cc-dd-ee-22     dynamic
+"""
+
+        monkeypatch.setattr(cd.subprocess, "run", lambda *_args, **_kwargs: SimpleNamespace(stdout=stdout))
+
+        assert cd.arp_scan("172.16.1") == ["172.16.1.20", "172.16.1.21"]
     def test_arp_scan_returns_empty_on_subprocess_error(self, monkeypatch):
         def fake_run(*_args, **_kwargs):
             raise OSError("arp unavailable")

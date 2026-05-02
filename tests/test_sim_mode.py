@@ -104,6 +104,23 @@ class TestSimMode:
 
         assert sim_mode.is_active() is True
 
+    def test_activate_raises_and_does_not_overwrite_ips_when_backup_write_fails(
+        self, isolated_sim_mode, monkeypatch
+    ):
+        (isolated_sim_mode / "PTZ1IP.txt").write_text("172.16.1.11", encoding="utf-8")
+        (isolated_sim_mode / "PTZ2IP.txt").write_text("172.16.1.12", encoding="utf-8")
+        (isolated_sim_mode / "ATEMIP.txt").write_text("192.168.1.240", encoding="utf-8")
+
+        monkeypatch.setattr(sim_mode, "save_json", lambda *_: False)
+
+        with pytest.raises(RuntimeError):
+            sim_mode.activate()
+
+        # Las IPs reales no deben haberse sobreescrito
+        assert (isolated_sim_mode / "PTZ1IP.txt").read_text(encoding="utf-8") == "172.16.1.11"
+        assert (isolated_sim_mode / "PTZ2IP.txt").read_text(encoding="utf-8") == "172.16.1.12"
+        assert (isolated_sim_mode / "ATEMIP.txt").read_text(encoding="utf-8") == "192.168.1.240"
+
 
 
 

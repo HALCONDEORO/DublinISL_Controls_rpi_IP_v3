@@ -211,7 +211,7 @@ class CameraWorker:
                 data = sock.recv(1)
                 return len(data) > 0
             return True
-        except (OSError, socket.error):
+        except (OSError, socket.error, TypeError, ValueError):
             return False
 
     def _connect(self) -> Optional[socket.socket]:
