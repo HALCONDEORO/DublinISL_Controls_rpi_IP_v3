@@ -8,6 +8,12 @@ This project uses a simple versioning approach while it is still in early produc
 - Minor version: new features or significant refactors.
 - Major version: breaking changes for installation, configuration or customer deployments.
 
+## 3.0.2
+
+### Added
+
+- Added `docs/LEGAL_CHECKLIST.md` for pre-customer deployment legal review (closes #26).
+
 ## 3.0.1
 
 ### Added
