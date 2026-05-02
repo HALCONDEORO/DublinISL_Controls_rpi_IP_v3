@@ -32,7 +32,7 @@ def _read_config(filename: str, default: str) -> str:
         return default
     
     try:
-        config_path = Path(filename)
+        config_path = Path(__file__).parent / filename
         # Si el archivo no existe, usar valor por defecto
         if not config_path.exists():
             return default
@@ -273,22 +273,22 @@ def save_names_data(names_list: list, seat_assignments: dict) -> bool:
         logger.warning("save_names_data: names must be list, seats must be dict")
         return False
 
-    if NAMES_FILE.exists():
-        shutil.copy2(NAMES_FILE, NAMES_FILE.with_suffix('.bak'))
-    tmp = NAMES_FILE.with_suffix('.tmp')
     try:
         data = {"names": names_list, "seats": seat_assignments}
-        names_path = Path(NAMES_FILE)
-        # Guardar JSON con formato legible
-        names_path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding='utf-8'
-        )
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+
+        # Backup: intentamos, pero si falla no bloqueamos el guardado principal
+        if NAMES_FILE.exists():
+            try:
+                shutil.copy2(NAMES_FILE, NAMES_FILE.with_suffix('.bak'))
+            except OSError as bak_exc:
+                logger.warning("No se pudo crear backup de %s: %s", NAMES_FILE, bak_exc)
+
+        NAMES_FILE.write_text(content, encoding='utf-8')
         return True
-    
+
     except (OSError, TypeError, ValueError) as exc:
         logger.error("Error saving %s: %s", NAMES_FILE, exc)
-        tmp.unlink(missing_ok=True)
         return False
 
 

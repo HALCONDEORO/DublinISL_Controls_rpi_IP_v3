@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Marco Antonio Tevar Asensio. Todos los derechos reservados.
 # Software propietario y de uso privado exclusivo. Queda prohibida su copia,
-# distribución, modificación o uso sin autorización escrita del autor.
-# camera_discovery.py — Descubrimiento de IPs de cámaras en la red local
+# distribuciÃ³n, modificaciÃ³n o uso sin autorizaciÃ³n escrita del autor.
+# camera_discovery.py â€” Descubrimiento de IPs de cÃ¡maras en la red local
 #
 # Expone tres funciones independientes del framework UI:
-#   get_camera_subnet()  — Prefijo /24 derivado de CAM1.ip
-#   tcp_scan()           — Escaneo TCP paralelo (50 workers) en VISCA_PORT
-#   arp_scan()           — Lectura de la tabla ARP del sistema operativo
-#   discover_cameras()   — Unión de ambos métodos, IPs únicas y ordenadas
+#   get_camera_subnet()  â€” Prefijo /24 derivado de CAM1.ip
+#   tcp_scan()           â€” Escaneo TCP paralelo (50 workers) en VISCA_PORT
+#   arp_scan()           â€” Lectura de la tabla ARP del sistema operativo
+#   discover_cameras()   â€” UniÃ³n de ambos mÃ©todos, IPs Ãºnicas y ordenadas
 #
 # Importado desde:
-#   splash_screen.py  — tests de inicialización
-#   config_dialog.py  — botón "Scan Network" en ajustes
+#   splash_screen.py  â€” tests de inicializaciÃ³n
+#   config_dialog.py  â€” botÃ³n "Scan Network" en ajustes
 
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ from typing import List
 from config import CAM1, VISCA_PORT
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  SUBRED
-# ═══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def get_camera_subnet() -> str:
     """Devuelve el prefijo /24 de la IP de Cam1 (ej. '172.16.1')."""
@@ -35,19 +35,19 @@ def get_camera_subnet() -> str:
     return '.'.join(parts[:3]) if len(parts) == 4 else '172.16.1'
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  TCP SCAN
-# ═══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def tcp_scan(subnet: str = '', workers: int = 50, timeout: float = 0.3) -> List[str]:
     """
     Escanea las 254 IPs de la subred /24 en VISCA_PORT con 'workers' threads
-    paralelos. Devuelve lista ordenada de IPs que aceptan conexión TCP.
+    paralelos. Devuelve lista ordenada de IPs que aceptan conexiÃ³n TCP.
 
-    Parámetros:
-        subnet   — Prefijo /24 (p.ej. '172.16.1'). Si vacío, usa get_camera_subnet().
-        workers  — Número de threads simultáneos (defecto 50).
-        timeout  — Timeout por host en segundos (defecto 0.3 s).
+    ParÃ¡metros:
+        subnet   â€” Prefijo /24 (p.ej. '172.16.1'). Si vacÃ­o, usa get_camera_subnet().
+        workers  â€” NÃºmero de threads simultÃ¡neos (defecto 50).
+        timeout  â€” Timeout por host en segundos (defecto 0.3 s).
     """
     if not subnet:
         subnet = get_camera_subnet()
@@ -71,17 +71,17 @@ def tcp_scan(subnet: str = '', workers: int = 50, timeout: float = 0.3) -> List[
     return sorted(found)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  ARP TABLE
-# ═══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def arp_scan(subnet: str = '') -> List[str]:
     """
-    Ejecuta 'arp -a' y devuelve las IPs de la subred de las cámaras,
+    Ejecuta 'arp -a' y devuelve las IPs de la subred de las cÃ¡maras,
     sin broadcasts (.255) y sin duplicados.
 
-    Parámetros:
-        subnet — Prefijo /24. Si vacío, usa get_camera_subnet().
+    ParÃ¡metros:
+        subnet â€” Prefijo /24. Si vacÃ­o, usa get_camera_subnet().
     """
     if not subnet:
         subnet = get_camera_subnet()
@@ -93,6 +93,8 @@ def arp_scan(subnet: str = '') -> List[str]:
         found: List[str] = []
         seen: set = set()
         for line in proc.stdout.splitlines():
+            if line.strip().lower().startswith('interface'):
+                continue
             m = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
             if m:
                 ip = m.group(1)
@@ -106,15 +108,15 @@ def arp_scan(subnet: str = '') -> List[str]:
         return []
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  DESCUBRIMIENTO COMBINADO
-# ═══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def discover_cameras(subnet: str = '') -> List[str]:
     """
     Combina TCP scan y ARP table.
-    Devuelve la unión de ambos resultados: IPs únicas ordenadas que
-    pertenecen a la subred de las cámaras.
+    Devuelve la uniÃ³n de ambos resultados: IPs Ãºnicas ordenadas que
+    pertenecen a la subred de las cÃ¡maras.
     """
     if not subnet:
         subnet = get_camera_subnet()

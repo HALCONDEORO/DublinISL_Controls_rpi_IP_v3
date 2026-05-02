@@ -180,7 +180,7 @@ class _CamEditDialog(QDialog):
             else:
                 _cfg.CAM2.cam_id = text
 
-        with open(self._filename, 'w', encoding='utf-8') as f:
+        with open(Path(__file__).parent / self._filename, 'w', encoding='utf-8') as f:
             f.write(text)
 
         self.accept()
@@ -261,7 +261,7 @@ class _ATEMEditDialog(QDialog):
 
         import config as _cfg
         _cfg.ATEM.ip = text
-        with open(self._filename, 'w', encoding='utf-8') as f:
+        with open(Path(__file__).parent / self._filename, 'w', encoding='utf-8') as f:
             f.write(text)
         self.accept()
 
@@ -491,7 +491,7 @@ class ConfigDialog(QDialog):
         def _apply_ip(ip: str, cam_num: int):
             """Guarda la IP en el fichero correspondiente y reinicia la app."""
             filename = 'PTZ1IP.txt' if cam_num == 1 else 'PTZ2IP.txt'
-            with open(filename, 'w') as fh:
+            with open(Path(__file__).parent / filename, 'w', encoding='utf-8') as fh:
                 fh.write(ip)
             os.execv(sys.executable, [sys.executable] + sys.argv)
 
