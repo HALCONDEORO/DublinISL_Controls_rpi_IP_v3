@@ -38,7 +38,7 @@ Audio and microphones are not part of this application.
 - Login audit code exists, but audit logging is currently commented out in `login_screen.py`. `audit_log.json` is not written during normal login flow unless that code is re-enabled.
 - `password.enc` is encrypted using PBKDF2-derived key material, but the current fallback behaviour is permissive: if `password.enc` is missing or cannot be decrypted, the app falls back to the default password `dublin2024`.
 - JSON writes are atomic through `json_io.py`, but automatic `.bak` creation is not universal for every save path.
-- There is no `requirements.txt`, `pyproject.toml` or packaged installer yet. Dependencies are installed manually.
+- Dependency files now exist, but there is still no packaged installer, `pyproject.toml` or pinned lock file.
 
 ---
 
@@ -66,7 +66,16 @@ Static IPs are strongly recommended for the two cameras and the ATEM.
 | PyATEMMax | Optional; required only for real ATEM monitoring |
 | git | Required for clone/update workflow |
 
-There is currently no dependency lock file. Install dependencies explicitly on the target system.
+Dependency files are split by purpose:
+
+| File | Purpose |
+|------|---------|
+| `requirements.txt` | Core runtime dependencies for non-Raspberry Pi or generic pip installs |
+| `requirements-dev.txt` | Development and test dependencies; includes `pytest` |
+| `requirements-rpi.txt` | Raspberry Pi pip dependencies only; PyQt5/QtSvg should be installed with `apt` |
+| `requirements-atem.txt` | Optional Blackmagic ATEM monitoring dependency (`PyATEMMax`) |
+
+There is currently no pinned dependency lock file. Install dependencies explicitly on the target system and test before production use.
 
 ---
 
@@ -81,17 +90,31 @@ cd DublinISL_Controls_rpi_IP_v3
 
 ### 2. Install dependencies
 
-On Raspberry Pi OS, prefer system packages for PyQt5:
+On Raspberry Pi OS, prefer system packages for PyQt5 and QtSvg:
 
 ```bash
 sudo apt update
 sudo apt install -y git python3-pyqt5 python3-pyqt5.qtsvg
+pip3 install -r requirements-rpi.txt
 ```
 
-If using a Blackmagic ATEM:
+For a non-Raspberry Pi development/runtime install:
 
 ```bash
-pip3 install PyATEMMax
+pip3 install -r requirements.txt
+```
+
+For development and tests:
+
+```bash
+pip3 install -r requirements-dev.txt
+pytest
+```
+
+If using a real Blackmagic ATEM switcher:
+
+```bash
+pip3 install -r requirements-atem.txt
 ```
 
 ### 3. Create configuration files
@@ -551,7 +574,7 @@ These are current implementation gaps, not feature promises:
 
 1. Harden login so missing/corrupt `password.enc` does not fall back to `dublin2024`.
 2. Enable audit logging safely, without storing attempted passwords.
-3. Add `requirements.txt` or `pyproject.toml` with pinned dependencies.
+3. Add a pinned dependency lock file or packaged installer for repeatable deployments.
 4. Make `.bak` behaviour consistent across all JSON save paths.
 5. Finish the architecture migration or document the legacy controllers as permanent.
 6. Expand tests around real VISCA response formats, especially ACK + Completion in the same TCP packet.
@@ -567,7 +590,7 @@ These are current implementation gaps, not feature promises:
 | App crashes at startup | Missing PyQt5 or QtSvg support | Install `python3-pyqt5 python3-pyqt5.qtsvg` |
 | Camera indicator red | Camera unreachable or wrong IP | Check `PTZ1IP.txt` / `PTZ2IP.txt`, power and network |
 | Joystick does nothing | Camera unreachable or session/camera state issue | Start session, check camera indicator, check logs |
-| ATEM shows disconnected | PyATEMMax missing, wrong IP or ATEM offline | Install `PyATEMMax`, check `ATEMIP.txt`, verify network |
+| ATEM shows disconnected | PyATEMMax missing, wrong IP or ATEM offline | Install `pip3 install -r requirements-atem.txt`, check `ATEMIP.txt`, verify network |
 | Login accepts default password | `password.enc` missing/unreadable | Run `python3 setup_password.py` and harden fallback before production |
 | Schedule bypass logs in automatically | Current time is inside enabled schedule | Edit weekly schedule or disable the day |
 | Simulation still active | `sim_ip_backup.json` exists | Run `python3 sim_mode.py off` |
