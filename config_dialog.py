@@ -277,7 +277,7 @@ class ConfigDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle('Camera Configuration')
         self.setWindowModality(Qt.WindowModal)
-        self.setFixedSize(400, 940)
+        self.setFixedSize(460, 960)
         # Sin barra de título del SO en pantalla táctil (RPi fullscreen)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
 
@@ -443,6 +443,68 @@ class ConfigDialog(QDialog):
         atem_row.addWidget(atem_ip_lbl, stretch=1)
         atem_row.addWidget(btn_atem_ip)
         layout.addLayout(atem_row)
+
+        # ── Estado ATEM actual ────────────────────────────────────────────────
+        from atem_state import ATEMState as _ATEMState
+
+        _STATE_STYLE = {
+            _ATEMState.CONNECTED:          ('#1b5e20', '#e8f5e9', '● Connected'),
+            _ATEMState.CONNECTING:         ('#e65100', '#fff3e0', '● Connecting…'),
+            _ATEMState.RECONNECTING:       ('#e65100', '#fff3e0', '● Reconnecting…'),
+            _ATEMState.DISCONNECTED:       ('#b71c1c', '#ffebee', '● Disconnected'),
+            _ATEMState.ERROR:              ('#b71c1c', '#ffebee', '● Error'),
+            _ATEMState.NOT_CONFIGURED:     ('#555555', '#f5f5f5', '● Not configured'),
+            _ATEMState.DEPENDENCY_MISSING: ('#555555', '#f5f5f5', '● Library missing'),
+        }
+
+        _mon = getattr(mw, '_atem_monitor', None)
+        _cur_state = getattr(_mon, 'state', None)
+        def _atem_status_values(state):
+            return _STATE_STYLE.get(state, ('#555555', '#f5f5f5', '● Unknown'))
+
+        atem_status_lbl = QLabel()
+        atem_status_lbl.setAlignment(Qt.AlignCenter)
+
+        def _set_atem_status(state):
+            _fg, _bg, _text = _atem_status_values(state)
+            atem_status_lbl.setText(_text)
+            atem_status_lbl.setStyleSheet(
+                f"font: bold 11px 'Inter Tight', 'Segoe UI'; color: {_fg};"
+                f" background: {_bg}; border-radius: 5px; padding: 4px 8px;"
+            )
+
+        _set_atem_status(_cur_state)
+        layout.addWidget(atem_status_lbl)
+
+        # ── Botón Reconnect ATEM ──────────────────────────────────────────────
+        btn_reconnect = QPushButton('↺   Reconnect ATEM')
+        btn_reconnect.setFixedHeight(34)
+        btn_reconnect.setStyleSheet(
+            "QPushButton { background: #546E7A; border: none; border-radius: 6px;"
+            " font: 600 13px 'Inter Tight', 'Segoe UI'; color: white; }"
+            "QPushButton:pressed { background: #37474F; }"
+            "QPushButton:disabled { background: #90A4AE; }"
+        )
+
+        def _on_reconnect():
+            btn_reconnect.setEnabled(False)
+            btn_reconnect.setText('Reconnecting…')
+            mw._do_restart_atem_monitor()
+            _set_atem_status(_ATEMState.CONNECTING)
+
+        def _on_dialog_atem_state(state):
+            _set_atem_status(state)
+            btn_reconnect.setEnabled(True)
+            btn_reconnect.setText('↺   Reconnect ATEM')
+
+        btn_reconnect.clicked.connect(_on_reconnect)
+        mw.atem_state_changed.connect(_on_dialog_atem_state)
+        self.destroyed.connect(
+            lambda _=None: ConfigDialog._disconnect_signal(
+                mw.atem_state_changed, _on_dialog_atem_state
+            )
+        )
+        layout.addWidget(btn_reconnect)
 
         line_atem = QFrame()
         line_atem.setFrameShape(QFrame.HLine)
@@ -845,6 +907,13 @@ class ConfigDialog(QDialog):
         lbl = QLabel(text)
         lbl.setStyleSheet("font: bold 12px; color: #555; padding-top: 4px;")
         return lbl
+
+    @staticmethod
+    def _disconnect_signal(signal, slot) -> None:
+        try:
+            signal.disconnect(slot)
+        except TypeError:
+            pass
 
     def _build_sim_section(self, layout, mw, sim_active: bool):
         """Sección de modo simulación: toggle ON/OFF."""

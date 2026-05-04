@@ -107,7 +107,7 @@ CAM2 = CameraConfig(
     ip=_read_config('PTZ2IP.txt', '172.16.1.12'),
     cam_id=_read_config('Cam2ID.txt', '82'),
 )
-ATEM = ATEMConfig(ip=_read_config('ATEMIP.txt', '176.16.1.10'))
+ATEM = ATEMConfig(ip=_read_config('ATEMIP.txt', ''))
 Contact = _read_config('Contact.txt', 'No contact information available.')
 from secret_manager import decrypt_password as _decrypt_password
 LOGIN_PASSWORD = _decrypt_password()

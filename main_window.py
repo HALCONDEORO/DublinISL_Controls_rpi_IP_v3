@@ -26,7 +26,7 @@ import os
 import time
 
 from PyQt5 import QtGui, QtCore
-from PyQt5.QtCore import Qt, QTimer, pyqtSlot
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import (
@@ -47,6 +47,7 @@ from config import (
     TILT_SPEED_MAX,
     ZOOM_DRIVE_MAX,
 )
+from atem_state import ATEMState, is_atem_supervisor_healthy
 from atem_monitor import ATEMMonitor
 from ptz.visca import CameraManager
 from widgets import GoButton, SpecialDragButton
@@ -79,6 +80,8 @@ from ptz.visca import commands as vcmd
 
 class MainWindow(QMainWindow):
     """Ventana principal 1920x1080 px."""
+
+    atem_state_changed = pyqtSignal(object)
 
     _WATCHDOG_COOLDOWN       = 1.5     # s mínimos entre dos reducciones del mismo tipo
     _WATCHDOG_RECOVERY_MS    = 20_000  # ms hasta el primer intento de recuperación
@@ -145,11 +148,9 @@ class MainWindow(QMainWindow):
             from simulation.sim_worker import start_simulation
             start_simulation(CAM1.ip, CAM2.ip)
 
-        self._atem_monitor = ATEMMonitor(ATEM.ip, parent=self)
-        self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
-        self._atem_monitor.program_changed.connect(self._right_panel.set_atem_program)
-        self._atem_monitor.atem_connected.connect(self._right_panel.set_atem_connected)
-        self._atem_monitor.start()
+        self._atem_state: ATEMState | None = None
+        self._atem_restart_pending = False
+        self._start_atem_monitor()
 
         # Auto-apagado por inactividad (2 horas)
         self._inactivity_timer = QTimer(self)
@@ -621,7 +622,7 @@ class MainWindow(QMainWindow):
         # siempre comprueba la instancia activa incluso tras un reinicio.
         sup.registrar(
             "atem_monitor",
-            lambda: self._atem_monitor.isRunning(),
+            self._atem_monitor_is_healthy,
             self._restart_atem_monitor,
         )
 
@@ -632,18 +633,77 @@ class MainWindow(QMainWindow):
         # Llamado desde el hilo del supervisor: delegar al hilo principal de Qt.
         QTimer.singleShot(0, self._do_restart_atem_monitor)
 
+    def _start_atem_monitor(self):
+        self._atem_state = None
+        self._atem_monitor = ATEMMonitor(ATEM.ip, parent=self)
+        self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
+        self._atem_monitor.program_changed.connect(self._right_panel.set_atem_program)
+        self._atem_monitor.state_changed.connect(self._on_atem_state_changed)
+        self._atem_monitor.start()
+
+    def _on_atem_state_changed(self, state) -> None:
+        self._atem_state = state
+        self._right_panel.set_atem_state(state)
+        self.atem_state_changed.emit(state)
+
+    def _atem_monitor_is_healthy(self) -> bool:
+        return is_atem_supervisor_healthy(
+            is_running=self._atem_monitor.isRunning(),
+            restart_pending=self._atem_restart_pending,
+            state=self._atem_state,
+        )
+
     def _do_restart_atem_monitor(self):
         # Ejecutado en el hilo principal de Qt (vía QTimer.singleShot).
         if self._shutting_down:
             return
-        self._atem_monitor.requestInterruption()
-        self._atem_monitor.wait(2000)
-        self._atem_monitor = ATEMMonitor(ATEM.ip, parent=self)
-        self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
-        self._atem_monitor.program_changed.connect(self._right_panel.set_atem_program)
-        self._atem_monitor.atem_connected.connect(self._right_panel.set_atem_connected)
-        self._atem_monitor.start()
+        if self._atem_restart_pending:
+            return
+
+        self._atem_restart_pending = True
+        self._stop_and_replace_atem_monitor()
+
+    def _stop_and_replace_atem_monitor(self):
+        if self._shutting_down:
+            self._atem_restart_pending = False
+            return
+
+        old_monitor = self._atem_monitor
+        self._disconnect_atem_monitor_signals(old_monitor)
+        if old_monitor.isRunning():
+            old_monitor.finished.connect(
+                lambda _old=old_monitor: self._finish_atem_monitor_restart(_old)
+            )
+            old_monitor.requestInterruption()
+            return
+
+        self._finish_atem_monitor_restart(old_monitor)
+
+    def _finish_atem_monitor_restart(self, old_monitor):
+        if self._shutting_down:
+            self._atem_restart_pending = False
+            return
+
+        if old_monitor is not self._atem_monitor:
+            old_monitor.deleteLater()
+            return
+
+        old_monitor.deleteLater()
+        self._start_atem_monitor()
+        self._atem_restart_pending = False
         logger.info("ATEMMonitor reiniciado por el supervisor")
+
+    def _disconnect_atem_monitor_signals(self, monitor) -> None:
+        # Ignora desconexiones repetidas cuando el reinicio queda aplazado.
+        for signal, slot in (
+            (monitor.switched_to_input2, self._visca._send_comments_cam_home),
+            (monitor.program_changed, self._right_panel.set_atem_program),
+            (monitor.state_changed, self._on_atem_state_changed),
+        ):
+            try:
+                signal.disconnect(slot)
+            except TypeError:
+                pass
 
     def _record_activity(self):
         self._last_activity = time.time()

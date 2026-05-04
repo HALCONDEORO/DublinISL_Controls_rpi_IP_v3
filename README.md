@@ -445,6 +445,8 @@ Important:
 
 ## Backup and Data Storage
 
+See [Privacy Notes](docs/PRIVACY_NOTES.md) for guidance on stored names, schedules, backups, logs and support data handling.
+
 ### Persistent data directory
 
 Default:

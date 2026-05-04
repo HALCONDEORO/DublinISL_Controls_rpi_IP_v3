@@ -8,6 +8,26 @@ This project uses a simple versioning approach while it is still in early produc
 - Minor version: new features or significant refactors.
 - Major version: breaking changes for installation, configuration or customer deployments.
 
+## 3.0.6
+
+### Changed
+
+- Made ATEM monitoring safer when ATEM is not configured, unreachable, or missing its optional dependency.
+- Replaced the suspicious default ATEM fallback IP with an explicit unconfigured state.
+- Added explicit ATEM state reporting for UI/status handling.
+
+## 3.0.5
+
+### Added
+
+- Added `NOTICE.md` with proprietary/confidential project notice.
+- Added `.github/pull_request_template.md` for safer pull request review.
+- Added `docs/KNOWN_LIMITATIONS.md` and linked it from the README.
+
+### Changed
+
+- Refreshed README limitations to point to the maintained known-limitations document.
+
 ## 3.0.4
 
 ### Added

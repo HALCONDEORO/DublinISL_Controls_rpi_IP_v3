@@ -26,7 +26,7 @@ It is a practical aide-mémoire and does not constitute legal advice.
 ## 3. Supporting Notices
 
 - [ ] `NOTICE.md` exists and identifies the project as proprietary / confidential.
-- [ ] `THIRD_PARTY_NOTICES.md` lists all runtime dependencies, their versions, and their licences.
+- [ ] `THIRD_PARTY_NOTICES.md` lists runtime, optional and development dependencies with their licences.
 - [ ] PyQt5 / Qt commercial-use obligations have been reviewed and are satisfied (GPL vs commercial licence).
 - [ ] Any other dependencies with GPL, LGPL, or copyleft licences have been assessed for compatibility with commercial distribution.
 

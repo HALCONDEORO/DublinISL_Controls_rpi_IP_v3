@@ -534,8 +534,12 @@ class RightPanel:
             duration_ms, lambda: btn.setStyleSheet(self._btn_focus_base_style))
 
 
-    def set_atem_connected(self, connected: bool):
-        """Muestra/oculta el indicador ON AIR y el botón HOME según si el ATEM está disponible."""
+    def set_atem_state(self, state) -> None:
+        """Muestra ON AIR cuando ATEM está CONNECTED; en cualquier otro estado
+        (DISCONNECTED, ERROR, RECONNECTING, NOT_CONFIGURED…) muestra el botón
+        amarillo Comments → Home para que el operador tenga siempre control manual."""
+        from atem_state import ATEMState
+        connected = (state == ATEMState.CONNECTED)
         self._on_air_label.setVisible(connected)
         self._home_btn.setVisible(not connected)
         QtCore.QTimer.singleShot(0, self._fit_container_height)
