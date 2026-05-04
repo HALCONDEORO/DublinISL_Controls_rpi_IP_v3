@@ -268,11 +268,12 @@ class MainWindow(QMainWindow):
         self._set_overlay.set_mode('call')
 
     def _build_background(self):
-        bg_path = "Background_ISL_v3.jpg"
-        if not os.path.exists(bg_path):
+        from pathlib import Path
+        bg_path = Path(__file__).resolve().parent / "Background_ISL_v3.jpg"
+        if not bg_path.exists():
             logger.warning("%s no encontrado — fondo vacío", bg_path)
             return
-        pixmap = QPixmap(bg_path).scaled(
+        pixmap = QPixmap(str(bg_path)).scaled(
             1920, 1080, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
         background = QLabel(self)
         background.setPixmap(pixmap)
