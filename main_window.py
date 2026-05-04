@@ -49,6 +49,7 @@ from config import (
 )
 from atem_state import ATEMState, is_atem_supervisor_healthy
 from atem_monitor import ATEMMonitor
+from atem_dispatcher import ATEMDispatcher
 from ptz.visca import CameraManager
 from widgets import GoButton, SpecialDragButton
 from names_panel import NamesPanel
@@ -150,6 +151,13 @@ class MainWindow(QMainWindow):
 
         self._atem_state: ATEMState | None = None
         self._atem_restart_pending = False
+        self._atem_dispatcher = ATEMDispatcher(
+            session_provider=lambda: self.session_active, parent=self
+        )
+        self._atem_dispatcher.action_triggered.connect(self._on_atem_action)
+        # Control manual → cooldown de automatización ATEM
+        for _evt in (EventType.CAMERA_MOVE, EventType.CAMERA_ZOOM, EventType.SEAT_SELECTED):
+            self._bus.subscribe(_evt, lambda _e: self._atem_dispatcher.notify_manual_control())
         self._start_atem_monitor()
 
         # Auto-apagado por inactividad (2 horas)
@@ -635,16 +643,24 @@ class MainWindow(QMainWindow):
 
     def _start_atem_monitor(self):
         self._atem_state = None
+        self._atem_dispatcher.reset_input_tracking()
         self._atem_monitor = ATEMMonitor(ATEM.ip, parent=self)
-        self._atem_monitor.switched_to_input2.connect(self._visca._send_comments_cam_home)
+        self._atem_monitor.program_changed.connect(self._atem_dispatcher.on_program_changed)
         self._atem_monitor.program_changed.connect(self._right_panel.set_atem_program)
         self._atem_monitor.state_changed.connect(self._on_atem_state_changed)
         self._atem_monitor.start()
 
     def _on_atem_state_changed(self, state) -> None:
         self._atem_state = state
+        self._atem_dispatcher.on_atem_state_changed(state)
         self._right_panel.set_atem_state(state)
         self.atem_state_changed.emit(state)
+
+    def _on_atem_action(self, action: str) -> None:
+        if action == "comments_home":
+            self._visca._send_comments_cam_home()
+        elif action == "platform_home":
+            self._visca.go_to_preset(1)
 
     def _atem_monitor_is_healthy(self) -> bool:
         return is_atem_supervisor_healthy(
@@ -689,14 +705,14 @@ class MainWindow(QMainWindow):
             return
 
         old_monitor.deleteLater()
+        self._atem_dispatcher.mark_reconnecting()
         self._start_atem_monitor()
         self._atem_restart_pending = False
         logger.info("ATEMMonitor reiniciado por el supervisor")
 
     def _disconnect_atem_monitor_signals(self, monitor) -> None:
-        # Ignora desconexiones repetidas cuando el reinicio queda aplazado.
         for signal, slot in (
-            (monitor.switched_to_input2, self._visca._send_comments_cam_home),
+            (monitor.program_changed, self._atem_dispatcher.on_program_changed),
             (monitor.program_changed, self._right_panel.set_atem_program),
             (monitor.state_changed, self._on_atem_state_changed),
         ):

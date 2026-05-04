@@ -122,6 +122,28 @@ class TestRetryPolicy:
         assert ATEMState.DISCONNECTED in states, f"Estados: {states}"
         assert states[-1] == ATEMState.DISCONNECTED, f"Último estado debe ser DISCONNECTED: {states}"
 
+    def test_failed_retry_state_sequence_is_stable(self):
+        """El flujo de estados en fallo total debe mantener el orden esperado."""
+        import atem_monitor as _am
+        from atem_monitor import ATEMMonitor
+
+        mock_module, instance = _make_mock_pyatemmax(wait_ok=False)
+        instance.connect.side_effect = None
+
+        with patch.dict(sys.modules, {"PyATEMMax": mock_module}), \
+             patch.object(_am.ATEMMonitor, "_wait_interruptible", return_value=False):
+            monitor = ATEMMonitor("192.168.1.1")
+            states = _collect_states(monitor, timeout_ms=5000)
+
+        expected = []
+        for attempt in range(1, 1 + len(_am._BACKOFFS) + 1):
+            expected.append(ATEMState.CONNECTING)
+            if attempt <= len(_am._BACKOFFS):
+                expected.append(ATEMState.RECONNECTING)
+        expected.append(ATEMState.DISCONNECTED)
+
+        assert states == expected
+
     def test_emits_reconnecting_between_attempts(self):
         """Entre intentos fallidos debe emitirse RECONNECTING."""
         import atem_monitor as _am
@@ -213,6 +235,50 @@ class TestRetryPolicy:
             ATEMState.ERROR,
             ATEMState.CONNECTED,
         ]
+
+    def test_poll_repeated_failures_emit_error_once(self):
+        """Errores consecutivos de polling no deben spamear state_changed(ERROR)."""
+        from atem_monitor import ATEMMonitor
+
+        atem = MagicMock()
+        atem.programInput.__getitem__.side_effect = RuntimeError("still failing")
+        monitor = ATEMMonitor("192.168.1.1")
+        states = []
+        monitor.state_changed.connect(states.append, Qt.DirectConnection)
+        monitor._emit_state(ATEMState.CONNECTED)
+
+        with patch.object(monitor, "isInterruptionRequested",
+                          side_effect=[False, False, False, True]):
+            monitor._poll_loop(atem)
+
+        assert states == [ATEMState.CONNECTED, ATEMState.ERROR]
+
+    def test_program_changed_emits_only_when_input_changes(self):
+        from atem_monitor import ATEMMonitor
+
+        monitor = ATEMMonitor("192.168.1.1")
+        atem = MagicMock()
+        atem.programInput = _ProgramInputSequence(monitor, [3, 3, 2, 2, 1])
+        programs = []
+        monitor.program_changed.connect(programs.append, Qt.DirectConnection)
+
+        with patch.object(monitor, "isInterruptionRequested",
+                          side_effect=([False] * 5) + [True]):
+            monitor._poll_loop(atem)
+
+        assert programs == [3, 2, 1]
+
+    def test_interruption_before_first_attempt_does_not_create_client(self):
+        from atem_monitor import ATEMMonitor
+
+        mock_module = MagicMock()
+        monitor = ATEMMonitor("192.168.1.1")
+
+        with patch.object(monitor, "isInterruptionRequested", return_value=True):
+            monitor._run_with_retry(mock_module)
+
+        mock_module.ATEMMax.assert_not_called()
+        assert monitor.state is None
 
     def test_interruption_during_backoff_stops_retries(self):
         """Interrumpir durante el backoff debe detener los reintentos limpiamente."""
@@ -306,9 +372,9 @@ class TestWaitInterruptible:
 
 # ─── Escenario de reconexión manual ──────────────────────────────────────────
 
-class TestManualReconnect:
-    def test_second_monitor_starts_after_first_disconnected(self):
-        """Simula reconexión: primer monitor falla → DISCONNECTED → nuevo monitor → éxito."""
+class TestIndependentMonitorRuns:
+    def test_new_monitor_can_connect_after_previous_instance_disconnected(self):
+        """Una nueva instancia puede conectar después de que otra terminara en DISCONNECTED."""
         import atem_monitor as _am
         from atem_monitor import ATEMMonitor
 
@@ -324,7 +390,7 @@ class TestManualReconnect:
         assert ATEMState.DISCONNECTED in states1
         assert not mon1.isRunning()
 
-        # Segunda ronda: tiene éxito (simula reconexión manual)
+        # Segunda ronda: tiene éxito con otra instancia independiente.
         mock_ok, instance_ok = _make_mock_pyatemmax(wait_ok=True)
         instance_ok.connect.side_effect = None
         instance_ok.programInput = MagicMock(side_effect=Exception("exit poll"))
@@ -355,6 +421,20 @@ class TestManualReconnect:
 # ─── Backoffs configurados son razonables ────────────────────────────────────
 
 class TestATEMSupervisorHealth:
+    def test_running_or_pending_restart_is_healthy(self):
+        from atem_state import is_atem_supervisor_healthy
+
+        assert is_atem_supervisor_healthy(
+            is_running=True,
+            restart_pending=False,
+            state=None,
+        ) is True
+        assert is_atem_supervisor_healthy(
+            is_running=False,
+            restart_pending=True,
+            state=ATEMState.ERROR,
+        ) is True
+
     def test_terminal_expected_states_are_healthy(self):
         from atem_state import is_atem_supervisor_healthy
 
@@ -376,6 +456,15 @@ class TestATEMSupervisorHealth:
             is_running=False,
             restart_pending=False,
             state=ATEMState.ERROR,
+        ) is False
+
+    def test_unknown_stopped_state_is_unhealthy(self):
+        from atem_state import is_atem_supervisor_healthy
+
+        assert is_atem_supervisor_healthy(
+            is_running=False,
+            restart_pending=False,
+            state=None,
         ) is False
 
 

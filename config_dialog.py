@@ -278,7 +278,7 @@ class ConfigDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle('Camera Configuration')
         self.setWindowModality(Qt.WindowModal)
-        self.setFixedSize(620, 650)
+        self.setFixedSize(780, 760)
         # Sin barra de título del SO en pantalla táctil (RPi fullscreen)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
 
@@ -301,15 +301,15 @@ class ConfigDialog(QDialog):
         header_row.setContentsMargins(0, 0, 0, 0)
 
         title = QLabel('⚙  Camera Configuration')
-        title.setStyleSheet("font: bold 16px; color: #222;")
+        title.setStyleSheet("font: bold 19px 'Inter Tight', 'Segoe UI'; color: #111;")
         header_row.addWidget(title)
         header_row.addStretch()
 
         btn_x = QPushButton('✕')
-        btn_x.setFixedSize(30, 30)
+        btn_x.setFixedSize(36, 36)
         btn_x.setStyleSheet(
             "QPushButton { background: #c62828; border: none; border-radius: 6px;"
-            " font: bold 14px; color: white; }"
+            " font: bold 16px; color: white; }"
             "QPushButton:pressed { background: #8b1a1a; }"
         )
         btn_x.clicked.connect(self.accept)
@@ -328,17 +328,18 @@ class ConfigDialog(QDialog):
         tabs.setDocumentMode(True)
         tabs.setStyleSheet(
             "QTabWidget::pane { border: 1px solid #d6d6d6; border-radius: 8px; background: #fafafa; }"
-            "QTabBar::tab { background: #eeeeee; color: #333333; padding: 8px 10px;"
-            " border: 1px solid #d0d0d0; border-bottom: none; min-width: 76px; min-height: 28px; }"
-            "QTabBar::tab:selected { background: white; font-weight: 600; border-top: 4px solid #1565C0; }"
+            "QTabBar::tab { background: #eeeeee; color: #222222; padding: 10px 12px;"
+            " border: 1px solid #d0d0d0; border-bottom: none; min-width: 104px; min-height: 34px;"
+            " font: 14px 'Inter Tight', 'Segoe UI'; }"
+            "QTabBar::tab:selected { background: white; font-weight: 700; border-top: 4px solid #1565C0; }"
             "QTabBar::tab:!selected { margin-top: 2px; }"
         )
 
         def _make_tab(name: str):
             tab = QWidget()
             tab_layout = QVBoxLayout(tab)
-            tab_layout.setContentsMargins(12, 12, 12, 12)
-            tab_layout.setSpacing(10)
+            tab_layout.setContentsMargins(14, 14, 14, 14)
+            tab_layout.setSpacing(12)
             tabs.addTab(tab, name)
             return tab_layout
 
@@ -350,8 +351,8 @@ class ConfigDialog(QDialog):
                 " border-radius: 8px; }"
             )
             panel_layout = QVBoxLayout(panel)
-            panel_layout.setContentsMargins(12, 10, 12, 12)
-            panel_layout.setSpacing(8)
+            panel_layout.setContentsMargins(14, 12, 14, 14)
+            panel_layout.setSpacing(10)
             title_lbl = self._section_label(title_text)
             panel_layout.addWidget(title_lbl)
             parent_layout.addWidget(panel)
@@ -379,24 +380,22 @@ class ConfigDialog(QDialog):
         session_status = QLabel(status_text)
         session_status.setAlignment(Qt.AlignCenter)
         session_status.setStyleSheet(
-            f"font: bold 14px; color: {status_color};"
-            " background: #f5f5f5; border-radius: 6px; padding: 6px;"
+            f"font: bold 17px 'Inter Tight', 'Segoe UI'; color: {status_color};"
+            " background: #f5f5f5; border-radius: 6px; padding: 10px;"
         )
         layout.addWidget(session_status)
 
         btn_session = QPushButton(btn_text)
-        btn_session.setFixedHeight(40)
+        btn_session.setFixedHeight(46)
         btn_session.setStyleSheet(
             f"QPushButton {{ background: {btn_bg}; border: none; border-radius: 6px;"
-            f" font: bold 14px; color: white; }}"
+            f" font: bold 16px 'Inter Tight', 'Segoe UI'; color: white; }}"
             f"QPushButton:pressed {{ background: {btn_pressed}; }}"
         )
         btn_session.clicked.connect(lambda: (mw._session.ToggleSession(), self.accept()))
         layout.addWidget(btn_session)
 
         session_layout.addStretch()
-
-        layout = _panel_layout(cameras_layout, 'Cameras')
 
         # ── Sección: Camera ───────────────────────────────────────────────
         _icon, _icon_sz = _make_pencil_icon(16)
@@ -405,7 +404,7 @@ class ConfigDialog(QDialog):
             b = QPushButton()
             b.setIcon(_icon)
             b.setIconSize(QSize(_icon_sz, _icon_sz))
-            b.setFixedSize(30, 30)
+            b.setFixedSize(46, 46)
             b.setToolTip('Edit')
             b.setStyleSheet(
                 "QPushButton { background: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; }"
@@ -416,19 +415,16 @@ class ConfigDialog(QDialog):
         def _value_lbl(text, ok):
             color = '#2e7d32' if ok else '#c62828'
             lbl = QLabel(text)
+            lbl.setMinimumHeight(46)
+            lbl.setMinimumWidth(360)
             lbl.setStyleSheet(
-                f"font: 13px 'Inter Tight', 'Segoe UI'; color: {color};"
-                " background: #f5f5f5; border-radius: 6px; padding: 4px 8px;"
+                f"font: bold 22px 'Consolas', 'Segoe UI'; color: {color};"
+                " background: #f5f5f5; border-radius: 6px; padding: 8px 12px;"
             )
             return lbl
 
         for cam_label, cam_obj, cam_num in (('Platform', CAM1, 1), ('Comments', CAM2, 2)):
-            sub = QLabel(cam_label + ':')
-            sub.setStyleSheet("font: 600 13px 'Inter Tight', 'Segoe UI'; color: #444; margin-top: 2px;")
-            layout.addWidget(sub)
-
-            cam_row = QHBoxLayout()
-            cam_row.setSpacing(6)
+            layout = _panel_layout(cameras_layout, f'{cam_label} Camera')
 
             ip_lbl = _value_lbl(f'IP:  {cam_obj.ip}', cam_obj.check)
             btn_ip = _pencil_btn()
@@ -441,6 +437,12 @@ class ConfigDialog(QDialog):
 
             btn_ip.clicked.connect(_edit_ip)
 
+            ip_row = QHBoxLayout()
+            ip_row.setSpacing(10)
+            ip_row.addWidget(ip_lbl, stretch=1)
+            ip_row.addWidget(btn_ip)
+            layout.addLayout(ip_row)
+
             id_lbl = _value_lbl(f'ID:  {cam_obj.cam_id}', cam_obj.check)
             btn_id = _pencil_btn()
 
@@ -452,12 +454,11 @@ class ConfigDialog(QDialog):
 
             btn_id.clicked.connect(_edit_id)
 
-            cam_row.addWidget(ip_lbl, stretch=3)
-            cam_row.addWidget(btn_ip)
-            cam_row.addSpacing(6)
-            cam_row.addWidget(id_lbl, stretch=1)
-            cam_row.addWidget(btn_id)
-            layout.addLayout(cam_row)
+            id_row = QHBoxLayout()
+            id_row.setSpacing(10)
+            id_row.addWidget(id_lbl, stretch=1)
+            id_row.addWidget(btn_id)
+            layout.addLayout(id_row)
 
         # ── Sección: ATEM ─────────────────────────────────────────────────
         layout = _panel_layout(cameras_layout, 'ATEM Switcher')
@@ -466,9 +467,10 @@ class ConfigDialog(QDialog):
         atem_row.setSpacing(6)
 
         atem_ip_lbl = QLabel(f'IP:  {ATEM.ip}')
+        atem_ip_lbl.setMinimumHeight(46)
         atem_ip_lbl.setStyleSheet(
-            "font: 13px 'Inter Tight', 'Segoe UI'; color: #444;"
-            " background: #f5f5f5; border-radius: 6px; padding: 4px 8px;"
+            "font: bold 22px 'Consolas', 'Segoe UI'; color: #111;"
+            " background: #f5f5f5; border-radius: 6px; padding: 8px 12px;"
         )
         btn_atem_ip = _pencil_btn()
 
@@ -507,8 +509,8 @@ class ConfigDialog(QDialog):
             _fg, _bg, _text = _atem_status_values(state)
             atem_status_lbl.setText(_text)
             atem_status_lbl.setStyleSheet(
-                f"font: bold 11px 'Inter Tight', 'Segoe UI'; color: {_fg};"
-                f" background: {_bg}; border-radius: 5px; padding: 4px 8px;"
+                f"font: bold 14px 'Inter Tight', 'Segoe UI'; color: {_fg};"
+                f" background: {_bg}; border-radius: 5px; padding: 7px 10px;"
             )
 
         _set_atem_status(_cur_state)
@@ -516,10 +518,10 @@ class ConfigDialog(QDialog):
 
         # ── Botón Reconnect ATEM ──────────────────────────────────────────────
         btn_reconnect = QPushButton('↺   Reconnect ATEM')
-        btn_reconnect.setFixedHeight(34)
+        btn_reconnect.setFixedHeight(42)
         btn_reconnect.setStyleSheet(
             "QPushButton { background: #546E7A; border: none; border-radius: 6px;"
-            " font: 600 13px 'Inter Tight', 'Segoe UI'; color: white; }"
+            " font: 600 15px 'Inter Tight', 'Segoe UI'; color: white; }"
             "QPushButton:pressed { background: #37474F; }"
             "QPushButton:disabled { background: #90A4AE; }"
         )
@@ -544,13 +546,17 @@ class ConfigDialog(QDialog):
         )
         layout.addWidget(btn_reconnect)
 
+        # ── Automatización ATEM ───────────────────────────────────────────────
+        layout = _panel_layout(cameras_layout, 'ATEM Automation')
+        self._build_atem_automation_section(layout, mw)
+
         # ── Sección: Camera Discovery ─────────────────────────────────────
         layout = _panel_layout(cameras_layout, 'Camera Discovery')
 
         # Etiqueta de estado del escaneo
         disc_status = QLabel('Press Scan to detect cameras on the network.')
         disc_status.setStyleSheet(
-            "font: 11px 'Inter Tight', 'Segoe UI'; color: #666; padding: 2px 0;"
+            "font: 14px 'Inter Tight', 'Segoe UI'; color: #333; padding: 4px 0;"
         )
         disc_status.setWordWrap(True)
         layout.addWidget(disc_status)
@@ -571,10 +577,10 @@ class ConfigDialog(QDialog):
         layout.addWidget(disc_scroll)
 
         btn_scan = QPushButton('🔍  Scan Network')
-        btn_scan.setFixedHeight(34)
+        btn_scan.setFixedHeight(42)
         btn_scan.setStyleSheet(
             "QPushButton { background: #1565C0; border: none; border-radius: 6px;"
-            " font: 13px; color: white; }"
+            " font: 15px 'Inter Tight', 'Segoe UI'; color: white; }"
             "QPushButton:pressed { background: #0D47A1; }"
             "QPushButton:disabled { background: #90A4AE; }"
         )
@@ -610,27 +616,27 @@ class ConfigDialog(QDialog):
                     row_h.setSpacing(6)
 
                     lbl = QLabel(ip)
-                    lbl.setStyleSheet("font: bold 12px; color: #222; background: transparent;")
+                    lbl.setStyleSheet("font: bold 15px 'Consolas', 'Segoe UI'; color: #111; background: transparent;")
                     row_h.addWidget(lbl)
                     row_h.addStretch()
 
                     btn_p = QPushButton('→ Platform')
-                    btn_p.setFixedHeight(24)
-                    btn_p.setFixedWidth(86)
+                    btn_p.setFixedHeight(32)
+                    btn_p.setFixedWidth(108)
                     btn_p.setStyleSheet(
                         "QPushButton { background: #2e7d32; border: none; border-radius: 4px;"
-                        " font: 11px; color: white; }"
+                        " font: 14px 'Inter Tight', 'Segoe UI'; color: white; }"
                         "QPushButton:pressed { background: #1b5e20; }"
                     )
                     btn_p.clicked.connect(lambda _=False, _ip=ip: _apply_ip(_ip, 1))
                     row_h.addWidget(btn_p)
 
                     btn_c = QPushButton('→ Comments')
-                    btn_c.setFixedHeight(24)
-                    btn_c.setFixedWidth(86)
+                    btn_c.setFixedHeight(32)
+                    btn_c.setFixedWidth(108)
                     btn_c.setStyleSheet(
                         "QPushButton { background: #c62828; border: none; border-radius: 4px;"
-                        " font: 11px; color: white; }"
+                        " font: 14px 'Inter Tight', 'Segoe UI'; color: white; }"
                         "QPushButton:pressed { background: #8b1a1a; }"
                     )
                     btn_c.clicked.connect(lambda _=False, _ip=ip: _apply_ip(_ip, 2))
@@ -639,7 +645,7 @@ class ConfigDialog(QDialog):
                     disc_layout.addWidget(row_w)
 
                 # Altura: máx 4 filas × 32 px
-                disc_scroll.setFixedHeight(min(len(found), 4) * 32)
+                disc_scroll.setFixedHeight(min(len(found), 4) * 40)
 
             btn_scan.setEnabled(True)
             btn_scan.setText('🔍  Scan Network')
@@ -665,10 +671,10 @@ class ConfigDialog(QDialog):
 
         # ── Sección: Contraseña ───────────────────────────────────────────
         btn_pwd = QPushButton('🔒  Change Password')
-        btn_pwd.setFixedHeight(36)
+        btn_pwd.setFixedHeight(44)
         btn_pwd.setStyleSheet(
             "QPushButton { background: #546E7A; border: none; border-radius: 6px;"
-            " font: 13px; color: white; }"
+            " font: 15px 'Inter Tight', 'Segoe UI'; color: white; }"
             "QPushButton:pressed { background: #37474F; }"
         )
         btn_pwd.setToolTip('Change the login password')
@@ -679,10 +685,10 @@ class ConfigDialog(QDialog):
         layout = _panel_layout(access_layout, 'Schedule')
 
         btn_schedule = QPushButton('📅  Weekly Schedule')
-        btn_schedule.setFixedHeight(36)
+        btn_schedule.setFixedHeight(44)
         btn_schedule.setStyleSheet(
             "QPushButton { background: #1565C0; border: none; border-radius: 6px;"
-            " font: 13px; color: white; }"
+            " font: 15px 'Inter Tight', 'Segoe UI'; color: white; }"
             "QPushButton:pressed { background: #0D47A1; }"
         )
         btn_schedule.setToolTip('Configure days and hours when no password is required')
@@ -698,24 +704,24 @@ class ConfigDialog(QDialog):
         row_backup.setSpacing(8)
 
         btn_export = QPushButton('📤  Export...')
-        btn_export.setFixedHeight(36)
+        btn_export.setFixedHeight(44)
         btn_export.setToolTip(
             'Save seat names, chairman presets and schedule to a ZIP file'
         )
         btn_export.setStyleSheet(
             "QPushButton { background: #2E7D32; border: none; border-radius: 6px;"
-            " font: 13px; color: white; }"
+            " font: 15px 'Inter Tight', 'Segoe UI'; color: white; }"
             "QPushButton:pressed { background: #1B5E20; }"
         )
 
         btn_import = QPushButton('📥  Import...')
-        btn_import.setFixedHeight(36)
+        btn_import.setFixedHeight(44)
         btn_import.setToolTip(
             'Restore data from a previously exported ZIP backup'
         )
         btn_import.setStyleSheet(
             "QPushButton { background: #1565C0; border: none; border-radius: 6px;"
-            " font: 13px; color: white; }"
+            " font: 15px 'Inter Tight', 'Segoe UI'; color: white; }"
             "QPushButton:pressed { background: #0D47A1; }"
         )
 
@@ -771,16 +777,17 @@ class ConfigDialog(QDialog):
         _ver_file = Path(__file__).parent / 'VERSION'
         _ver_text = _ver_file.read_text(encoding='utf-8').strip() if _ver_file.exists() else 'unknown'
         version = QLabel(f'v{_ver_text}')
-        version.setStyleSheet("font: 11px; color: #888;")
+        version.setStyleSheet("font: 14px 'Consolas', 'Segoe UI'; color: #444;")
         bottom.addWidget(version)
 
         bottom.addStretch()
 
         btn_help = QPushButton('? Help')
-        btn_help.setFixedWidth(70)
+        btn_help.setFixedWidth(92)
+        btn_help.setFixedHeight(36)
         btn_help.setStyleSheet(
             "QPushButton { background: #f5f5f5; border: 1px solid #bbb;"
-            " border-radius: 4px; font: 12px; color: #333; }"
+            " border-radius: 4px; font: 14px 'Inter Tight', 'Segoe UI'; color: #222; }"
             "QPushButton:pressed { background: #e0e0e0; }"
         )
         btn_help.clicked.connect(mw._dialogs.HelpMsg)
@@ -804,14 +811,14 @@ class ConfigDialog(QDialog):
         for label_text in ['AF', '1PAF', 'MF', 'Dark', 'Bright', 'BL', 'ATEM']:
             dot = QLabel('●')
             dot.setAlignment(Qt.AlignCenter)
-            dot.setFixedHeight(16)
-            dot.setStyleSheet("color: #AAAAAA; font: 14px;")
+            dot.setFixedHeight(22)
+            dot.setStyleSheet("color: #888888; font: 18px;")
             test_indicators.append(dot)
 
             cap = QLabel(label_text)
             cap.setAlignment(Qt.AlignCenter)
-            cap.setStyleSheet("font: 9px 'Inter Tight', 'Segoe UI'; color: #888;")
-            cap.setFixedHeight(12)
+            cap.setStyleSheet("font: 12px 'Inter Tight', 'Segoe UI'; color: #444;")
+            cap.setFixedHeight(18)
 
             col = QVBoxLayout()
             col.setSpacing(1)
@@ -822,10 +829,10 @@ class ConfigDialog(QDialog):
         layout.addLayout(ind_row)
 
         btn_run_test = QPushButton('▶  Run Test')
-        btn_run_test.setFixedHeight(28)
+        btn_run_test.setFixedHeight(40)
         btn_run_test.setStyleSheet(
             "QPushButton { background: #546E7A; border: none; border-radius: 6px;"
-            " font: 12px 'Inter Tight', 'Segoe UI'; color: white; }"
+            " font: 15px 'Inter Tight', 'Segoe UI'; color: white; }"
             "QPushButton:pressed { background: #37474F; }"
             "QPushButton:disabled { background: #90A4AE; }"
         )
@@ -846,13 +853,13 @@ class ConfigDialog(QDialog):
                     _log.getLogger(__name__).warning("ATEM test failed: %s", exc)
                     ok = False
                 color = '#3d9e3d' if ok else '#b33030'
-            test_indicators[6].setStyleSheet(f"color: {color}; font: 14px;")
+            test_indicators[6].setStyleSheet(f"color: {color}; font: 18px;")
             btn_run_test.setEnabled(True)
             btn_run_test.setText('▶  Run Test')
 
         def _on_test_clicked():
             for dot in test_indicators:
-                dot.setStyleSheet("color: #AAAAAA; font: 14px;")
+                dot.setStyleSheet("color: #888888; font: 18px;")
             btn_run_test.setEnabled(False)
             btn_run_test.setText('Testing...')
             test_cmds = [
@@ -875,7 +882,7 @@ class ConfigDialog(QDialog):
                 ip, cam_id = mw._visca._active_cam()
                 ok = mw._visca._send_cmd(ip, cmd_fn(cam_id))
                 color = '#3d9e3d' if ok else '#b33030'
-                test_indicators[idx].setStyleSheet(f"color: {color}; font: 14px;")
+                test_indicators[idx].setStyleSheet(f"color: {color}; font: 18px;")
                 QTimer.singleShot(500, lambda: _run_with_atem(step + 1))
 
             QTimer.singleShot(100, lambda: _run_with_atem(0))
@@ -890,10 +897,10 @@ class ConfigDialog(QDialog):
         root_layout.addWidget(line_close)
 
         btn_close = QPushButton('Close Program')
-        btn_close.setFixedHeight(40)
+        btn_close.setFixedHeight(46)
         btn_close.setStyleSheet(
             "QPushButton { background: #c62828; border: none;"
-            " border-radius: 8px; font: 600 14px 'Inter Tight', 'Segoe UI'; color: white; }"
+            " border-radius: 8px; font: 700 16px 'Inter Tight', 'Segoe UI'; color: white; }"
             "QPushButton:pressed { background: #8b1a1a; }"
         )
         btn_close.clicked.connect(mw.close)
@@ -913,7 +920,7 @@ class ConfigDialog(QDialog):
     def _section_label(self, text: str) -> QLabel:
         """Etiqueta de sección con estilo consistente."""
         lbl = QLabel(text)
-        lbl.setStyleSheet("font: bold 12px; color: #555; padding-top: 4px;")
+        lbl.setStyleSheet("font: bold 16px 'Inter Tight', 'Segoe UI'; color: #222; padding-top: 2px;")
         return lbl
 
     @staticmethod
@@ -932,8 +939,8 @@ class ConfigDialog(QDialog):
         lbl_status = QLabel(status_text)
         lbl_status.setAlignment(Qt.AlignCenter)
         lbl_status.setStyleSheet(
-            f"font: bold 11px; color: {status_color};"
-            f" background: {status_bg}; border-radius: 5px; padding: 5px;"
+            f"font: bold 14px 'Inter Tight', 'Segoe UI'; color: {status_color};"
+            f" background: {status_bg}; border-radius: 5px; padding: 8px;"
         )
         layout.addWidget(lbl_status)
 
@@ -951,7 +958,7 @@ class ConfigDialog(QDialog):
                 " font: bold 13px; color: white; }"
                 "QPushButton:pressed { background: #0D47A1; }"
             )
-        btn_toggle.setFixedHeight(38)
+        btn_toggle.setFixedHeight(44)
 
         def _toggle_sim():
             try:
@@ -969,6 +976,155 @@ class ConfigDialog(QDialog):
         btn_toggle.clicked.connect(_toggle_sim)
         layout.addWidget(btn_toggle)
 
+
+    def _build_atem_automation_section(self, layout, mw):
+        """Controles de automatización ATEM: armado/desarmado, dry-run, reconnect guard."""
+        from PyQt5.QtWidgets import QSpinBox, QMessageBox
+
+        dispatcher = getattr(mw, '_atem_dispatcher', None)
+        if dispatcher is None:
+            layout.addWidget(QLabel('Dispatcher no disponible.'))
+            return
+
+        # ── Estado armado ────────────────────────────────────────────────────
+        def _armed_style(armed: bool):
+            if armed:
+                return ('#1b5e20', '#e8f5e9', '⚡  ARMED — Live automation active')
+            return ('#555555', '#f5f5f5', '○  DISARMED — Monitor only')
+
+        arm_lbl = QLabel()
+        arm_lbl.setAlignment(Qt.AlignCenter)
+
+        def _refresh_arm_lbl():
+            fg, bg, text = _armed_style(dispatcher.armed)
+            arm_lbl.setText(text)
+            arm_lbl.setStyleSheet(
+                f"font: bold 13px 'Inter Tight', 'Segoe UI'; color: {fg};"
+                f" background: {bg}; border-radius: 5px; padding: 6px;"
+            )
+
+        _refresh_arm_lbl()
+        layout.addWidget(arm_lbl)
+
+        # ── Botón armar / desarmar ────────────────────────────────────────────
+        btn_arm = QPushButton()
+        btn_arm.setFixedHeight(38)
+
+        def _update_arm_btn():
+            if dispatcher.armed:
+                btn_arm.setText('Disarm Automation')
+                btn_arm.setStyleSheet(
+                    "QPushButton { background: #c62828; border: none; border-radius: 6px;"
+                    " font: 600 13px 'Inter Tight', 'Segoe UI'; color: white; }"
+                    "QPushButton:pressed { background: #8b1a1a; }"
+                )
+            else:
+                btn_arm.setText('⚡  Arm ATEM Automation')
+                btn_arm.setStyleSheet(
+                    "QPushButton { background: #1565C0; border: none; border-radius: 6px;"
+                    " font: 600 13px 'Inter Tight', 'Segoe UI'; color: white; }"
+                    "QPushButton:pressed { background: #0D47A1; }"
+                )
+
+        _update_arm_btn()
+
+        def _on_arm_toggle():
+            if dispatcher.armed:
+                dispatcher.set_armed(False)
+                _refresh_arm_lbl()
+                _update_arm_btn()
+                _refresh_guard_btn()
+            else:
+                reply = QMessageBox.question(
+                    self, 'Arm ATEM Automation',
+                    'Enable live ATEM automation?\n\n'
+                    'Camera actions will be triggered automatically when\n'
+                    'the ATEM program input changes.\n\n'
+                    'Type ENABLE ATEM in the confirmation box to proceed.',
+                    QMessageBox.Ok | QMessageBox.Cancel,
+                    QMessageBox.Cancel,
+                )
+                if reply != QMessageBox.Ok:
+                    return
+                from PyQt5.QtWidgets import QInputDialog
+                text, ok = QInputDialog.getText(
+                    self, 'Confirm', 'Type  ENABLE ATEM  to activate live automation:'
+                )
+                if ok and text.strip() == 'ENABLE ATEM':
+                    dispatcher.set_armed(True)
+                    dispatcher.clear_reconnect_guard()
+                    _refresh_arm_lbl()
+                    _update_arm_btn()
+                    _refresh_guard_btn()
+
+        btn_arm.clicked.connect(_on_arm_toggle)
+        layout.addWidget(btn_arm)
+
+        # ── Reconnect guard ───────────────────────────────────────────────────
+        btn_guard = QPushButton('Clear Reconnect Guard')
+        btn_guard.setFixedHeight(34)
+        btn_guard.setStyleSheet(
+            "QPushButton { background: #e65100; border: none; border-radius: 6px;"
+            " font: 13px 'Inter Tight', 'Segoe UI'; color: white; }"
+            "QPushButton:pressed { background: #bf360c; }"
+            "QPushButton:disabled { background: #bdbdbd; color: #888; }"
+        )
+
+        def _refresh_guard_btn():
+            btn_guard.setEnabled(dispatcher.reconnect_guard)
+            if dispatcher.reconnect_guard:
+                btn_guard.setText('⚠  Clear Reconnect Guard')
+            else:
+                btn_guard.setText('Reconnect Guard: inactive')
+
+        _refresh_guard_btn()
+
+        def _on_clear_guard():
+            dispatcher.clear_reconnect_guard()
+            _refresh_guard_btn()
+
+        btn_guard.clicked.connect(_on_clear_guard)
+        layout.addWidget(btn_guard)
+
+        # ── Dry-run ───────────────────────────────────────────────────────────
+        dry_row = QHBoxLayout()
+        dry_row.setSpacing(6)
+
+        dry_spin = QSpinBox()
+        dry_spin.setRange(1, 99)
+        dry_spin.setValue(2)
+        dry_spin.setFixedWidth(64)
+        dry_spin.setFixedHeight(34)
+        dry_spin.setStyleSheet(
+            "QSpinBox { border: 1px solid #ccc; border-radius: 5px; padding: 4px 6px;"
+            " font: 14px 'Consolas'; background: #fafafa; }"
+        )
+
+        btn_dry = QPushButton('Simulate Input')
+        btn_dry.setFixedHeight(34)
+        btn_dry.setStyleSheet(
+            "QPushButton { background: #546E7A; border: none; border-radius: 6px;"
+            " font: 13px 'Inter Tight', 'Segoe UI'; color: white; }"
+            "QPushButton:pressed { background: #37474F; }"
+        )
+
+        dry_result = QLabel('')
+        dry_result.setWordWrap(True)
+        dry_result.setStyleSheet(
+            "font: 12px 'Consolas', 'Segoe UI'; color: #333;"
+            " background: #f5f5f5; border-radius: 4px; padding: 5px 8px;"
+        )
+
+        def _on_dry_run():
+            result = dispatcher.dry_run(dry_spin.value())
+            dry_result.setText(result)
+
+        btn_dry.clicked.connect(_on_dry_run)
+        dry_row.addWidget(QLabel('Input:'))
+        dry_row.addWidget(dry_spin)
+        dry_row.addWidget(btn_dry)
+        layout.addLayout(dry_row)
+        layout.addWidget(dry_result)
 
     def _try_close(self):
         """Cierra ConfigDialog tras cambio de contraseña."""

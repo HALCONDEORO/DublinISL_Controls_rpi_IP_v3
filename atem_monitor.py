@@ -3,9 +3,9 @@
 # Proprietary software — use, copying, distribution or modification requires written permission.
 # atem_monitor.py — Monitor de programa del switcher BlackMagic ATEM
 #
-# Corre en un hilo daemon y emite switched_to_input2 cuando el ATEM
-# cambia su salida de programa de Input 3 → Input 2.
-# Emite state_changed(ATEMState) en cada transición de estado.
+# Corre en un hilo daemon y emite program_changed(int) con el input de programa
+# activo cada vez que cambia. Emite state_changed(ATEMState) en cada transición.
+# La lógica de qué acción tomar con cada input vive en ATEMDispatcher.
 #
 # POLÍTICA DE REINTENTOS:
 #   Tras fallo de conexión realiza hasta len(_BACKOFFS) reintentos adicionales
@@ -40,7 +40,7 @@ _BACKOFFS: tuple[int, ...] = (2, 5, 15)
 class ATEMMonitor(QThread):
     """
     Hilo daemon que monitoriza el programa del ATEM vía Ethernet (TCP 9910).
-    Emite switched_to_input2 cuando el programa pasa de Input 3 → Input 2.
+    Emite program_changed(int) con el input activo cada vez que cambia.
     Emite state_changed(ATEMState) en cada transición de estado relevante.
 
     Tras fallo de conexión reintenta con backoff creciente (_BACKOFFS).
@@ -50,9 +50,8 @@ class ATEMMonitor(QThread):
     hardware_simulator en lugar de conectar al hardware real.
     """
 
-    switched_to_input2 = pyqtSignal()
-    program_changed    = pyqtSignal(int)     # input de programa actual al cambiar
-    state_changed      = pyqtSignal(object)  # ATEMState
+    program_changed = pyqtSignal(int)     # input de programa actual al cambiar
+    state_changed   = pyqtSignal(object)  # ATEMState
 
     def __init__(self, ip: str, parent=None):
         super().__init__(parent)
@@ -177,9 +176,6 @@ class ATEMMonitor(QThread):
                     self._emit_state(ATEMState.CONNECTED)
                 if cur != prev_input:
                     self.program_changed.emit(cur)
-                if prev_input == 3 and cur == 2:
-                    logger.info("ATEM: canal 3->2 — enviando Comments a Home")
-                    self.switched_to_input2.emit()
                 prev_input = cur
             except Exception as exc:
                 logger.warning("ATEM poll error: %s", exc)
@@ -216,7 +212,6 @@ class ATEMMonitor(QThread):
                 event = _hw.atem_event_queue.get(timeout=0.5)
                 if event == "switch_to_input2":
                     logger.info("ATEM sim: evento Input 3->2 recibido")
-                    self.switched_to_input2.emit()
                     self.program_changed.emit(2)
                 elif event == "switch_to_input3":
                     logger.info("ATEM sim: evento Input 2->3 recibido")
