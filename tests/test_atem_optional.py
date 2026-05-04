@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from PyQt5.QtCore import QCoreApplication
 
 # Ensure app exists for QThread
@@ -51,20 +50,8 @@ def _collect_states(monitor, timeout_ms: int = 3000) -> list[ATEMState]:
 # ─── config.py ────────────────────────────────────────────────────────────────
 
 class TestATEMConfig:
-    def test_missing_atemip_file_returns_empty(self, tmp_path, monkeypatch):
-        """Si ATEMIP.txt no existe el valor devuelto es cadena vacía."""
-        import config as cfg
-        monkeypatch.setattr(cfg, "_read_config",
-                            lambda fn, default: default if fn == "ATEMIP.txt" else default)
-        result = cfg._read_config("ATEMIP.txt", "")
-        assert result == ""
-
-    def test_empty_atemip_file_returns_empty(self, tmp_path):
+    def test_empty_atemip_file_returns_empty(self):
         """Archivo ATEMIP.txt vacío → cadena vacía."""
-        from config import _read_config
-        f = tmp_path / "ATEMIP.txt"
-        f.write_text("   ", encoding="utf-8")
-        # _read_config lee desde __file__.parent; probamos directamente la lógica
         import config as cfg
         with patch.object(Path, "exists", return_value=True), \
              patch.object(Path, "read_text", return_value="   "):

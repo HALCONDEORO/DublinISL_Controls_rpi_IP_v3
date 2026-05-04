@@ -41,6 +41,7 @@ from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFrame, QScrollArea, QWidget, QLineEdit,
+    QTabWidget,
 )
 
 from schedule_dialog import ScheduleDialog
@@ -277,7 +278,7 @@ class ConfigDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle('Camera Configuration')
         self.setWindowModality(Qt.WindowModal)
-        self.setFixedSize(460, 960)
+        self.setFixedSize(620, 650)
         # Sin barra de título del SO en pantalla táctil (RPi fullscreen)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
 
@@ -291,9 +292,9 @@ class ConfigDialog(QDialog):
         # Calculado una vez aquí y reutilizado en todas las secciones
         sim_active = _sim_mode.is_active()
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(8)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(20, 20, 20, 20)
+        root_layout.setSpacing(8)
 
         # ── Título + botón cerrar (X roja) ───────────────────────────────
         header_row = QHBoxLayout()
@@ -314,17 +315,58 @@ class ConfigDialog(QDialog):
         btn_x.clicked.connect(self.accept)
         header_row.addWidget(btn_x)
 
-        layout.addLayout(header_row)
+        root_layout.addLayout(header_row)
 
         # Separador visual
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
         line.setStyleSheet("color: #ccc;")
-        layout.addWidget(line)
+        root_layout.addWidget(line)
+
+        # Pestañas compactas con los controles que ya existen.
+        tabs = QTabWidget()
+        tabs.setDocumentMode(True)
+        tabs.setStyleSheet(
+            "QTabWidget::pane { border: 1px solid #d6d6d6; border-radius: 8px; background: #fafafa; }"
+            "QTabBar::tab { background: #eeeeee; color: #333333; padding: 8px 10px;"
+            " border: 1px solid #d0d0d0; border-bottom: none; min-width: 76px; min-height: 28px; }"
+            "QTabBar::tab:selected { background: white; font-weight: 600; border-top: 4px solid #1565C0; }"
+            "QTabBar::tab:!selected { margin-top: 2px; }"
+        )
+
+        def _make_tab(name: str):
+            tab = QWidget()
+            tab_layout = QVBoxLayout(tab)
+            tab_layout.setContentsMargins(12, 12, 12, 12)
+            tab_layout.setSpacing(10)
+            tabs.addTab(tab, name)
+            return tab_layout
+
+        def _panel_layout(parent_layout, title_text: str):
+            """Crea un panel visual para agrupar controles relacionados."""
+            panel = QFrame()
+            panel.setStyleSheet(
+                "QFrame { background: white; border: 1px solid #dddddd;"
+                " border-radius: 8px; }"
+            )
+            panel_layout = QVBoxLayout(panel)
+            panel_layout.setContentsMargins(12, 10, 12, 12)
+            panel_layout.setSpacing(8)
+            title_lbl = self._section_label(title_text)
+            panel_layout.addWidget(title_lbl)
+            parent_layout.addWidget(panel)
+            return panel_layout
+
+        session_layout = _make_tab('⏻ Session')
+        cameras_layout = _make_tab('📷 Cameras')
+        access_layout = _make_tab('🔒 Access')
+        data_layout = _make_tab('💾 Data')
+        tools_layout = _make_tab('🛠 Tools')
+        root_layout.addWidget(tabs, stretch=1)
+
+        layout = _panel_layout(session_layout, 'Session')
 
         # ── Sección: Session ON / OFF ─────────────────────────────────────
-        layout.addWidget(self._section_label('Session'))
-
         is_on   = getattr(mw, 'session_active', False)
         clr_on  = '#1a7a1a'
         clr_off = '#8b1a1a'
@@ -352,15 +394,11 @@ class ConfigDialog(QDialog):
         btn_session.clicked.connect(lambda: (mw._session.ToggleSession(), self.accept()))
         layout.addWidget(btn_session)
 
-        # Separador
-        line_s = QFrame()
-        line_s.setFrameShape(QFrame.HLine)
-        line_s.setStyleSheet("color: #ccc;")
-        layout.addWidget(line_s)
+        session_layout.addStretch()
+
+        layout = _panel_layout(cameras_layout, 'Cameras')
 
         # ── Sección: Camera ───────────────────────────────────────────────
-        layout.addWidget(self._section_label('Camera'))
-
         _icon, _icon_sz = _make_pencil_icon(16)
 
         def _pencil_btn():
@@ -422,7 +460,7 @@ class ConfigDialog(QDialog):
             layout.addLayout(cam_row)
 
         # ── Sección: ATEM ─────────────────────────────────────────────────
-        layout.addWidget(self._section_label('ATEM Switcher'))
+        layout = _panel_layout(cameras_layout, 'ATEM Switcher')
 
         atem_row = QHBoxLayout()
         atem_row.setSpacing(6)
@@ -506,13 +544,8 @@ class ConfigDialog(QDialog):
         )
         layout.addWidget(btn_reconnect)
 
-        line_atem = QFrame()
-        line_atem.setFrameShape(QFrame.HLine)
-        line_atem.setStyleSheet("color: #ccc;")
-        layout.addWidget(line_atem)
-
         # ── Sección: Camera Discovery ─────────────────────────────────────
-        layout.addWidget(self._section_label('Camera Discovery'))
+        layout = _panel_layout(cameras_layout, 'Camera Discovery')
 
         # Etiqueta de estado del escaneo
         disc_status = QLabel('Press Scan to detect cameras on the network.')
@@ -626,15 +659,11 @@ class ConfigDialog(QDialog):
 
         btn_scan.clicked.connect(_on_scan_clicked)
 
-        # Separador
-        line2 = QFrame()
-        line2.setFrameShape(QFrame.HLine)
-        line2.setStyleSheet("color: #ccc;")
-        layout.addWidget(line2)
+        cameras_layout.addStretch()
+
+        layout = _panel_layout(access_layout, 'Access')
 
         # ── Sección: Contraseña ───────────────────────────────────────────
-        layout.addWidget(self._section_label('Access'))
-
         btn_pwd = QPushButton('🔒  Change Password')
         btn_pwd.setFixedHeight(36)
         btn_pwd.setStyleSheet(
@@ -646,14 +675,8 @@ class ConfigDialog(QDialog):
         btn_pwd.clicked.connect(lambda: (mw._dialogs.ChangePassword(), self._try_close()))
         layout.addWidget(btn_pwd)
 
-        # Separador
-        line3 = QFrame()
-        line3.setFrameShape(QFrame.HLine)
-        line3.setStyleSheet("color: #ccc;")
-        layout.addWidget(line3)
-
         # ── Sección: Schedule ─────────────────────────────────────────────
-        layout.addWidget(self._section_label('Schedule'))
+        layout = _panel_layout(access_layout, 'Schedule')
 
         btn_schedule = QPushButton('📅  Weekly Schedule')
         btn_schedule.setFixedHeight(36)
@@ -666,15 +689,11 @@ class ConfigDialog(QDialog):
         btn_schedule.clicked.connect(lambda: ScheduleDialog(self).exec_())
         layout.addWidget(btn_schedule)
 
-        # Separador
-        line4 = QFrame()
-        line4.setFrameShape(QFrame.HLine)
-        line4.setStyleSheet("color: #ccc;")
-        layout.addWidget(line4)
+        access_layout.addStretch()
+
+        layout = _panel_layout(data_layout, 'Data Backup')
 
         # ── Sección: Backup ───────────────────────────────────────────────
-        layout.addWidget(self._section_label('Data Backup'))
-
         row_backup = QHBoxLayout()
         row_backup.setSpacing(8)
 
@@ -745,21 +764,8 @@ class ConfigDialog(QDialog):
         btn_export.clicked.connect(_export)
         btn_import.clicked.connect(_import)
 
-        line_backup = QFrame()
-        line_backup.setFrameShape(QFrame.HLine)
-        line_backup.setStyleSheet("color: #ccc;")
-        layout.addWidget(line_backup)
-
-        # ── Sección: Simulation Mode ──────────────────────────────────────
-        layout.addWidget(self._section_label('Simulation Mode'))
-        self._build_sim_section(layout, mw, sim_active)
-
-        line_sim = QFrame()
-        line_sim.setFrameShape(QFrame.HLine)
-        line_sim.setStyleSheet("color: #ccc;")
-        layout.addWidget(line_sim)
-
         # ── Versión y ayuda ───────────────────────────────────────────────
+        layout = _panel_layout(data_layout, 'About')
         bottom = QHBoxLayout()
 
         _ver_file = Path(__file__).parent / 'VERSION'
@@ -781,14 +787,15 @@ class ConfigDialog(QDialog):
         bottom.addWidget(btn_help)
 
         layout.addLayout(bottom)
+        data_layout.addStretch()
+
+        layout = _panel_layout(tools_layout, 'Simulation Mode')
+
+        # ── Sección: Simulation Mode ──────────────────────────────────────
+        self._build_sim_section(layout, mw, sim_active)
 
         # ── Sección: Test Focus & Exposure ────────────────────────────────
-        line5 = QFrame()
-        line5.setFrameShape(QFrame.HLine)
-        line5.setStyleSheet("color: #ccc;")
-        layout.addWidget(line5)
-
-        layout.addWidget(self._section_label('Focus & Exposure Test'))
+        layout = _panel_layout(tools_layout, 'Focus & Exposure Test')
 
         # 7 indicadores: ● con etiqueta debajo
         test_indicators = []
@@ -874,12 +881,13 @@ class ConfigDialog(QDialog):
             QTimer.singleShot(100, lambda: _run_with_atem(0))
 
         btn_run_test.clicked.connect(_on_test_clicked)
+        tools_layout.addStretch()
 
         # ── Botón Close ───────────────────────────────────────────────────────
         line_close = QFrame()
         line_close.setFrameShape(QFrame.HLine)
         line_close.setStyleSheet("color: #ccc;")
-        layout.addWidget(line_close)
+        root_layout.addWidget(line_close)
 
         btn_close = QPushButton('Close Program')
         btn_close.setFixedHeight(40)
@@ -889,7 +897,7 @@ class ConfigDialog(QDialog):
             "QPushButton:pressed { background: #8b1a1a; }"
         )
         btn_close.clicked.connect(mw.close)
-        layout.addWidget(btn_close)
+        root_layout.addWidget(btn_close)
 
         # Estilo del diálogo: fondo blanco, borde sutil, sombra si el SO lo soporta
         self.setStyleSheet(

@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 from PyQt5.QtCore import QCoreApplication, Qt
 
 if not QCoreApplication.instance():
@@ -29,6 +28,24 @@ def _make_mock_pyatemmax(*, connect_ok: bool = False, wait_ok: bool = False):
     mock_module = MagicMock()
     mock_module.ATEMMax.return_value = instance
     return mock_module, instance
+
+
+class _ProgramInputSequence:
+    def __init__(self, monitor, sources):
+        self._monitor = monitor
+        self._sources = list(sources)
+        self._index = 0
+
+    def __getitem__(self, index):
+        if self._index >= len(self._sources):
+            self._monitor.requestInterruption()
+            source = self._sources[-1]
+        else:
+            source = self._sources[self._index]
+        self._index += 1
+        item = MagicMock()
+        item.videoSource = source
+        return item
 
 
 def _collect_states(monitor, timeout_ms: int = 5000) -> list[ATEMState]:
@@ -151,15 +168,16 @@ class TestRetryPolicy:
 
         mock_module, instance = _make_mock_pyatemmax(wait_ok=True)
         instance.connect.side_effect = None
-        # Poll loop: hacer que falle inmediatamente para que el hilo salga
-        instance.programInput = MagicMock(side_effect=Exception("done"))
 
         with patch.dict(sys.modules, {"PyATEMMax": mock_module}):
             monitor = ATEMMonitor("192.168.1.1")
+            instance.programInput = _ProgramInputSequence(monitor, [3])
             states = _collect_states(monitor, timeout_ms=3000)
 
+        assert mock_module.ATEMMax.call_count == 1
         assert ATEMState.CONNECTED in states
         assert ATEMState.RECONNECTING not in states
+        instance.disconnect.assert_called_once_with()
 
     def test_poll_recovery_restores_connected_after_error(self):
         """Un poll correcto después de ERROR debe restaurar CONNECTED."""
@@ -213,6 +231,7 @@ class TestRetryPolicy:
         assert mock_module.ATEMMax.call_count == 1, (
             f"Interrumpido en el primer backoff: esperado 1 intento, got {mock_module.ATEMMax.call_count}"
         )
+        instance.disconnect.assert_called_once_with()
 
 
 # ─── Espera interrumpible ─────────────────────────────────────────────────────
@@ -239,8 +258,6 @@ class TestWaitInterruptible:
 
         interrupted_at = []
 
-        original_wait = _am.ATEMMonitor._wait_interruptible
-
         def _fake_wait(self, seconds):
             interrupted_at.append(seconds)
             return True  # simula interrupción en el primer backoff
@@ -264,6 +281,27 @@ class TestWaitInterruptible:
         ATEMMonitor("")._close_atem(atem)
 
         atem.disconnect.assert_called_once_with()
+
+    def test_close_atem_uses_close_when_disconnect_missing(self):
+        from atem_monitor import ATEMMonitor
+
+        class _Atem:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        atem = _Atem()
+
+        ATEMMonitor("")._close_atem(atem)
+
+        assert atem.closed is True
+
+    def test_close_atem_accepts_client_without_close_method(self):
+        from atem_monitor import ATEMMonitor
+
+        ATEMMonitor("")._close_atem(object())
 
 
 # ─── Escenario de reconexión manual ──────────────────────────────────────────
