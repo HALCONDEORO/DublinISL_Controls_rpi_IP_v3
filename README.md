@@ -32,6 +32,8 @@ Audio and microphones are not part of this application.
 
 ### Partially Implemented / Important Limitations
 
+See [Known Limitations](docs/KNOWN_LIMITATIONS.md) for the maintained list of current caveats and open hardening work.
+
 - The architecture is currently **hybrid**. The newer `core/`, `application/`, `domain/` and `adapters/` layers exist, but `MainWindow` still uses legacy Qt controllers such as `ViscaController`, `SessionController`, `DialogsController` and `SeatNamesController`.
 - ATEM support currently monitors program changes. It does **not** fully control or switch the ATEM. The implemented behaviour is: when ATEM program changes from input `3` to input `2`, the Comments camera is sent Home.
 - Simulation mode starts virtual VISCA camera servers. ATEM simulation is internal/event-based, not a full standalone ATEM network simulator.

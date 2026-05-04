@@ -25,6 +25,9 @@ def main_module(monkeypatch):
     data_paths = types.ModuleType("data_paths")
     data_paths.migrate_legacy_files = lambda: calls.append("migrate")
 
+    power_management = types.ModuleType("power_management")
+    power_management.disable_screen_blanking = lambda: calls.append("screen_blanking")
+
     widgets = types.ModuleType("PyQt5.QtWidgets")
 
     class FakeApplication:
@@ -68,6 +71,7 @@ def main_module(monkeypatch):
     sim_mode.is_active = lambda: False
 
     monkeypatch.setitem(sys.modules, "data_paths", data_paths)
+    monkeypatch.setitem(sys.modules, "power_management", power_management)
     monkeypatch.setitem(sys.modules, "PyQt5", pyqt5)
     monkeypatch.setitem(sys.modules, "PyQt5.QtWidgets", widgets)
     monkeypatch.setitem(sys.modules, "main_window", main_window)
@@ -91,6 +95,9 @@ def failing_main_module(monkeypatch):
 
     data_paths = types.ModuleType("data_paths")
     data_paths.migrate_legacy_files = lambda: calls.append("migrate")
+
+    power_management = types.ModuleType("power_management")
+    power_management.disable_screen_blanking = lambda: calls.append("screen_blanking")
 
     widgets = types.ModuleType("PyQt5.QtWidgets")
 
@@ -130,6 +137,7 @@ def failing_main_module(monkeypatch):
     sim_mode.is_active = lambda: False
 
     monkeypatch.setitem(sys.modules, "data_paths", data_paths)
+    monkeypatch.setitem(sys.modules, "power_management", power_management)
     monkeypatch.setitem(sys.modules, "PyQt5", pyqt5)
     monkeypatch.setitem(sys.modules, "PyQt5.QtWidgets", widgets)
     monkeypatch.setitem(sys.modules, "main_window", main_window)
@@ -153,7 +161,7 @@ class TestMainStartup:
             main_module.main()
 
         assert exc.value.code == 0
-        assert main_module._test_calls[:2] == ["migrate", "qapplication"]
+        assert main_module._test_calls[:3] == ["migrate", "screen_blanking", "qapplication"]
 
     def test_installs_keyboard_before_main_window(self, main_module):
         with pytest.raises(_ExitCalled):

@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import QApplication, QMessageBox
 
 from data_paths import migrate_legacy_files
 from main_window import MainWindow
+from power_management import disable_screen_blanking
 from virtual_keyboard import install_virtual_keyboard
 import sim_mode as _sim_mode
 
@@ -53,6 +54,7 @@ logger = logging.getLogger(__name__)
 
 def main():
     migrate_legacy_files()
+    disable_screen_blanking()
     try:
         app = QApplication(sys.argv)
         install_virtual_keyboard(app)
