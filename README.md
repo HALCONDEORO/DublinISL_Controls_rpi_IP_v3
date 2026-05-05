@@ -1,8 +1,54 @@
-# DublinISL Controls — PTZ Camera Control System
+# MACD Adaptive Control
 
-DublinISL Controls is a Raspberry Pi touchscreen application for controlling VISCA-over-IP PTZ cameras from a visual seating layout.
+Formerly: **DublinISL Controls**
 
-The current system lets an operator select a platform position or audience seat and recall the matching camera preset. The project is now being evolved into an installable and scalable product under the MACD Adaptive roadmap.
+MACD Adaptive Control is a Raspberry Pi touchscreen application for controlling VISCA-over-IP PTZ cameras from a visual seating layout.
+
+The current system lets an operator select a platform position or audience seat and recall the matching camera preset. The project is being evolved from a fixed-site control app into an installable, configurable and commercially supportable product.
+
+**First production target:** an offline-first Raspberry Pi installation with local touchscreen control, customer-specific configuration, backup/restore, diagnostics and optional support tooling.
+
+---
+
+## Intended use
+
+This software is designed for venues that need simple local control of PTZ cameras from known room positions, such as:
+
+- community halls
+- meeting rooms
+- council chambers
+- churches or assembly rooms
+- training/demo environments
+- venues with fixed seating and repeatable camera presets
+
+Basic system model:
+
+```text
+Operator touchscreen
+        ↓
+Raspberry Pi
+        ↓
+VISCA-over-IP PTZ cameras
+        ↓
+Optional ATEM monitoring / automation
+```
+
+---
+
+## Not included
+
+The current version does **not** provide:
+
+- audio mixing
+- microphone control
+- automatic speaker tracking
+- public SaaS access
+- cloud dashboard
+- online licensing
+- full ATEM switcher control
+- multi-room management in the current production flow
+
+Some of these may be future commercial features, but they are not part of the current working implementation.
 
 ---
 
@@ -29,9 +75,26 @@ This repository is functional, but still in transition from a fixed-site applica
 - Atomic JSON writes with backup files.
 - Existing pytest coverage for several core behaviours.
 
+### Current vs planned
+
+| Area | Current | Planned direction |
+|---|---|---|
+| Product name | DublinISL Controls | MACD Adaptive Control |
+| Configuration | Legacy `.txt` files | Validated `config.yaml` |
+| Cameras | Fixed two-camera model | Camera registry by id/role |
+| Seating layout | Legacy fixed layout | Editable persistent room layout |
+| Installation | Manual clone/run | Installer + systemd + CLI |
+| Runtime command | Direct Python scripts | `macd` CLI |
+| Diagnostics | Partial logs/checks | `macd doctor` + support bundle |
+| Backup | Current JSON/config export | Manifest-based backup/restore |
+| Simulation | Rewrites legacy config files | Safe profile-based demo mode |
+| ATEM | Optional monitoring/automation | Defined service layer and diagnostics |
+| Licensing | Not implemented | Offline license + feature limits |
+| Storage | JSON files | JSON first; SQLite only if needed later |
+
 ### Still in progress
 
-- Architecture is still hybrid: newer `core/`, `application/` and `domain/` layers exist, but legacy Qt controllers are still used.
+- Architecture is still hybrid: newer `core/`, `application` and `domain` layers exist, but legacy Qt controllers are still used.
 - Seat positions are still based on the legacy fixed layout and are being migrated toward editable customer layouts.
 - Configuration still uses legacy `.txt` files; planned direction is validated `config.yaml`.
 - There is no packaged production installer yet.
@@ -220,7 +283,7 @@ Manual example:
 
 ```ini
 [Unit]
-Description=DublinISL Controls
+Description=MACD Adaptive Control
 After=graphical.target network-online.target
 Wants=network-online.target
 
@@ -339,6 +402,40 @@ Architecture cleanup is tracked in #229, #241, #242 and #247.
 
 ---
 
+## Development workflow
+
+Recommended workflow:
+
+1. Create a focused `feature/*` branch.
+2. Keep the change small enough to review.
+3. Run `pytest` before committing.
+4. Test simulation mode if the change touches startup, config, cameras or UI.
+5. Open a pull request before merging to `main`.
+6. Do not add new business logic to legacy Qt controllers.
+
+Branch policy:
+
+```text
+main       = stable / deployable work
+feature/*  = focused feature or refactor work
+```
+
+For a two-person team, this is enough. A separate `develop` branch can be added later if the release flow becomes more complex.
+
+---
+
+## Security notes
+
+- Do not commit customer passwords.
+- Do not commit private license keys.
+- Do not commit real customer secrets or private network details unless intentionally required and sanitised.
+- Do not expose a customer Raspberry Pi directly to the public internet.
+- Use VPN or controlled remote-support tooling for remote access.
+- Back up customer config and data before updates.
+- Treat logs and backup ZIPs as customer-sensitive data.
+
+---
+
 ## Product roadmap
 
 The active roadmap is tracked in #239.
@@ -361,6 +458,27 @@ Important product decisions:
 - Do not start the visual layout editor before `LayoutService`, schema migration and seat ID/preset separation are safe.
 - JSON remains the first storage target; SQLite is not required for the MVP.
 - Online licensing and cloud dashboard are not first-release requirements.
+
+---
+
+## Commercial packaging status
+
+| Item | Status |
+|---|---|
+| Manual app run | Working |
+| VISCA camera control | Working |
+| Legacy fixed layout | Working |
+| Simulation mode | Working, needs safer profile model |
+| ATEM monitoring | Partial |
+| Installer | Planned |
+| `systemd` production service | Planned |
+| `macd` CLI | Planned |
+| `macd doctor` | Planned |
+| Manifest backup/restore | Planned |
+| Editable layout | Planned |
+| Offline license | Planned |
+| Online license validation | Future / not MVP |
+| Cloud dashboard | Future / not MVP |
 
 ---
 
