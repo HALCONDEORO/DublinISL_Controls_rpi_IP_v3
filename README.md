@@ -4,7 +4,7 @@ Formerly: **DublinISL Controls**
 
 MACD Adaptive Control is a Raspberry Pi touchscreen application for controlling VISCA-over-IP PTZ cameras from a visual seating layout.
 
-The current system lets an operator select a platform position or audience seat and recall the matching camera preset. The project is being evolved from a fixed-site control app into an installable, configurable and commercially supportable product.
+The current system lets an operator press a platform position or audience seat and recall the matching camera preset. The project is being evolved from a fixed-site control app into an installable, configurable and commercially supportable product.
 
 **First production target:** an offline-first Raspberry Pi installation with local touchscreen control, customer-specific configuration, backup/restore, diagnostics and optional support tooling.
 
@@ -12,16 +12,14 @@ The current system lets an operator select a platform position or audience seat 
 
 ## Intended use
 
-This software is designed for venues that need simple local control of PTZ cameras from known room positions, such as:
+Designed for venues that need simple local PTZ camera control from known room positions:
 
 - community halls
 - meeting rooms
 - council chambers
-- churches or assembly rooms
+- conference rooms
 - training/demo environments
 - venues with fixed seating and repeatable camera presets
-
-Basic system model:
 
 ```text
 Operator touchscreen
@@ -35,31 +33,12 @@ Optional ATEM monitoring / automation
 
 ---
 
-## Not included
+## Scope
 
-The current version does **not** provide:
+### Included today
 
-- audio mixing
-- microphone control
-- automatic speaker tracking
-- public SaaS access
-- cloud dashboard
-- online licensing
-- full ATEM switcher control
-- multi-room management in the current production flow
-
-Some of these may be future commercial features, but they are not part of the current working implementation.
-
----
-
-## Current status
-
-This repository is functional, but still in transition from a fixed-site application into a configurable commercial product.
-
-### Works today
-
-- VISCA-over-IP PTZ camera control over TCP port `5678`.
-- Current two-camera model:
+- VISCA-over-IP PTZ control over TCP port `5678`.
+- Two-camera operating model:
   - **Camera 1 / Platform** — chairman, left and right platform presets.
   - **Camera 2 / Comments** — audience / seating presets.
 - Pan, tilt, zoom, focus, backlight and exposure controls.
@@ -75,42 +54,50 @@ This repository is functional, but still in transition from a fixed-site applica
 - Atomic JSON writes with backup files.
 - Existing pytest coverage for several core behaviours.
 
-### Current vs planned
+### Not included today
 
-| Area | Current | Planned direction |
-|---|---|---|
-| Product name | DublinISL Controls | MACD Adaptive Control |
-| Configuration | Legacy `.txt` files | Validated `config.yaml` |
-| Cameras | Fixed two-camera model | Camera registry by id/role |
-| Seating layout | Legacy fixed layout | Editable persistent room layout |
-| Installation | Manual clone/run | Installer + systemd + CLI |
-| Runtime command | Direct Python scripts | `macd` CLI |
-| Diagnostics | Partial logs/checks | `macd doctor` + support bundle |
-| Backup | Current JSON/config export | Manifest-based backup/restore |
-| Simulation | Rewrites legacy config files | Safe profile-based demo mode |
-| ATEM | Optional monitoring/automation | Defined service layer and diagnostics |
-| Licensing | Not implemented | Offline license + feature limits |
-| Storage | JSON files | JSON first; SQLite only if needed later |
-
-### Still in progress
-
-- Architecture is still hybrid: newer `core/`, `application` and `domain` layers exist, but legacy Qt controllers are still used.
-- Seat positions are still based on the legacy fixed layout and are being migrated toward editable customer layouts.
-- Configuration still uses legacy `.txt` files; planned direction is validated `config.yaml`.
-- There is no packaged production installer yet.
-- ATEM support is monitoring/automation-oriented, not full switcher control.
-- Simulation mode is useful, but is being redesigned to avoid touching production configuration.
-- Licensing, commercial plans and online support workflows are planned, not complete.
-
-See also:
-
-- [Known limitations](docs/KNOWN_LIMITATIONS.md)
-- [Privacy notes](docs/PRIVACY_NOTES.md)
-- Roadmap issue: #239
+- audio mixing
+- microphone control
+- automatic speaker tracking
+- public SaaS access
+- cloud dashboard
+- online licensing
+- full ATEM switcher control
+- production multi-room management
 
 ---
 
-## Hardware requirements
+## Product status
+
+This repository is functional, but still transitioning into a configurable commercial product.
+
+| Area | Current | Planned direction | Tracking |
+|---|---|---|---|
+| Product name | DublinISL Controls | MACD Adaptive Control | README |
+| Architecture | Hybrid app + legacy Qt controllers | Cleaner services/layers | #229, #241, #242, #247 |
+| Configuration | Legacy `.txt` files | Validated `config.yaml` | #230, #243, #244, #245, #246 |
+| Cameras | Fixed two-camera model | Camera registry by id/role | #245 |
+| Seating layout | Legacy fixed layout | Editable persistent room layout | #217, #218, #226, #219 |
+| Installation | Manual clone/run | Installer + systemd + CLI | #231, #250, #251, #252 |
+| Diagnostics | Partial logs/checks | `macd doctor` + support bundle | #232, #254 |
+| Backup | Current JSON/config export | Manifest backup/restore | #233, #255, #256 |
+| Simulation | Rewrites legacy config files | Safe demo profile | #236 |
+| ATEM | Optional monitoring/automation | Defined service layer/scope | #237 |
+| Licensing | Not implemented | Offline license + feature limits | #234 |
+| Storage | JSON files | JSON first; SQLite only if needed | #239 |
+
+Main roadmap: #239
+
+Related docs:
+
+- [Known limitations](docs/KNOWN_LIMITATIONS.md)
+- [Privacy notes](docs/PRIVACY_NOTES.md)
+
+---
+
+## Requirements
+
+### Hardware
 
 | Component | Current expectation |
 |---|---|
@@ -122,9 +109,7 @@ See also:
 
 Static IPs are strongly recommended for cameras and ATEM devices.
 
----
-
-## Software requirements
+### Software
 
 | Software | Notes |
 |---|---|
@@ -182,7 +167,7 @@ Optional ATEM support:
 pip3 install -r requirements-atem.txt
 ```
 
-### 3. Configure camera IPs
+### 3. Configure cameras
 
 Current production configuration uses legacy text files in the project folder:
 
@@ -206,7 +191,7 @@ echo "192.168.1.240" > ATEMIP.txt
 echo "IT Support"    > Contact.txt
 ```
 
-Planned direction: replace these legacy files with validated `config.yaml` as tracked in #230, #243, #244, #245 and #246.
+`config.yaml` is planned but not the current production configuration path.
 
 ### 4. Set login password
 
@@ -228,58 +213,45 @@ Normal mode opens full-screen. Simulation mode opens as a normal window.
 
 ## Tests
 
-Run tests:
-
 ```bash
 pytest
 ```
 
-On Windows, the helper script is:
+On Windows:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\verify.ps1
 ```
 
-The roadmap includes extra test hardening for architecture boundaries, startup smoke tests and CI: #238, #247, #248 and #249.
+Planned hardening: architecture boundary tests, startup smoke tests and CI (#238, #247, #248, #249).
 
 ---
 
 ## Simulation mode
 
-Enable:
-
 ```bash
 python3 sim_mode.py on
 python3 main.py
-```
-
-Disable:
-
-```bash
 python3 sim_mode.py off
-```
-
-Show state:
-
-```bash
 python3 sim_mode.py show
 ```
 
-Current behaviour:
+Current simulation mode:
 
-- Starts simulated VISCA camera servers.
-- Temporarily rewrites camera IP files and stores a backup in `sim_ip_backup.json`.
-- Uses internal ATEM event simulation when simulation is active.
+- starts simulated VISCA camera servers
+- temporarily rewrites camera IP files
+- stores backup state in `sim_ip_backup.json`
+- uses internal ATEM event simulation when active
 
-Important: simulation currently touches legacy config files. A safer profile-based demo/simulation system is planned in #236.
+Important: simulation currently touches legacy config files. A safer profile-based demo mode is planned in #236.
 
 ---
 
 ## Raspberry Pi auto-start
 
-The recommended production direction is `systemd`.
+The current recommended production direction is `systemd`.
 
-Manual example:
+Manual service example:
 
 ```ini
 [Unit]
@@ -299,7 +271,7 @@ Environment=DISPLAY=:0
 WantedBy=graphical.target
 ```
 
-Enable manually:
+Manual commands:
 
 ```bash
 sudo systemctl daemon-reload
@@ -308,20 +280,11 @@ sudo systemctl start dublinisl.service
 journalctl -u dublinisl.service -f
 ```
 
-Planned direction:
-
-- `macd` CLI command
-- `macd-control.service`
-- `install.sh`
-- `macd doctor`
-- backup before update
-- safe restore workflow
-
-Tracked in #231, #250, #251, #252, #232, #254, #233, #255 and #256.
+Planned production runtime: `macd` CLI, `macd-control.service`, `install.sh`, `macd doctor`, backup-before-update and safe restore.
 
 ---
 
-## Persistent data and backup
+## Data and backup
 
 Default runtime data directory:
 
@@ -343,43 +306,31 @@ Common runtime files:
 | `chairman_presets.json` | Chairman personal preset map |
 | `schedule.json` | Weekly login bypass schedule |
 
-The project already has JSON safety helpers and backup/import support for current data. A fuller manifest-based customer backup/restore workflow is planned in #233, #255 and #256.
+The project already has JSON safety helpers and backup/import support for current data. A fuller manifest-based backup/restore workflow is planned in #233, #255 and #256.
 
 ---
 
 ## Main operation concepts
 
-### CALL mode
+| Concept | Meaning |
+|---|---|
+| CALL mode | Live mode. Pressing a seat/platform button recalls its preset. |
+| SET mode | Setup mode for assigning speaker names to seats and chairman positions. |
+| Session control | Powers cameras on/off and recalls initial positions. |
+| Chairman presets | Personal chairman presets stored in `chairman_presets.json`. |
+| ATEM monitoring | Optional ATEM state monitoring; full switcher control is not currently implemented. |
 
-Live operation mode. Pressing a seat/platform button recalls its configured camera preset.
+Chairman personal preset range:
 
-### SET mode
-
-Setup mode. Used for assigning speaker names to seats and chairman positions.
-
-### Session control
-
-The session button powers cameras on, waits for motor initialisation, recalls initial positions and later sends cameras to standby. There is also an inactivity timer that can power down cameras after long inactivity.
-
-### Chairman presets
-
-Chairman personal presets are managed by `PresetService` and stored in `chairman_presets.json`.
-
-Current personal preset range:
-
-- First personal slot: `10`
-- Last personal slot: `89`
-- Generic fallback preset: `1`
-
-### ATEM monitoring
-
-ATEM support is optional. If `PyATEMMax` is unavailable or the ATEM cannot be reached, the app should continue running. Current behaviour is limited; the future ATEM scope is tracked in #237.
+- first personal slot: `10`
+- last personal slot: `89`
+- generic fallback preset: `1`
 
 ---
 
 ## Architecture
 
-The target architecture is layered:
+Target direction:
 
 ```text
 domain/          Pure domain models and constants
@@ -391,20 +342,18 @@ ui/              PyQt interface, planned separation
 runtime/         Planned CLI, installer, systemd and diagnostics
 ```
 
-Current status:
+Current reality:
 
-- Some newer layers already exist and are used.
-- `MainWindow` still performs too much wiring.
-- Legacy Qt controllers are still active during migration.
-- New business logic should move into application services, not legacy UI controllers.
+- newer layers already exist and are partly used
+- `MainWindow` still performs too much wiring
+- legacy Qt controllers are still active
+- new business logic should move into application services, not legacy UI controllers
 
 Architecture cleanup is tracked in #229, #241, #242 and #247.
 
 ---
 
 ## Development workflow
-
-Recommended workflow:
 
 1. Create a focused `feature/*` branch.
 2. Keep the change small enough to review.
@@ -420,8 +369,6 @@ main       = stable / deployable work
 feature/*  = focused feature or refactor work
 ```
 
-For a two-person team, this is enough. A separate `develop` branch can be added later if the release flow becomes more complex.
-
 ---
 
 ## Security notes
@@ -433,68 +380,6 @@ For a two-person team, this is enough. A separate `develop` branch can be added 
 - Use VPN or controlled remote-support tooling for remote access.
 - Back up customer config and data before updates.
 - Treat logs and backup ZIPs as customer-sensitive data.
-
----
-
-## Product roadmap
-
-The active roadmap is tracked in #239.
-
-Execution order:
-
-1. Architecture and configuration foundation.
-2. Release safety and smoke tests.
-3. Raspberry Pi installer/runtime.
-4. Diagnostics and backup/restore.
-5. Persistent editable room layout.
-6. Safe demo/simulation mode.
-7. ATEM integration scope.
-8. Offline licensing and commercial plan enforcement.
-
-Important product decisions:
-
-- Config and room layout are separate.
-- Do not create another camera controller.
-- Do not start the visual layout editor before `LayoutService`, schema migration and seat ID/preset separation are safe.
-- JSON remains the first storage target; SQLite is not required for the MVP.
-- Online licensing and cloud dashboard are not first-release requirements.
-
----
-
-## Commercial packaging status
-
-| Item | Status |
-|---|---|
-| Manual app run | Working |
-| VISCA camera control | Working |
-| Legacy fixed layout | Working |
-| Simulation mode | Working, needs safer profile model |
-| ATEM monitoring | Partial |
-| Installer | Planned |
-| `systemd` production service | Planned |
-| `macd` CLI | Planned |
-| `macd doctor` | Planned |
-| Manifest backup/restore | Planned |
-| Editable layout | Planned |
-| Offline license | Planned |
-| Online license validation | Future / not MVP |
-| Cloud dashboard | Future / not MVP |
-
----
-
-## Known gaps before commercial deployment
-
-These are implementation gaps, not promises:
-
-1. Packaged installer and `systemd` workflow.
-2. Validated `config.yaml` configuration.
-3. Architecture migration away from legacy UI controllers.
-4. Editable/persistent room layout.
-5. Safer demo/simulation profile that does not rewrite production config.
-6. Full customer backup and safe restore workflow.
-7. Clear ATEM commercial scope.
-8. Offline license validation and feature gating.
-9. More hardware-free smoke tests and CI.
 
 ---
 
