@@ -4,136 +4,27 @@ Formerly: **DublinISL Controls**
 
 MACD Adaptive Control is a Raspberry Pi touchscreen application for controlling VISCA-over-IP PTZ cameras from a visual seating layout.
 
-The current system lets an operator press a platform position or audience seat and recall the matching camera preset. The project is being evolved from a fixed-site control app into an installable, configurable and commercially supportable product.
+The app works today as a fixed-site control system. The next goal is to make it easier to install, configure, support and sell as a MACD Adaptive product.
+
+> **Status:** working application, productisation in progress. Production installer is not complete yet; current setup is manual.
 
 **First production target:** an offline-first Raspberry Pi installation with local touchscreen control, customer-specific configuration, backup/restore, diagnostics and optional support tooling.
 
 ---
 
-## Intended use
+## At a glance
 
-Designed for venues that need simple local PTZ camera control from known room positions:
-
-- community halls
-- meeting rooms
-- council chambers
-- conference rooms
-- training/demo environments
-- venues with fixed seating and repeatable camera presets
-
-```text
-Operator touchscreen
-        ↓
-Raspberry Pi
-        ↓
-VISCA-over-IP PTZ cameras
-        ↓
-Optional ATEM monitoring / automation
-```
-
----
-
-## Scope
-
-### Included today
-
-- VISCA-over-IP PTZ control over TCP port `5678`.
-- Two-camera operating model:
-  - **Camera 1 / Platform** — chairman, left and right platform presets.
-  - **Camera 2 / Comments** — audience / seating presets.
-- Pan, tilt, zoom, focus, backlight and exposure controls.
-- 1920×1080 touchscreen PyQt interface.
-- Visual seating layout with seat buttons.
-- CALL mode for live preset recall.
-- SET mode for assigning speaker names to seats.
-- Chairman personal preset allocation.
-- Session start/end flow for camera power-on and standby.
-- Optional Blackmagic ATEM monitoring through `PyATEMMax`.
-- VISCA camera simulation mode.
-- Persistent runtime data in `~/.config/dublinisl/` by default.
-- Atomic JSON writes with backup files.
-- Existing pytest coverage for several core behaviours.
-
-### Not included today
-
-- audio mixing
-- microphone control
-- automatic speaker tracking
-- public SaaS access
-- cloud dashboard
-- online licensing
-- full ATEM switcher control
-- production multi-room management
-
----
-
-## Product status
-
-This repository is functional, but still transitioning into a configurable commercial product.
-
-| Area | Current | Planned direction | Tracking |
-|---|---|---|---|
-| Product name | DublinISL Controls | MACD Adaptive Control | README |
-| Architecture | Hybrid app + legacy Qt controllers | Cleaner services/layers | #229, #241, #242, #247 |
-| Configuration | Legacy `.txt` files | Validated `config.yaml` | #230, #243, #244, #245, #246 |
-| Cameras | Fixed two-camera model | Camera registry by id/role | #245 |
-| Seating layout | Legacy fixed layout | Editable persistent room layout | #217, #218, #226, #219 |
-| Installation | Manual clone/run | Installer + systemd + CLI | #231, #250, #251, #252 |
-| Diagnostics | Partial logs/checks | `macd doctor` + support bundle | #232, #254 |
-| Backup | Current JSON/config export | Manifest backup/restore | #233, #255, #256 |
-| Simulation | Rewrites legacy config files | Safe demo profile | #236 |
-| ATEM | Optional monitoring/automation | Defined service layer/scope | #237 |
-| Licensing | Not implemented | Offline license + feature limits | #234 |
-| Storage | JSON files | JSON first; SQLite only if needed | #239 |
-
-Main roadmap: #239
-
-Related docs:
-
-- [Known limitations](docs/KNOWN_LIMITATIONS.md)
-- [Privacy notes](docs/PRIVACY_NOTES.md)
-
----
-
-## Requirements
-
-### Hardware
-
-| Component | Current expectation |
+| Item | Current status |
 |---|---|
-| Computer | Raspberry Pi 4 recommended |
-| Cameras | VISCA-over-IP PTZ cameras using TCP port `5678` |
-| Display | 1920×1080 touchscreen recommended |
-| Network | Raspberry Pi and cameras on the same reachable LAN |
-| ATEM | Optional Blackmagic ATEM switcher for monitoring/automation |
-
-Static IPs are strongly recommended for cameras and ATEM devices.
-
-### Software
-
-| Software | Notes |
-|---|---|
-| Python | Python 3.8+ intended; test on target Raspberry Pi image before deployment |
-| PyQt5 | Required for the GUI |
-| PyQt5 QtSvg | Required for SVG icons |
-| PyATEMMax | Optional; only needed for real ATEM monitoring |
-| git | Required for clone/update workflow |
-
-Dependency files:
-
-| File | Purpose |
-|---|---|
-| `requirements.txt` | Generic runtime dependencies |
-| `requirements-rpi.txt` | Raspberry Pi pip dependencies |
-| `requirements-atem.txt` | Optional ATEM dependency |
-| `requirements-dev.txt` | Development/test dependencies |
-
-On Raspberry Pi OS, prefer system packages for PyQt5 and QtSvg:
-
-```bash
-sudo apt update
-sudo apt install -y git python3-pyqt5 python3-pyqt5.qtsvg
-```
+| Platform | Raspberry Pi touchscreen app |
+| Camera protocol | VISCA-over-IP |
+| Current camera model | 2 PTZ cameras |
+| Interface | PyQt touchscreen UI |
+| Configuration | Legacy `.txt` files |
+| Installation | Manual clone/run today; installer planned |
+| Diagnostics | Basic logs/checks today; `macd doctor` planned |
+| Commercial status | Productisation in progress |
+| Main roadmap | #239 |
 
 ---
 
@@ -148,9 +39,11 @@ cd DublinISL_Controls_rpi_IP_v3
 
 ### 2. Install dependencies
 
-For Raspberry Pi:
+On Raspberry Pi OS, install PyQt5/QtSvg with `apt`:
 
 ```bash
+sudo apt update
+sudo apt install -y git python3-pyqt5 python3-pyqt5.qtsvg
 pip3 install -r requirements-rpi.txt
 ```
 
@@ -191,7 +84,7 @@ echo "192.168.1.240" > ATEMIP.txt
 echo "IT Support"    > Contact.txt
 ```
 
-`config.yaml` is planned but not the current production configuration path.
+`config.yaml` is planned, but legacy `.txt` files are still the current production configuration path.
 
 ### 4. Set login password
 
@@ -208,6 +101,109 @@ python3 main.py
 ```
 
 Normal mode opens full-screen. Simulation mode opens as a normal window.
+
+---
+
+## Intended use
+
+Designed for venues that need simple local PTZ camera control from known room positions:
+
+- community halls
+- meeting rooms
+- council chambers
+- conference rooms
+- training/demo environments
+- venues with fixed seating and repeatable camera presets
+
+```text
+Operator touchscreen
+        ↓
+Raspberry Pi
+        ↓
+VISCA-over-IP PTZ cameras
+        ↓
+Optional ATEM monitoring / automation
+```
+
+---
+
+## Scope
+
+| Included today | Not included today |
+|---|---|
+| VISCA-over-IP PTZ control | Audio mixing |
+| Two-camera workflow | Microphone control |
+| PyQt touchscreen UI | Automatic speaker tracking |
+| Seat/platform preset recall | Public SaaS access |
+| CALL and SET modes | Cloud dashboard |
+| Chairman personal presets | Online licensing |
+| Session power-on/standby flow | Full ATEM switcher control |
+| Optional ATEM monitoring | Production multi-room management |
+| VISCA camera simulation |  |
+| Persistent JSON runtime data |  |
+| Atomic JSON writes with backups |  |
+| Existing pytest coverage |  |
+
+---
+
+## Current vs planned
+
+This repository is functional, but still transitioning into a configurable commercial product.
+
+| Area | Current | Planned direction | Tracking |
+|---|---|---|---|
+| Product name | DublinISL Controls | MACD Adaptive Control | README |
+| Architecture | Hybrid app + legacy Qt controllers | Cleaner services/layers | #229, #241, #242, #247 |
+| Configuration | Legacy `.txt` files | Validated `config.yaml` | #230, #243, #244, #245, #246 |
+| Cameras | Fixed two-camera model | Camera registry by id/role | #245 |
+| Seating layout | Legacy fixed layout | Editable persistent room layout | #217, #218, #226, #219 |
+| Installation | Manual clone/run | Installer + systemd + CLI | #231, #250, #251, #252 |
+| Diagnostics | Partial logs/checks | `macd doctor` + support bundle | #232, #254 |
+| Backup | Current JSON/config export | Manifest backup/restore | #233, #255, #256 |
+| Simulation | Rewrites legacy config files | Safe demo profile | #236 |
+| ATEM | Optional monitoring/automation | Defined service layer/scope | #237 |
+| Licensing | Not implemented | Offline license + feature limits | #234 |
+| Storage | JSON files | JSON first; SQLite only if needed | #239 |
+
+Related docs:
+
+- [Known limitations](docs/KNOWN_LIMITATIONS.md)
+- [Privacy notes](docs/PRIVACY_NOTES.md)
+
+---
+
+## Requirements
+
+### Hardware
+
+| Component | Current expectation |
+|---|---|
+| Computer | Raspberry Pi 4 recommended |
+| Cameras | VISCA-over-IP PTZ cameras using TCP port `5678` |
+| Display | 1920×1080 touchscreen recommended |
+| Network | Raspberry Pi and cameras on the same reachable LAN |
+| ATEM | Optional Blackmagic ATEM switcher for monitoring/automation |
+
+Static IPs are strongly recommended for cameras and ATEM devices.
+
+### Software
+
+| Software | Notes |
+|---|---|
+| Python | Python 3.8+ intended; test on target Raspberry Pi image before deployment |
+| PyQt5 | Required for the GUI |
+| PyQt5 QtSvg | Required for SVG icons |
+| PyATEMMax | Optional; only needed for real ATEM monitoring |
+| git | Required for clone/update workflow |
+
+Dependency files:
+
+| File | Purpose |
+|---|---|
+| `requirements.txt` | Generic runtime dependencies |
+| `requirements-rpi.txt` | Raspberry Pi pip dependencies |
+| `requirements-atem.txt` | Optional ATEM dependency |
+| `requirements-dev.txt` | Development/test dependencies |
 
 ---
 
@@ -368,6 +364,8 @@ Branch policy:
 main       = stable / deployable work
 feature/*  = focused feature or refactor work
 ```
+
+Recommended next development steps: #242, #247, #241 and #243.
 
 ---
 
